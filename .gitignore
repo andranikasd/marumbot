@@ -1,2 +1,10 @@
 .env
 docs/design/marum-final.render.html
+
+# Terraform: provider binaries, local state, and any real variable values.
+# .terraform.lock.hcl IS committed -- it pins provider versions across machines.
+deploy/terraform/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.auto.tfvars

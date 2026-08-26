@@ -1,7 +1,15 @@
 # Every target runs inside a container: Docker is the only prerequisite.
 GO_IMAGE  := golang:1.25
 GO_ALPINE := golang:1.25-alpine
+TF_IMAGE  := hashicorp/terraform:1.13.3
 RUN       := docker run --rm -v $(PWD):/src -w /src -v marum-gomod:/go/pkg/mod
+
+# Terraform reads every credential from the environment; nothing is passed on a
+# command line, where it would land in shell history and in `ps`.
+TF_ENV := -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
+	-e TF_VAR_cloudflare_api_token -e TF_VAR_cloudflare_account_id \
+	-e TF_VAR_cloudflare_zone_id -e TF_VAR_database
+TF := docker run --rm -i $(TF_ENV) -v $(PWD)/deploy/terraform:/tf -w /tf $(TF_IMAGE)
 
 .DEFAULT_GOAL := help
 
@@ -84,8 +92,37 @@ seed: ## Load demo data for local development
 admin-password: ## Print a value for MARUM_ADMIN_PASSWORD_HASH (reads a password on stdin)
 	@$(RUN) -i -e MARUM_ADMIN_PASSWORD $(GO_ALPINE) go run ./cmd/marum -hash-password
 
+# ENV picks the environment and the state file with it. There is no default:
+# guessing which environment an infrastructure change lands in is not a mistake
+# worth making convenient.
+tf-init: ## Initialise Terraform for one environment (ENV=dev|production)
+	@test -n "$(ENV)" || { echo "ENV=dev or ENV=production is required"; exit 1; }
+	@test -n "$$TF_VAR_cloudflare_account_id" || { echo "TF_VAR_cloudflare_account_id is not set; see deploy/terraform/README.md"; exit 1; }
+	$(TF) init -reconfigure \
+		-backend-config=envs/$(ENV).backend.hcl \
+		-backend-config="endpoints={\"s3\":\"https://$$TF_VAR_cloudflare_account_id.r2.cloudflarestorage.com\"}"
+
+tf-plan: ## Show what would change (ENV=dev|production)
+	@test -n "$(ENV)" || { echo "ENV=dev or ENV=production is required"; exit 1; }
+	$(TF) plan -var-file=envs/$(ENV).tfvars
+
+tf-apply: ## Apply infrastructure changes (ENV=dev|production)
+	@test -n "$(ENV)" || { echo "ENV=dev or ENV=production is required"; exit 1; }
+	$(TF) apply -var-file=envs/$(ENV).tfvars
+
+tf-output: ## Print the wrangler.toml Hyperdrive binding for this environment
+	$(TF) output -raw wrangler_hint
+
+tf-fmt: ## Format the Terraform files
+	$(TF) fmt -recursive
+
+tf-validate: ## Check the Terraform configuration without contacting Cloudflare
+	docker run --rm -v $(PWD)/deploy/terraform:/tf -w /tf $(TF_IMAGE) init -backend=false -input=false >/dev/null
+	docker run --rm -v $(PWD)/deploy/terraform:/tf -w /tf $(TF_IMAGE) validate
+
 shell: ## psql into the local database
 	docker compose exec postgres psql -U marum -d marum
 
 .PHONY: help up down reset logs test test-short vet lint fmt tidy shell \
-	goose-image migrate migrate-down migrate-status migrate-check seed admin-password up-core load grafana
+	goose-image migrate migrate-down migrate-status migrate-check seed admin-password up-core load grafana \
+	tf-init tf-plan tf-apply tf-output tf-fmt tf-validate
