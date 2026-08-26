@@ -42,6 +42,11 @@ custom_domain = true
 [[env.dev.containers]]
 class_name = "MarumApp"
 image = "../Dockerfile"
+# The Dockerfile copies go.mod and the whole source tree, so it needs the
+# repository root as its build context. wrangler otherwise defaults to the
+# directory the Dockerfile sits in, which is deploy/ and has no go.mod --
+# the build then fails on a cache-key checksum rather than a missing file.
+image_build_context = "../.."
 max_instances = 1
 instance_type = "basic"
 
@@ -76,6 +81,7 @@ custom_domain = true
 [[env.production.containers]]
 class_name = "MarumApp"
 image = "../Dockerfile"
+image_build_context = "../.."
 max_instances = 2
 instance_type = "basic"
 
