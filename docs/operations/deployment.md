@@ -28,7 +28,7 @@ Everything below is done **twice**, once per environment, with different values:
 | | dev | production |
 | --- | --- | --- |
 | Worker | `marum-dev` | `marum` |
-| Domain | `dev.marum.am` | `marum.am` |
+| Domain | `dev.marum.loan` | `marum.loan` |
 | Bot | a separate @BotFather bot | the real one |
 | Database | its own Neon project | its own Neon project |
 | Hyperdrive | `marum-dev-postgres` | `marum-postgres` |
@@ -97,7 +97,7 @@ reach production by accident.
 | Scope | Kind | Name |
 | --- | --- | --- |
 | `dev` and `production` | Secret | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL`, `GRAFANA_TOKEN` |
-| `dev` and `production` | Secret | `CLOUDFLARE_ZONE_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `TF_DATABASE` — infrastructure only |
+| Repository, not per environment | Secret | `TF_CLOUDFLARE_API_TOKEN`, `TF_CLOUDFLARE_ACCOUNT_ID`, `TF_CLOUDFLARE_ZONE_ID`, `TF_R2_ACCESS_KEY_ID`, `TF_R2_SECRET_ACCESS_KEY`, `TF_DATABASE_DEV`, `TF_DATABASE_PRODUCTION` — infrastructure only |
 | `dev` and `production` | Variable | `PUBLIC_URL`, `GRAFANA_URL` |
 
 `production` carries a **required reviewer**; `dev` has none, because a dev

@@ -19,7 +19,7 @@ flowchart LR
 | Approval | none | required reviewer |
 | Allowed refs | `main` | `main` and `v*` tags |
 | Worker | `marum-dev` | `marum` |
-| Domain | `dev.marum.am` | `marum.am` |
+| Domain | `dev.marum.loan` | `marum.loan` |
 | Bot | its own | its own |
 | Database | its own | its own |
 | Instances | 1 | 2 |
@@ -54,14 +54,23 @@ never reach production by accident.
 | Variable | `PUBLIC_URL` | Where the smoke test points |
 | Variable | `GRAFANA_URL` | Optional; no annotation without it |
 
-The Infrastructure workflow needs four more, used by nothing else:
+The Infrastructure workflow needs its own, set at **repository** level rather
+than per environment, and all prefixed `TF_`:
 
 | Kind | Name | What it is |
 | --- | --- | --- |
-| Secret | `CLOUDFLARE_ZONE_ID` | Zone for the apex domain |
-| Secret | `R2_ACCESS_KEY_ID` | Terraform state bucket, S3 API |
-| Secret | `R2_SECRET_ACCESS_KEY` | |
-| Secret | `TF_DATABASE` | Origin Postgres, as a JSON object |
+| Secret | `TF_CLOUDFLARE_API_TOKEN` | Hyperdrive, R2 and zone settings; cannot deploy a Worker |
+| Secret | `TF_CLOUDFLARE_ACCOUNT_ID` | |
+| Secret | `TF_CLOUDFLARE_ZONE_ID` | Zone for the apex domain |
+| Secret | `TF_R2_ACCESS_KEY_ID` | Terraform state bucket, S3 API |
+| Secret | `TF_R2_SECRET_ACCESS_KEY` | |
+| Secret | `TF_DATABASE_DEV` | Origin Postgres for dev, as a JSON object |
+| Secret | `TF_DATABASE_PRODUCTION` | The same, for production |
+
+Repository rather than environment, because an environment is a deploy gate and
+both gates restrict which refs may deploy. A plan job declaring one is refused on
+every pull request, which is exactly the moment the plan is wanted. The gate sits
+on `apply` instead.
 
 Everything the application itself reads is a **Cloudflare** secret, set with
 `wrangler secret put NAME --env dev|production`, never a GitHub one. GitHub only
