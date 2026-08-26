@@ -18,3 +18,7 @@ deploy/terraform/.terraform/
 # same reason .terraform.lock.hcl is: so everyone resolves the same version.
 .agents/
 .claude/skills/
+
+# wrangler's local build and state directory.
+deploy/cloudflare/.wrangler/
+deploy/cloudflare/node_modules/
