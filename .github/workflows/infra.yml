@@ -81,7 +81,7 @@ jobs:
         working-directory: deploy/terraform
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -201,7 +201,7 @@ jobs:
         working-directory: deploy/terraform
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: hashicorp/setup-terraform@v3
         with:
