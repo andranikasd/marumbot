@@ -1,0 +1,91 @@
+name: Deploy
+
+# Deployment follows a published release, never a branch. What runs in
+# production is always a tag somebody chose to publish.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to deploy, e.g. 0.2.1"
+        required: true
+      environment:
+        description: "Target environment"
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment || 'production' }}
+  cancel-in-progress: false     # never interrupt a deploy in flight
+
+jobs:
+  deploy:
+    name: Deploy to Cloudflare
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment || 'production' }}
+      url: ${{ vars.PUBLIC_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the version
+        id: v
+        run: |
+          v="${{ github.event.inputs.version }}"
+          [ -n "$v" ] || v="${GITHUB_REF_NAME#v}"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      # 1. Expand. Additive only, and compatible with the binary still running.
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.25", cache: true }
+      - name: Install goose
+        run: go install github.com/pressly/goose/v3/cmd/goose@v3.24.1
+      - name: Expand migration
+        env:
+          GOOSE_DRIVER: postgres
+          GOOSE_DBSTRING: ${{ secrets.DATABASE_URL }}
+        run: |
+          goose -dir migrations status
+          goose -dir migrations up
+          goose -dir migrations status
+
+      # 2. Deploy the code that reads both schemas.
+      - name: Deploy Worker and container
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: deploy/cloudflare
+          command: deploy --var VERSION:${{ steps.v.outputs.version }}
+
+      # 3. Prove it works before anyone finds out it does not.
+      - name: Post-deploy smoke
+        id: smoke
+        run: ./deploy/cloudflare/smoke.sh "${{ vars.PUBLIC_URL }}"
+
+      # 4. A failed smoke rolls the binary back. The schema stays expanded,
+      #    which is safe precisely because it is backward compatible.
+      - name: Roll back on failure
+        if: failure() && steps.smoke.outcome == 'failure'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: deploy/cloudflare
+          command: rollback --message "post-deploy smoke failed"
+
+      - name: Annotate Grafana
+        if: success() && vars.GRAFANA_URL != ''
+        continue-on-error: true
+        run: |
+          curl -sf -X POST "${{ vars.GRAFANA_URL }}/api/annotations" \
+            -H "Authorization: Bearer ${{ secrets.GRAFANA_TOKEN }}" \
+            -H 'Content-Type: application/json' \
+            -d "{\"tags\":[\"deploy\"],\"text\":\"marum ${{ steps.v.outputs.version }} deployed\"}"

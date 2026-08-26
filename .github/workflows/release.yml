@@ -1,0 +1,174 @@
+name: Release
+
+# Tags are the trigger and the source of truth for the version. Nothing else
+# creates a release, so what is running can always be traced to a tag.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write      # create the GitHub Release
+  packages: write      # push the image to GHCR
+  id-token: write      # provenance attestation
+  attestations: write
+
+env:
+  GO_VERSION: "1.25"
+  REGISTRY: ghcr.io
+
+jobs:
+  verify:
+    name: Verify the tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: v
+        name: Parse and validate
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # Strict SemVer. A tag that is not a version is a mistake, and a
+          # mistake that reaches a registry is one somebody has to chase.
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::tag '$GITHUB_REF_NAME' is not a SemVer version"
+            exit 1
+          fi
+          prerelease=false
+          case "$version" in *-*) prerelease=true ;; esac
+          # Below 1.0.0 nothing is promised to be stable; say so on the release.
+          case "$version" in 0.*) prerelease=true ;; esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+      - name: Tag must be on main
+        run: |
+          git fetch origin main --depth=100
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || { echo "::error::tag is not an ancestor of main"; exit 1; }
+
+  test:
+    name: Full suite
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "${{ env.GO_VERSION }}", cache: true }
+      - run: go test -race -count=1 ./...
+
+  compatibility:
+    name: Previous release still works against this schema
+    needs: verify
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_USER: marum, POSTGRES_PASSWORD: marum, POSTGRES_DB: marum }
+        options: >-
+          --health-cmd "pg_isready -U marum" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+        ports: ["5432:5432"]
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v5
+        with: { go-version: "${{ env.GO_VERSION }}", cache: true }
+      - name: Install goose
+        run: go install github.com/pressly/goose/v3/cmd/goose@v3.24.1
+      # Migrations expand first, so the binary being replaced must keep working
+      # against the new schema. This matters more than up/down/up: rolling back
+      # a binary is routine, rolling back a migration is not.
+      - name: Apply this tag's migrations, run the previous release's tests
+        env:
+          GOOSE_DRIVER: postgres
+          GOOSE_DBSTRING: postgres://marum:marum@localhost:5432/marum?sslmode=disable
+        run: |
+          goose -dir migrations up
+          prev=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed -n 2p)
+          if [ -z "$prev" ]; then
+            echo "no previous release to check against; this is the first"
+            exit 0
+          fi
+          echo "checking $prev against the schema from $GITHUB_REF_NAME"
+          git checkout "$prev" -- ./pkg ./internal ./queries ./cmd
+          go test -count=1 ./... || { echo "::error::the previous release fails against this schema"; exit 1; }
+
+  image:
+    name: Build and publish the image
+    needs: [verify, test, compatibility]
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+      - id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ needs.verify.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ github.repository }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  release:
+    name: Publish the GitHub Release
+    needs: [verify, image]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Build the notes from the commits since the last release
+        id: notes
+        run: |
+          prev=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed -n 2p)
+          range=${prev:+$prev..}$GITHUB_REF_NAME
+          {
+            echo "## What changed"
+            echo
+            for kind in "feat:Features" "fix:Fixes" "perf:Performance" "refactor:Internal" "docs:Documentation"; do
+              prefix=${kind%%:*}; heading=${kind#*:}
+              body=$(git log --no-merges --pretty='- %s (%h)' "$range" | grep -E "^- $prefix(\(.+\))?:" || true)
+              [ -n "$body" ] && { echo "### $heading"; echo; printf '%s\n\n' "$body"; }
+            done
+            echo "### Image"
+            echo
+            echo '```'
+            echo "${{ env.REGISTRY }}/${{ github.repository }}:${{ needs.verify.outputs.version }}"
+            echo "digest: ${{ needs.image.outputs.digest }}"
+            echo '```'
+          } > notes.md
+          cat notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md
+          prerelease: ${{ needs.verify.outputs.prerelease }}
+          generate_release_notes: false
+          fail_on_unmatched_files: true

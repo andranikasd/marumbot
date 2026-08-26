@@ -1,0 +1,16 @@
+{
+  "name": "marum-edge",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "@cloudflare/containers": "^0.0.30",
+    "@cloudflare/workers-types": "^4.20250816.0",
+    "typescript": "^5.7.3",
+    "wrangler": "^4.20.0"
+  }
+}
