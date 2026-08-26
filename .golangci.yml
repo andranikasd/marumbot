@@ -1,0 +1,152 @@
+# Marum lint configuration.
+#
+# Most of this is ordinary Go hygiene. The parts that matter are the depguard
+# and forbidigo rules, which mechanically enforce the five invariants in
+# docs/engineering-guide.md §11. Weakening one of those is a deliberate act:
+# delete the invariant from the guide first, in its own commit.
+#
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - depguard
+    - errorlint
+    - forbidigo
+    - goconst
+    - gocritic
+    - misspell
+    - nilerr
+    - noctx
+    - nolintlint
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - unparam
+    - wastedassign
+
+  settings:
+    depguard:
+      rules:
+        # I3 — pkg/core performs no I/O and is deterministic.
+        core-is-pure:
+          files:
+            - "**/pkg/core/**"
+          deny:
+            - pkg: "database/sql"
+              desc: "pkg/core performs no I/O (I3)"
+            - pkg: "net"
+              desc: "pkg/core performs no I/O (I3)"
+            - pkg: "net/http"
+              desc: "pkg/core performs no I/O (I3)"
+            - pkg: "os"
+              desc: "pkg/core performs no I/O (I3)"
+            - pkg: "math/rand"
+              desc: "pkg/core is deterministic — tie-breaks order by loan ID"
+            - pkg: "math/rand/v2"
+              desc: "pkg/core is deterministic — tie-breaks order by loan ID"
+            - pkg: "log"
+              desc: "pkg/core returns errors; it does not report them"
+            - pkg: "log/slog"
+              desc: "pkg/core returns errors; it does not report them"
+
+        # The engine must stay publishable on its own.
+        core-does-not-know-the-app:
+          files:
+            - "**/pkg/core/**"
+          deny:
+            - pkg: "github.com/andranikasd/marumbot/internal"
+              desc: "pkg/core must not import the application (engineering-guide §2)"
+
+        # app declares the port interfaces; adapters implement them.
+        app-does-not-know-adapters:
+          files:
+            - "**/internal/app/**"
+          deny:
+            - pkg: "github.com/andranikasd/marumbot/internal/adapter"
+              desc: "app owns the interfaces; adapters satisfy them (engineering-guide §2)"
+            - pkg: "github.com/jackc/pgx"
+              desc: "no driver types in use cases"
+
+        # Adapters do not know about each other.
+        adapters-are-independent:
+          files:
+            - "**/internal/adapter/**"
+          deny:
+            - pkg: "github.com/andranikasd/marumbot/internal/adapter/in"
+              desc: "adapters must not import one another (engineering-guide §2)"
+
+    forbidigo:
+      analyze-types: true
+      forbid:
+        # I2 — time enters through the Clock port.
+        - pattern: '^time\.Now$'
+          msg: "time enters through the Clock port; see internal/adapter/out/sysclock (I2)"
+        - pattern: '^time\.Since$'
+          msg: "derive elapsed time from the Clock (I2)"
+        # I5 — structured logging only, so redaction has one place to work.
+        - pattern: '^fmt\.Print.*$'
+          msg: "structured logging only — use slog (I5)"
+        - pattern: '^log\.(Print|Fatal|Panic).*$'
+          msg: "use slog (I5)"
+        # I1 — no ad-hoc float money maths.
+        - pattern: '^strconv\.ParseFloat$'
+          msg: "money is int64 minor units; parse with money.Parse (I1)"
+
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+
+    revive:
+      rules:
+        - name: exported
+        - name: error-strings
+        - name: error-naming
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: indent-error-flow
+        - name: package-comments
+        - name: var-naming
+        - name: unexported-return
+
+    goconst:
+      min-len: 3
+      min-occurrences: 4
+
+  exclusions:
+    rules:
+      # sysclock is the single sanctioned caller of time.Now.
+      - path: internal/adapter/out/sysclock/
+        linters:
+          - forbidigo
+      # main may print before the logger exists.
+      - path: cmd/marum/main\.go
+        linters:
+          - forbidigo
+      # Test fixtures construct domain values directly and print diagnostics.
+      - path: _test\.go
+        linters:
+          - goconst
+          - unparam
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/andranikasd/marumbot
