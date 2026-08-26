@@ -1,8 +1,16 @@
 name: CD · production
 
-# Production follows a published release and nothing else, so what runs there
-# is always a tag somebody chose to publish. The environment carries a required
-# reviewer, which is where the human decision belongs.
+# Redeploying production out of band: rolling forward to a version that is
+# already released, or re-running a deploy that failed after the release itself
+# succeeded.
+#
+# The normal path is not here. A release created by the Release workflow is
+# published by GITHUB_TOKEN, and GitHub does not trigger workflows from events
+# raised by that token, so `on: release: published` would never fire for it.
+# The release pipeline therefore chains the production deploy itself.
+#
+# The trigger below still fires for a release a person creates by hand in the
+# UI, which is a real path worth keeping.
 on:
   release:
     types: [published]
