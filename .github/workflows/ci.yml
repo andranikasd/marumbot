@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "${{ env.GO_VERSION }}", cache: true }
+      - name: gofumpt
+        run: |
+          go run mvdan.cc/gofumpt@v0.7.0 -l . | tee /tmp/fmt
+          test ! -s /tmp/fmt
+      - uses: golangci/golangci-lint-action@v6
+        with: { version: v2.0.2 }
+
+  vet:
+    name: Vet and vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "${{ env.GO_VERSION }}", cache: true }
+      - run: go vet ./...
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "${{ env.GO_VERSION }}", cache: true }
+      # -race always: a data race that only appears in production is a race
+      # nobody can reproduce.
+      - run: go test -race -count=1 ./...
+
+  core-is-pure:
+    name: Engine imports no I/O
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "${{ env.GO_VERSION }}", cache: true }
+      # The engine must stay publishable on its own. If it ever imports the
+      # application, a driver or a clock, this stops compiling - which is a
+      # better error message than any lint rule.
+      - name: Build the engine alone
+        run: |
+          mkdir -p /tmp/purecheck && cd /tmp/purecheck
+          go mod init purecheck
+          go mod edit -replace github.com/andranikasd/marumbot=$GITHUB_WORKSPACE
+          cat > main.go <<'GO'
+          package main
+
+          import (
+            "fmt"
+
+            "github.com/andranikasd/marumbot/pkg/core/money"
+          )
+
+          func main() {
+            a, _ := money.FromMajor(1_840_000, money.AMD)
+            i, _ := money.Accrue(a, money.RateFromPercent(16, 0), 31, money.Actual365, money.DefaultAMDPolicy)
+            fmt.Println(i)
+          }
+          GO
+          go mod tidy && go run .
+
+  migrations:
+    name: Migrations are reversible
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: marum
+          POSTGRES_PASSWORD: marum
+          POSTGRES_DB: marum
+        options: >-
+          --health-cmd "pg_isready -U marum" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+        ports: ["5432:5432"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "${{ env.GO_VERSION }}", cache: true }
+      - name: Install goose
+        run: go install github.com/pressly/goose/v3/cmd/goose@v3.24.1
+      # up, down, up. The cheap half of the reversibility guarantee; the
+      # valuable half is the previous release still working against the
+      # expanded schema, which the release workflow checks.
+      - name: up, down, up
+        env:
+          GOOSE_DRIVER: postgres
+          GOOSE_DBSTRING: postgres://marum:marum@localhost:5432/marum?sslmode=disable
+        run: |
+          goose -dir migrations up
+          goose -dir migrations down
+          goose -dir migrations down
+          goose -dir migrations up
+          goose -dir migrations status
+
+  image:
+    name: Image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: false
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
