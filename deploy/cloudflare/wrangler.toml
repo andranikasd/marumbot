@@ -36,7 +36,7 @@ ENVIRONMENT = "dev"
 crons = ["*/5 * * * *"]
 
 [[env.dev.routes]]
-pattern = "dev.marum.am"
+pattern = "dev.marum.loan"
 custom_domain = true
 
 [[env.dev.containers]]
@@ -70,7 +70,7 @@ ENVIRONMENT = "production"
 crons = ["*/5 * * * *"]
 
 [[env.production.routes]]
-pattern = "marum.am"
+pattern = "marum.loan"
 custom_domain = true
 
 [[env.production.containers]]

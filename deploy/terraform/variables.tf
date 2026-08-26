@@ -69,7 +69,7 @@ variable "environment" {
 }
 
 variable "hostname" {
-  description = "Fully qualified hostname the Worker answers on, e.g. dev.marum.am."
+  description = "Fully qualified hostname the Worker answers on, e.g. dev.marum.loan."
   type        = string
 }
 

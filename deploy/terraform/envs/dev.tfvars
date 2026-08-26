@@ -4,7 +4,7 @@
 # Credentials come from TF_VAR_* in the environment, never from this file.
 
 environment = "dev"
-hostname    = "dev.marum.am"
+hostname    = "dev.marum.loan"
 
 # Dev shares a Neon free-tier project, which allows far fewer origin
 # connections than production. Asking for more than the origin has fails
