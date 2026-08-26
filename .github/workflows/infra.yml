@@ -62,9 +62,20 @@ jobs:
       # still a pull request.
       fail-fast: false
       matrix:
-        environment: [dev, production]
+        include:
+          - environment: dev
+            database_secret: TF_DATABASE_DEV
+          - environment: production
+            database_secret: TF_DATABASE_PRODUCTION
 
-    environment: ${{ matrix.environment }}
+    # Deliberately no `environment:`. An environment is a deploy gate, and both
+    # gates restrict which refs may deploy -- so declaring one here means every
+    # pull request is refused before Terraform runs, and the plan that exists to
+    # inform the review can never be produced. The gate belongs on apply.
+    #
+    # Terraform's own credentials are therefore repository secrets, prefixed
+    # TF_. They are a different, narrower token than the deploy one: Hyperdrive,
+    # R2 and zone settings, with no ability to publish a Worker.
     defaults:
       run:
         working-directory: deploy/terraform
@@ -87,9 +98,9 @@ jobs:
             -backend-config="endpoints={\"s3\":\"https://${AWS_ACCOUNT}.r2.cloudflarestorage.com\"}" \
             -lockfile=readonly
         env:
-          AWS_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ACCOUNT: ${{ secrets.TF_CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.TF_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_R2_SECRET_ACCESS_KEY }}
 
       - name: Validate
         run: terraform validate
@@ -110,12 +121,12 @@ jobs:
           tail -c 60000 plan.txt
           [ $code -ne 1 ]
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-          TF_VAR_database: ${{ secrets.TF_DATABASE }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.TF_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_R2_SECRET_ACCESS_KEY }}
+          TF_VAR_cloudflare_api_token: ${{ secrets.TF_CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_account_id: ${{ secrets.TF_CLOUDFLARE_ACCOUNT_ID }}
+          TF_VAR_cloudflare_zone_id: ${{ secrets.TF_CLOUDFLARE_ZONE_ID }}
+          TF_VAR_database: ${{ secrets[matrix.database_secret] }}
 
       - name: Comment the plan on the pull request
         if: always()
@@ -152,8 +163,10 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
-    # The environment gate is the review. production requires an approver, so an
-    # apply there cannot start until a person has looked at it.
+    # Here the environment IS wanted: it is the approval gate. production
+    # requires an approver, so an apply cannot start until a person has read the
+    # plan. A manual run also has a real branch behind it, so the ref policy is
+    # satisfiable in a way a pull request merge ref is not.
     environment: ${{ github.event.inputs.environment }}
 
     defaults:
@@ -175,9 +188,9 @@ jobs:
             -backend-config="endpoints={\"s3\":\"https://${AWS_ACCOUNT}.r2.cloudflarestorage.com\"}" \
             -lockfile=readonly
         env:
-          AWS_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ACCOUNT: ${{ secrets.TF_CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.TF_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_R2_SECRET_ACCESS_KEY }}
 
       - name: Plan
         # Always planned to a file first, and apply is given that file. Applying
@@ -188,23 +201,23 @@ jobs:
             -var-file=envs/${{ github.event.inputs.environment }}.tfvars \
             -out=tfplan
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-          TF_VAR_database: ${{ secrets.TF_DATABASE }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.TF_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_R2_SECRET_ACCESS_KEY }}
+          TF_VAR_cloudflare_api_token: ${{ secrets.TF_CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_account_id: ${{ secrets.TF_CLOUDFLARE_ACCOUNT_ID }}
+          TF_VAR_cloudflare_zone_id: ${{ secrets.TF_CLOUDFLARE_ZONE_ID }}
+          TF_VAR_database: ${{ github.event.inputs.environment == 'production' && secrets.TF_DATABASE_PRODUCTION || secrets.TF_DATABASE_DEV }}
 
       - name: Apply
         if: github.event.inputs.action == 'apply'
         run: terraform apply -no-color -auto-approve tfplan
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-          TF_VAR_database: ${{ secrets.TF_DATABASE }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.TF_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_R2_SECRET_ACCESS_KEY }}
+          TF_VAR_cloudflare_api_token: ${{ secrets.TF_CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_account_id: ${{ secrets.TF_CLOUDFLARE_ACCOUNT_ID }}
+          TF_VAR_cloudflare_zone_id: ${{ secrets.TF_CLOUDFLARE_ZONE_ID }}
+          TF_VAR_database: ${{ github.event.inputs.environment == 'production' && secrets.TF_DATABASE_PRODUCTION || secrets.TF_DATABASE_DEV }}
 
       - name: Report the Hyperdrive binding
         if: github.event.inputs.action == 'apply'
@@ -219,5 +232,5 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.TF_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_R2_SECRET_ACCESS_KEY }}

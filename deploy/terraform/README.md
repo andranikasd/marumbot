@@ -136,16 +136,29 @@ environment requires an approver, so the run pauses until a person has read the
 plan. The plan is saved to a file and `apply` is given that file, so the change
 that was approved is the change that runs.
 
-It needs these repository secrets, in addition to the deploy secrets:
+These are **repository** secrets, not environment ones, and every name is
+prefixed `TF_`:
 
 | Secret | What |
 | --- | --- |
-| `CLOUDFLARE_API_TOKEN` | Step 4 |
-| `CLOUDFLARE_ACCOUNT_ID` | Account ID |
-| `CLOUDFLARE_ZONE_ID` | Zone ID for the apex domain |
-| `R2_ACCESS_KEY_ID` | Step 3 |
-| `R2_SECRET_ACCESS_KEY` | Step 3 |
-| `TF_DATABASE` | The `TF_VAR_database` JSON object, verbatim |
+| `TF_CLOUDFLARE_API_TOKEN` | Step 4 |
+| `TF_CLOUDFLARE_ACCOUNT_ID` | Account ID |
+| `TF_CLOUDFLARE_ZONE_ID` | Zone ID for the apex domain |
+| `TF_R2_ACCESS_KEY_ID` | Step 3 |
+| `TF_R2_SECRET_ACCESS_KEY` | Step 3 |
+| `TF_DATABASE_DEV` | The `TF_VAR_database` JSON object for dev |
+| `TF_DATABASE_PRODUCTION` | The same, for production |
+
+Repository rather than environment, because a GitHub environment is a **deploy
+gate**: both of Marum's gates restrict which refs may deploy, so a plan job that
+declared one would be refused on every pull request and the plan that exists to
+inform the review could never be produced. The gate belongs on `apply`, which is
+where it is.
+
+The `TF_` prefix is not decoration. This is a different, narrower token than the
+deploy one — Hyperdrive, R2 and zone settings, and no ability to publish a
+Worker — and giving the two the same name is how the wrong one eventually gets
+used.
 
 ## Two settings worth understanding
 
