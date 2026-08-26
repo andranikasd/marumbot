@@ -53,14 +53,16 @@ there is no faithful local twin of D1. So Postgres is hosted at Neon and
 **Hyperdrive** pools in front of it, which is what makes Postgres usable from a
 Worker that has no persistent connections and can start anywhere.
 
-Create the Neon project by hand, then let Terraform create the Hyperdrive
-config:
+Create the Neon project by hand. Everything after that is automatic: the deploy
+workflow applies Terraform, which creates the Hyperdrive config, and writes its
+ID into `wrangler.toml` before deploying. Nothing is pasted.
+
+To inspect or change infrastructure outside a deploy:
 
 ```bash
 make tf-init  ENV=dev     # once per environment; re-run when switching
 make tf-plan  ENV=dev
 make tf-apply ENV=dev
-make tf-output ENV=dev    # the [[env.dev.hyperdrive]] block to paste in
 ```
 
 Terraform also owns the backup bucket and the zone's TLS settings. Full
