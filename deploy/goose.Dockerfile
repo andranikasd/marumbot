@@ -1,5 +1,5 @@
 # Migration runner. Built once so `make migrate` is fast and offline-capable.
-FROM golang:1.25-alpine AS build
+FROM golang:1.27-alpine AS build
 RUN go install github.com/pressly/goose/v3/cmd/goose@v3.24.1
 
 FROM alpine:3.20
