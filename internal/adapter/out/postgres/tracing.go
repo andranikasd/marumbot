@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -17,32 +16,39 @@ import (
 // rather than wherever somebody added a stopwatch.
 type queryTracer struct {
 	metrics *obs.Metrics
-	tracer  trace.Tracer
 }
 
 type tracerKey struct{}
 
 type tracerState struct {
-	start time.Time
-	name  string
-	span  trace.Span
+	start  time.Time
+	name   string
+	span   trace.Span
+	dbSpan trace.Span
 }
 
-func newQueryTracer(m *obs.Metrics) *queryTracer {
-	return &queryTracer{metrics: m, tracer: otel.Tracer("marum/postgres")}
-}
+func newQueryTracer(m *obs.Metrics) *queryTracer { return &queryTracer{metrics: m} }
 
 func (t *queryTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
 	name := queryName(data.SQL)
 	// The statement text is the span name, never an attribute: arguments would
 	// otherwise ride along, and arguments are balances.
-	ctx, span := t.tracer.Start(ctx, "db."+name,
-		trace.WithSpanKind(trace.SpanKindClient),
+	// SERVER: the store is being called. Its caller opens the matching CLIENT
+	// span, and that pair is what draws the edge into this node.
+	ctx, span := obs.ComponentStore.Enter(ctx, name,
 		trace.WithAttributes(
 			attribute.String("db.system", "postgresql"),
 			attribute.String("db.operation", name),
+			// The store in turn calls Postgres. peer.service gives the database
+			// its own node rather than an edge into nothing.
+			attribute.String("peer.service", "postgresql"),
 		))
-	return context.WithValue(ctx, tracerKey{}, &tracerState{start: time.Now(), name: name, span: span})
+	// The outbound leg. peer.service gives Postgres its own node on the graph
+	// instead of an edge into nothing.
+	_, dbSpan := obs.ComponentStore.CallService(ctx, "postgresql", "postgresql."+name)
+	return context.WithValue(ctx, tracerKey{}, &tracerState{
+		start: time.Now(), name: name, span: span, dbSpan: dbSpan,
+	})
 }
 
 func (t *queryTracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryEndData) {
@@ -59,7 +65,9 @@ func (t *queryTracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.T
 	}
 	if data.Err != nil {
 		st.span.RecordError(data.Err)
+		st.dbSpan.RecordError(data.Err)
 	}
+	st.dbSpan.End()
 	st.span.End()
 }
 

@@ -113,6 +113,29 @@ func Init(ctx context.Context, cfg Config) (*Providers, error) {
 	otel.SetTextMapPropagator(propagation.TraceContext{}) // W3C only, no B3
 	p.shutdown = append(p.shutdown, tp.Shutdown)
 
+	// One provider per component, each reporting its own service.name. The
+	// service graph draws a node per service and an edge per client/server
+	// pair, so this is what turns a single "marum" node into the pieces the
+	// system is actually made of.
+	for _, c := range All() {
+		cres, cerr := resource.Merge(res, resource.NewSchemaless(
+			attribute.String("service.name", c.Service()),
+			attribute.String("service.namespace", "marum"),
+			c.Attr(),
+		))
+		if cerr != nil {
+			p.Logger.Warn("component resource", "component", c, "err", cerr)
+			continue
+		}
+		ctp := sdktrace.NewTracerProvider(
+			sdktrace.WithResource(cres),
+			sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.AlwaysSample())),
+			sdktrace.WithBatcher(texp),
+		)
+		tracers[c] = ctp.Tracer("marum/" + string(c))
+		p.shutdown = append(p.shutdown, ctp.Shutdown)
+	}
+
 	mexp, err := otlpmetrichttp.New(ctx)
 	if err != nil {
 		return p, fmt.Errorf("metric exporter: %w", err)

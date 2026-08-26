@@ -115,8 +115,11 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 			return fmt.Errorf("admin interface: %w", err)
 		}
 		servers = append(servers, &http.Server{
-			Addr:              cfg.AdminAddr,
-			Handler:           otelhttp.NewHandler(srv.Handler(), "marum-admin"),
+			Addr: cfg.AdminAddr,
+			// Not wrapped in otelhttp: the admin handler opens its own SERVER
+			// span under its own service name, which is what gives the service
+			// graph an inbound edge to the admin node.
+			Handler:           srv.Handler(),
 			ReadHeaderTimeout: 5 * time.Second,
 		})
 	} else {

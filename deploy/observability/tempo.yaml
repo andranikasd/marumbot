@@ -36,7 +36,23 @@ metrics_generator:
   traces_storage:
     path: /var/tempo/generator/traces
 
+# This Tempo build reads the legacy flat overrides format; the nested
+# `overrides.defaults` shape is rejected outright and the process will not
+# start. Flat keys it is.
 overrides:
-  defaults:
-    metrics_generator:
-      processors: [service-graphs, span-metrics, local-blocks]
+  metrics_generator_processors: [service-graphs, span-metrics, local-blocks]
+
+  # A service graph keyed on service.name collapses a monolith into one node.
+  # Carrying the component as a span-metric dimension is what makes the pieces
+  # inside it - webhook, worker, scheduler, sender, engine, store, admin -
+  # separately measurable.
+  metrics_generator_processor_span_metrics_dimensions:
+    - marum.component
+    - span.kind
+    - status.code
+
+  # peer.service turns the database into its own node on the graph instead of
+  # an unlabelled edge leaving the application.
+  metrics_generator_processor_service_graphs_peer_attributes:
+    - peer.service
+    - db.system

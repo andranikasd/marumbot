@@ -1,6 +1,22 @@
 package app
 
-import "context"
+import (
+	"context"
+
+	"github.com/andranikasd/marumbot/internal/obs"
+)
+
+// call wraps a store access in the caller side of a boundary span. Without it
+// the store node has no inbound edge and the graph shows an orphan.
+func call[T any](ctx context.Context, op string, fn func(context.Context) (T, error)) (T, error) {
+	ctx, span := obs.ComponentAdmin.Call(ctx, obs.ComponentStore, op)
+	defer span.End()
+	v, err := fn(ctx)
+	if err != nil {
+		span.RecordError(err)
+	}
+	return v, err
+}
 
 // AdminStore is the read surface the admin interface needs. It is declared
 // here, by the consumer, and satisfied by the Postgres adapter.
@@ -26,25 +42,33 @@ type Admin struct{ store AdminStore }
 
 func NewAdmin(s AdminStore) *Admin { return &Admin{store: s} }
 
-func (a *Admin) Overview(ctx context.Context) (Overview, error) { return a.store.Overview(ctx) }
+func (a *Admin) Overview(ctx context.Context) (Overview, error) {
+	return call(ctx, "Overview", a.store.Overview)
+}
 
-func (a *Admin) Users(ctx context.Context) ([]UserRow, error) { return a.store.ListUsers(ctx, 200) }
+func (a *Admin) Users(ctx context.Context) ([]UserRow, error) {
+	return call(ctx, "ListUsers", func(c context.Context) ([]UserRow, error) { return a.store.ListUsers(c, 200) })
+}
 
-func (a *Admin) Loans(ctx context.Context) ([]LoanRow, error) { return a.store.ListLoans(ctx, 200) }
+func (a *Admin) Loans(ctx context.Context) ([]LoanRow, error) {
+	return call(ctx, "ListLoans", func(c context.Context) ([]LoanRow, error) { return a.store.ListLoans(c, 200) })
+}
 
 func (a *Admin) Commands(ctx context.Context) ([]CommandRow, error) {
-	return a.store.ListCommands(ctx, 200)
+	return call(ctx, "ListCommands", func(c context.Context) ([]CommandRow, error) { return a.store.ListCommands(c, 200) })
 }
 
 func (a *Admin) Deliveries(ctx context.Context) ([]DeliveryRow, error) {
-	return a.store.ListDeliveries(ctx, 200)
+	return call(ctx, "ListDeliveries", func(c context.Context) ([]DeliveryRow, error) { return a.store.ListDeliveries(c, 200) })
 }
 
 func (a *Admin) Reconciliations(ctx context.Context) ([]ReconRow, error) {
-	return a.store.ListReconciliationRuns(ctx, 200)
+	return call(ctx, "ListReconciliations", func(c context.Context) ([]ReconRow, error) { return a.store.ListReconciliationRuns(c, 200) })
 }
 
-func (a *Admin) Policies(ctx context.Context) ([]PolicyRow, error) { return a.store.ListPolicies(ctx) }
+func (a *Admin) Policies(ctx context.Context) ([]PolicyRow, error) {
+	return call(ctx, "ListPolicies", a.store.ListPolicies)
+}
 
 func (a *Admin) AddPolicy(ctx context.Context, id, key string, version int32, definition []byte, excess, source string) error {
 	return a.store.InsertPolicy(ctx, id, key, version, definition, excess, source)

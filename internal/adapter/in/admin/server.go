@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/andranikasd/marumbot/internal/app"
+	"github.com/andranikasd/marumbot/internal/obs"
 )
 
 //go:embed templates/*.html
@@ -104,6 +105,7 @@ func (s *Server) Handler() http.Handler {
 	for pattern, h := range guarded {
 		mux.Handle(pattern, s.requireSession(h))
 	}
+	_ = obs.ComponentAdmin // component spans are opened per handler below
 	return securityHeaders(mux)
 }
 
@@ -127,7 +129,12 @@ func (s *Server) requireSession(next http.HandlerFunc) http.Handler {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
-		next(w, r)
+		// SERVER, and under the admin service name: this is the entry point of
+		// the admin component, so the graph shows traffic arriving at it
+		// rather than at an undifferentiated "marum".
+		ctx, span := obs.ComponentAdmin.Enter(r.Context(), strings.TrimPrefix(r.URL.Path, "/"))
+		defer span.End()
+		next(w, r.WithContext(ctx))
 	})
 }
 
