@@ -36,7 +36,7 @@ jobs:
       name: ${{ inputs.environment }}
       url: ${{ vars.PUBLIC_URL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 0. Infrastructure first, so a deploy can never reach for a Hyperdrive
       #    config that does not exist yet.
@@ -87,7 +87,7 @@ jobs:
       #    so the deploy that follows can be rolled back without touching data.
       - uses: actions/setup-go@v5
         if: inputs.run_migrations
-        with: { go-version: "1.25", cache: true }
+        with: { go-version: "1.27", cache: true }
       - name: Install goose
         if: inputs.run_migrations
         run: go install github.com/pressly/goose/v3/cmd/goose@v3.24.1
@@ -140,7 +140,7 @@ jobs:
       # node_modules. wrangler-action does not install anything, so without this
       # the build fails on `Could not resolve "@cloudflare/containers"` -- and it
       # fails at deploy time, after the migration has already been applied.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -151,7 +151,7 @@ jobs:
 
       # 2. Deploy the code that reads both the old and the new schema.
       - name: Deploy Worker and container
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -201,7 +201,7 @@ jobs:
       #    which is safe precisely because it is backward compatible.
       - name: Roll back on failure
         if: failure() && steps.smoke.outcome == 'failure'
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

@@ -1,6 +1,6 @@
 # Every target runs inside a container: Docker is the only prerequisite.
-GO_IMAGE  := golang:1.25
-GO_ALPINE := golang:1.25-alpine
+GO_IMAGE  := golang:1.27
+GO_ALPINE := golang:1.27-alpine
 TF_IMAGE  := hashicorp/terraform:1.13.3
 RUN       := docker run --rm -v $(PWD):/src -w /src -v marum-gomod:/go/pkg/mod
 
