@@ -73,10 +73,12 @@ migrate-check: goose-image ## Prove the newest migration is reversible: up, down
 	$(GOOSE) up && $(GOOSE) down && $(GOOSE) up
 
 seed: ## Load demo data for local development
-	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U marum -d marum < migrations/seed.sql
+	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U marum -d marum < deploy/seed.sql
 
-admin-password: ## Print a value for MARUM_ADMIN_PASSWORD_HASH
-	@$(RUN) $(GO_ALPINE) go run ./cmd/marum -hash-password
+# -i so the container actually receives stdin. Without it the prompt reads EOF
+# and the command fails before it can ask for anything.
+admin-password: ## Print a value for MARUM_ADMIN_PASSWORD_HASH (reads a password on stdin)
+	@$(RUN) -i -e MARUM_ADMIN_PASSWORD $(GO_ALPINE) go run ./cmd/marum -hash-password
 
 shell: ## psql into the local database
 	docker compose exec postgres psql -U marum -d marum

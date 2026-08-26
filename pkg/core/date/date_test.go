@@ -150,8 +150,9 @@ func TestCompareAndOrder(t *testing.T) {
 	if !a.Before(b) || !b.After(a) || a.Equal(b) {
 		t.Error("ordering is wrong")
 	}
-	if a.Compare(a) != 0 {
-		t.Error("a date must equal itself")
+	same := MustNew(2026, time.March, 1)
+	if a.Compare(same) != 0 {
+		t.Error("two dates with the same value must compare equal")
 	}
 }
 

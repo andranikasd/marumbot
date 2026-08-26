@@ -21,6 +21,7 @@ type Date struct {
 	d int
 }
 
+// ErrInvalid is returned for a date that cannot exist.
 var ErrInvalid = errors.New("invalid date")
 
 // New validates and builds a Date. A day beyond the month's length is an
@@ -59,11 +60,18 @@ func From(t time.Time, loc *time.Location) Date {
 	return Date{y: t.Year(), m: t.Month(), d: t.Day()}
 }
 
-func (d Date) Year() int         { return d.y }
+// Year returns the calendar year.
+func (d Date) Year() int { return d.y }
+
+// Month returns the calendar month.
 func (d Date) Month() time.Month { return d.m }
-func (d Date) Day() int          { return d.d }
-func (d Date) IsZero() bool      { return d == Date{} }
-func (d Date) String() string    { return fmt.Sprintf("%04d-%02d-%02d", d.y, int(d.m), d.d) }
+
+// Day returns the day of the month.
+func (d Date) Day() int { return d.d }
+
+// IsZero reports whether the date is unset.
+func (d Date) IsZero() bool   { return d == Date{} }
+func (d Date) String() string { return fmt.Sprintf("%04d-%02d-%02d", d.y, int(d.m), d.d) }
 
 // time renders the date as midnight UTC. Used only for internal arithmetic;
 // it is deliberately unexported so no caller can mistake it for an instant.
@@ -99,9 +107,14 @@ func (d Date) Compare(o Date) int {
 	return 0
 }
 
+// Before reports whether d precedes o.
 func (d Date) Before(o Date) bool { return d.Compare(o) < 0 }
-func (d Date) After(o Date) bool  { return d.Compare(o) > 0 }
-func (d Date) Equal(o Date) bool  { return d == o }
+
+// After reports whether d follows o.
+func (d Date) After(o Date) bool { return d.Compare(o) > 0 }
+
+// Equal reports whether the two dates are the same day.
+func (d Date) Equal(o Date) bool { return d == o }
 
 // AddDays returns the date n days later; n may be negative.
 func AddDays(d Date, n int) Date {

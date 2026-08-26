@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -109,7 +111,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	if cfg.AdminEnabled() {
 		srv, err := admin.New(adminSvc, admin.Config{
 			User: cfg.AdminUser, PasswordHash: cfg.AdminPassHash,
-			Version: cfg.Version, Env: cfg.Env,
+			Version: cfg.Version, Env: cfg.Env, Now: time.Now,
 		}, log)
 		if err != nil {
 			return fmt.Errorf("admin interface: %w", err)
@@ -200,12 +202,29 @@ func writeJSON(w http.ResponseWriter, code int, body any) {
 // printPasswordHash turns a password into the configured hash without ever
 // putting the password itself on a command line, where it would land in shell
 // history and in the process table.
+//
+// The hash goes to stdout and everything else to stderr, so the output can be
+// piped straight into a file or an environment without capturing the prompt.
 func printPasswordHash() error {
-	fmt.Fprint(os.Stderr, "password: ")
-	var pw string
-	if _, err := fmt.Scanln(&pw); err != nil {
-		return fmt.Errorf("reading password: %w", err)
+	// MARUM_ADMIN_PASSWORD lets this run unattended - in a provisioning script
+	// or a CI job - without a terminal.
+	pw := os.Getenv("MARUM_ADMIN_PASSWORD")
+
+	if pw == "" {
+		fmt.Fprint(os.Stderr, "password: ")
+		// A line reader, not fmt.Scanln: Scanln stops at the first space, so a
+		// passphrase silently becomes its first word.
+		sc := bufio.NewScanner(os.Stdin)
+		if !sc.Scan() {
+			if err := sc.Err(); err != nil {
+				return fmt.Errorf("reading password: %w", err)
+			}
+			return errors.New("no password given: pass one on stdin or set MARUM_ADMIN_PASSWORD")
+		}
+		pw = strings.TrimRight(sc.Text(), "\r\n")
+		fmt.Fprintln(os.Stderr)
 	}
+
 	h, err := admin.HashPassword(pw)
 	if err != nil {
 		return err

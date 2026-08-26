@@ -8,6 +8,7 @@ import "time"
 // adapter so the inbound admin interface never imports the outbound Postgres
 // one - adapters do not know about each other.
 
+// Overview is the dashboard snapshot of the whole system.
 type Overview struct {
 	Users, Loans, Events, Snapshots, Policies int64
 	CommandsPending, CommandsDead             int64
@@ -16,6 +17,7 @@ type Overview struct {
 	OldestCommandAgeS, OldestDeliveryAgeS     int64
 }
 
+// UserRow is one account, without any Telegram identifier.
 type UserRow struct {
 	ID          string
 	Locale      string
@@ -27,6 +29,7 @@ type UserRow struct {
 	LoanCount   int64
 }
 
+// LoanRow is a loan in a list, with the reliability its state carries.
 type LoanRow struct {
 	ID             string
 	UserID         string
@@ -42,6 +45,7 @@ type LoanRow struct {
 	BalanceAsOf    *time.Time
 }
 
+// LoanDetail is a single loan, without its history.
 type LoanDetail struct {
 	ID           string
 	UserID       string
@@ -53,6 +57,7 @@ type LoanDetail struct {
 	ArchivedAt   *time.Time
 }
 
+// ContractRow is one version of a loan agreement.
 type ContractRow struct {
 	ID              string
 	Version         int32
@@ -70,6 +75,7 @@ type ContractRow struct {
 	PolicyVersionID string
 }
 
+// SnapshotRow is one dated observation of the lender state.
 type SnapshotRow struct {
 	ID                    string
 	AsOf                  time.Time
@@ -89,6 +95,7 @@ type SnapshotRow struct {
 	SourceNote            *string
 }
 
+// EventRow is one entry in a loan ledger.
 type EventRow struct {
 	ID            string
 	RecordedSeq   int64
@@ -103,6 +110,7 @@ type EventRow struct {
 	Covered       bool
 }
 
+// PolicyRow is a versioned payment allocation policy.
 type PolicyRow struct {
 	ID         string
 	Key        string
@@ -113,6 +121,7 @@ type PolicyRow struct {
 	CreatedAt  time.Time
 }
 
+// CommandRow is one entry in the durable Telegram inbox.
 type CommandRow struct {
 	ID          string
 	UpdateID    int64
@@ -128,6 +137,7 @@ type CommandRow struct {
 	LastError   *string
 }
 
+// DeliveryRow is one outbound message and its delivery state.
 type DeliveryRow struct {
 	ID          string
 	UserID      string
@@ -142,6 +152,7 @@ type DeliveryRow struct {
 	LastError   *string
 }
 
+// ReconRow is the drift measured at one new confirmed snapshot.
 type ReconRow struct {
 	ID             string
 	LoanID         string

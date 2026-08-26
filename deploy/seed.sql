@@ -1,6 +1,10 @@
 -- Demo data for local development. Never applied in production: it is run by
 -- `make seed`, not by goose.
 --
+-- It lives here rather than in migrations/ because goose parses every .sql
+-- file in its directory and rejects one that is not named NNNNN_name.sql -
+-- which broke `make migrate` entirely until this moved.
+--
 -- The three loans are chosen to exercise the reliability grading rather than to
 -- look tidy: one confirmed and clean, one anchored on an unconfirmed balance,
 -- one carrying arrears the engine refuses to plan around.

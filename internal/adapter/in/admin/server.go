@@ -18,6 +18,14 @@ import (
 //go:embed templates/*.html
 var templateFS embed.FS
 
+// Template data keys, named so a typo is a compile error rather than a blank
+// page.
+const (
+	keyTitle = "Title"
+	keyNav   = "Nav"
+	keyRows  = "Rows"
+)
+
 // Config is everything the interface needs to stand up. Without PasswordHash
 // the server refuses to start, so a misconfigured deployment has no admin
 // interface rather than an open one.
@@ -26,8 +34,14 @@ type Config struct {
 	PasswordHash string
 	Version      string
 	Env          string
+
+	// Now supplies the current instant. Session expiry is a business decision,
+	// so the clock is injected rather than read here - the same reason every
+	// other component takes one.
+	Now func() time.Time
 }
 
+// Server is the private admin interface.
 type Server struct {
 	admin *app.Admin
 	cfg   Config
@@ -44,13 +58,16 @@ func New(a *app.Admin, cfg Config, log *slog.Logger) (*Server, error) {
 	if cfg.PasswordHash == "" {
 		return nil, fmt.Errorf("admin interface needs MARUM_ADMIN_PASSWORD_HASH")
 	}
+	if cfg.Now == nil {
+		return nil, fmt.Errorf("admin interface needs a clock")
+	}
 	pages, err := parsePages()
 	if err != nil {
 		return nil, err
 	}
 	return &Server{
 		admin: a, cfg: cfg, key: sessionKey(cfg.PasswordHash),
-		pages: pages, thr: newThrottle(), log: log, now: time.Now,
+		pages: pages, thr: newThrottle(), log: log, now: cfg.Now,
 	}, nil
 }
 
@@ -139,15 +156,15 @@ func (s *Server) requireSession(next http.HandlerFunc) http.Handler {
 }
 
 func (s *Server) loginForm(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, "login.html", map[string]any{"Title": "Sign in"})
+	s.render(w, r, "login.html", map[string]any{keyTitle: "Sign in"})
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	addr := clientAddr(r)
 	if blocked, wait := s.thr.blocked(addr, s.now()); blocked {
 		s.render(w, r, "login.html", map[string]any{
-			"Title": "Sign in",
-			"Error": fmt.Sprintf("Too many attempts. Try again in %s.", wait),
+			keyTitle: "Sign in",
+			"Error":  fmt.Sprintf("Too many attempts. Try again in %s.", wait),
 		})
 		return
 	}
@@ -164,7 +181,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		s.thr.fail(addr, s.now())
 		s.log.WarnContext(r.Context(), "admin sign-in refused", "addr", addr)
 		s.render(w, r, "login.html", map[string]any{
-			"Title": "Sign in", "Error": "Those details were not accepted.",
+			keyTitle: "Sign in", "Error": "Those details were not accepted.",
 		})
 		return
 	}
@@ -202,7 +219,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, r, "dashboard.html", map[string]any{
-		"Title": "Overview", "Nav": "dashboard",
+		keyTitle: "Overview", keyNav: "dashboard",
 		"O": overview, "Health": s.admin.Health(ctx),
 	})
 }
@@ -213,7 +230,7 @@ func (s *Server) loans(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	s.render(w, r, "loans.html", map[string]any{"Title": "Loans", "Nav": "loans", "Rows": rows})
+	s.render(w, r, "loans.html", map[string]any{keyTitle: "Loans", keyNav: "loans", keyRows: rows})
 }
 
 func (s *Server) loan(w http.ResponseWriter, r *http.Request) {
@@ -223,7 +240,7 @@ func (s *Server) loan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, r, "loan.html", map[string]any{
-		"Title": "Loan " + v.Loan.Name, "Nav": "loans", "V": v,
+		keyTitle: "Loan " + v.Loan.Name, keyNav: "loans", "V": v,
 	})
 }
 
@@ -233,7 +250,7 @@ func (s *Server) users(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	s.render(w, r, "users.html", map[string]any{"Title": "Users", "Nav": "users", "Rows": rows})
+	s.render(w, r, "users.html", map[string]any{keyTitle: "Users", keyNav: "users", keyRows: rows})
 }
 
 func (s *Server) policies(w http.ResponseWriter, r *http.Request) {
@@ -243,7 +260,7 @@ func (s *Server) policies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, r, "policies.html", map[string]any{
-		"Title": "Allocation policies", "Nav": "policies", "Rows": rows,
+		keyTitle: "Allocation policies", keyNav: "policies", keyRows: rows,
 		"Notice": r.URL.Query().Get("notice"), "Error": r.URL.Query().Get("error"),
 	})
 }
@@ -259,7 +276,7 @@ func (s *Server) addPolicy(w http.ResponseWriter, r *http.Request) {
 	order := r.PostForm["order"]
 
 	if key == "" || source == "" || len(order) == 0 {
-		redirectWith(w, r, "/policies", "error", "A policy needs a key, a bucket order and a source it was read from.")
+		redirectBack(w, r, "error", "A policy needs a key, a bucket order and a source it was read from.")
 		return
 	}
 	definition, err := json.Marshal(map[string]any{"order": order})
@@ -270,17 +287,17 @@ func (s *Server) addPolicy(w http.ResponseWriter, r *http.Request) {
 	version := int32(1)
 	if v := r.PostFormValue("version"); v != "" {
 		if _, scanErr := fmt.Sscanf(v, "%d", &version); scanErr != nil {
-			redirectWith(w, r, "/policies", "error", "Version must be a number.")
+			redirectBack(w, r, "error", "Version must be a number.")
 			return
 		}
 	}
 	id := newUUID()
 	if err := s.admin.AddPolicy(r.Context(), id, key, version, definition, excess, source); err != nil {
-		redirectWith(w, r, "/policies", "error", err.Error())
+		redirectBack(w, r, "error", err.Error())
 		return
 	}
 	s.log.InfoContext(r.Context(), "allocation policy recorded", "key", key, "version", version)
-	redirectWith(w, r, "/policies", "notice", fmt.Sprintf("Recorded %s v%d.", key, version))
+	redirectBack(w, r, "notice", fmt.Sprintf("Recorded %s v%d.", key, version))
 }
 
 func (s *Server) commands(w http.ResponseWriter, r *http.Request) {
@@ -289,7 +306,7 @@ func (s *Server) commands(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	s.render(w, r, "commands.html", map[string]any{"Title": "Command inbox", "Nav": "commands", "Rows": rows})
+	s.render(w, r, "commands.html", map[string]any{keyTitle: "Command inbox", keyNav: "commands", keyRows: rows})
 }
 
 func (s *Server) deliveries(w http.ResponseWriter, r *http.Request) {
@@ -298,7 +315,7 @@ func (s *Server) deliveries(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	s.render(w, r, "deliveries.html", map[string]any{"Title": "Delivery outbox", "Nav": "deliveries", "Rows": rows})
+	s.render(w, r, "deliveries.html", map[string]any{keyTitle: "Delivery outbox", keyNav: "deliveries", keyRows: rows})
 }
 
 func (s *Server) reconciliation(w http.ResponseWriter, r *http.Request) {
@@ -308,7 +325,7 @@ func (s *Server) reconciliation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, r, "reconciliation.html", map[string]any{
-		"Title": "Reconciliation", "Nav": "reconciliation", "Rows": rows,
+		keyTitle: "Reconciliation", keyNav: "reconciliation", keyRows: rows,
 	})
 }
 
@@ -342,10 +359,11 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, page string, dat
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	s.log.ErrorContext(r.Context(), "admin request failed", "path", r.URL.Path, "err", err)
 	w.WriteHeader(http.StatusInternalServerError)
-	s.render(w, r, "error.html", map[string]any{"Title": "Something broke", "Err": err.Error()})
+	s.render(w, r, "error.html", map[string]any{keyTitle: "Something broke", "Err": err.Error()})
 }
 
-func redirectWith(w http.ResponseWriter, r *http.Request, path, key, msg string) {
-	u := path + "?" + key + "=" + urlEscape(msg)
-	http.Redirect(w, r, u, http.StatusSeeOther)
+// redirectBack returns the operator to the page they submitted from, carrying
+// a message. Post-redirect-get, so a refresh does not resubmit the form.
+func redirectBack(w http.ResponseWriter, r *http.Request, key, msg string) {
+	http.Redirect(w, r, r.URL.Path+"?"+key+"="+urlEscape(msg), http.StatusSeeOther)
 }

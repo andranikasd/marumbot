@@ -12,19 +12,19 @@ import (
 type Reliability uint8
 
 const (
-	// Confirmed: anchored on a bank-confirmed snapshot, fresh, no ambiguity.
+	// Confirmed means anchored on a bank-confirmed snapshot, fresh, unambiguous.
 	Confirmed Reliability = iota
-	// Estimated: derived from an unconfirmed snapshot. Usable, labelled.
+	// Estimated means derived from an unconfirmed snapshot: usable, labelled.
 	Estimated
-	// Stale: confirmed once, but the anchor is older than the freshness
+	// Stale means confirmed once, but the anchor is past the freshness
 	// threshold. Projections are indicative; savings figures are not shown.
 	Stale
-	// NeedsReconciliation: an event predates the anchor without a coverage
-	// assertion, or the allocation policy is unknown. Marum does not know what
-	// it does not know, so it asks for a bank balance.
+	// NeedsReconciliation means an event predates the anchor without a
+	// coverage assertion, or the allocation policy is unknown. Marum does not
+	// know what it does not know, so it asks for a bank balance.
 	NeedsReconciliation
-	// Unsupported: arrears, penalties or a contract shape the MVP refuses to
-	// model. The ledger and reminders continue; projections stop.
+	// Unsupported means arrears, penalties or a contract shape the MVP refuses
+	// to model. The ledger and reminders continue; projections stop.
 	Unsupported
 )
 
@@ -46,6 +46,7 @@ func (r Reliability) String() string {
 // a tool that usually refuses is one people stop opening.
 type PlanTier uint8
 
+// What an interface is allowed to claim at each tier.
 const (
 	TierConfident  PlanTier = iota // plans, savings, debt-free dates
 	TierIndicative                 // projections, labelled with the anchor's age

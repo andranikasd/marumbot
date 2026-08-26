@@ -12,11 +12,13 @@ import (
 // and ordering, which is what makes it usable as a deterministic tie-break.
 type ID string
 
+// ErrInvalid is returned by Validate for a value the engine must not accept.
 var ErrInvalid = errors.New("invalid model value")
 
 // RepaymentType is how principal is scheduled to come down.
 type RepaymentType uint8
 
+// The repayment types the engine understands.
 const (
 	Annuity            RepaymentType = iota // level instalment; the MVP's only type
 	DecliningPrincipal                      // equal principal, falling instalment; not yet exposed
@@ -86,6 +88,7 @@ func (c Contract) CoversDate(d date.Date) bool {
 	return c.EffectiveThru.IsZero() || !d.After(c.EffectiveThru)
 }
 
+// Validate rejects a contract the engine must not compute with.
 func (c Contract) Validate() error {
 	switch {
 	case c.LoanID == "":
@@ -118,6 +121,7 @@ func (c Contract) Validate() error {
 // drift and makes a loan fully eligible for planning.
 type Trust uint8
 
+// How much weight a snapshot carries.
 const (
 	UserEntered Trust = iota
 	BankConfirmed
@@ -149,6 +153,7 @@ type Snapshot struct {
 	RemainingInstalments int
 }
 
+// Validate rejects a snapshot that cannot be an anchor.
 func (s Snapshot) Validate() error {
 	switch {
 	case s.LoanID == "":
