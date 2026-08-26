@@ -1,0 +1,83 @@
+{{define "content"}}
+<h1>{{.V.Loan.Name}}</h1>
+<p class="lead">
+  {{if .V.Loan.Lender}}{{.V.Loan.Lender}} · {{end}}{{.V.Loan.Currency}} ·
+  <span class="mono">{{.V.Loan.ID}}</span>
+</p>
+
+<div class="panel">
+  <div class="hd">Contract versions</div>
+  {{if .V.Contracts}}
+  <table>
+    <thead><tr><th class="num">v</th><th>Effective</th><th class="num">Rate</th><th>Day count</th>
+      <th>Type</th><th class="num">Day</th><th class="num">Instalment</th><th>Rounding</th><th>Maturity</th></tr></thead>
+    <tbody>{{range .V.Contracts}}
+      <tr>
+        <td class="num">{{.Version}}</td>
+        <td>{{date .EffectiveFrom}} → {{if .EffectiveUntil}}{{date .EffectiveUntil}}{{else}}open{{end}}</td>
+        <td class="num">{{pct .NominalRate}}</td>
+        <td class="mono">{{.DayCount}}</td>
+        <td>{{.RepaymentType}}</td>
+        <td class="num">{{.PaymentDay}}</td>
+        <td class="num">{{if .ScheduledMinor}}{{minor .ScheduledMinor $.V.Loan.Currency}}{{else}}<span class="t-mute">solved</span>{{end}}</td>
+        <td class="mono">{{.RoundingMode}}/{{.RoundingUnit}}</td>
+        <td>{{date .MaturityDate}}</td>
+      </tr>
+    {{end}}</tbody>
+  </table>
+  {{else}}<div class="empty">No contract version recorded. The engine cannot replay this loan.</div>{{end}}
+</div>
+
+<div class="panel">
+  <div class="hd">Bank snapshots — the replay anchor</div>
+  {{if .V.Snapshots}}
+  <table>
+    <thead><tr><th>As of</th><th>Trust</th><th class="num">Principal</th><th class="num">Accrued</th>
+      <th class="num">Unpaid int.</th><th class="num">Fees</th><th class="num">Penalties</th>
+      <th class="num">Overdue</th><th class="num">Advance</th><th>Note</th></tr></thead>
+    <tbody>{{range .V.Snapshots}}
+      <tr>
+        <td>{{date .AsOf}}</td>
+        <td><span class="tag {{trust .Trust}}">{{.Trust}}</span></td>
+        <td class="num">{{minorv .PrincipalMinor $.V.Loan.Currency}}</td>
+        <td class="num">{{minorv .AccruedInterestMinor $.V.Loan.Currency}}</td>
+        <td class="num">{{minorv .UnpaidInterestMinor $.V.Loan.Currency}}</td>
+        <td class="num">{{minorv .CurrentFeesMinor $.V.Loan.Currency}}</td>
+        <td class="num">{{minorv .PenaltiesMinor $.V.Loan.Currency}}</td>
+        <td class="num">{{minorv .OverduePrincipalMinor $.V.Loan.Currency}}</td>
+        <td class="num">{{minorv .AdvanceCreditMinor $.V.Loan.Currency}}</td>
+        <td>{{if .SourceNote}}{{.SourceNote}}{{else}}<span class="t-mute">—</span>{{end}}</td>
+      </tr>
+    {{end}}</tbody>
+  </table>
+  {{else}}<div class="empty">No snapshot. Without a bank-reported balance there is nothing to anchor replay to.</div>{{end}}
+</div>
+
+<div class="panel">
+  <div class="hd">Ledger — append only</div>
+  {{if .V.Events}}
+  <table>
+    <thead><tr><th class="num">Seq</th><th>Kind</th><th>Value date</th><th class="num">Amount</th>
+      <th class="num">Bank order</th><th>Reference</th><th>State</th><th>Recorded</th></tr></thead>
+    <tbody>{{range .V.Events}}
+      <tr>
+        <td class="num">{{.RecordedSeq}}</td>
+        <td>{{.Kind}}</td>
+        <td>{{date .ValueDate}}</td>
+        <td class="num">{{if .AmountMinor}}{{minor .AmountMinor $.V.Loan.Currency}}{{else}}—{{end}}</td>
+        <td class="num">{{if .BankOrder}}{{.BankOrder}}{{else}}—{{end}}</td>
+        <td class="mono">{{if .BankReference}}{{.BankReference}}{{else}}—{{end}}</td>
+        <td>
+          {{if .VoidsEventID}}<span class="tag t-warn">void marker</span>
+          {{else if .Covered}}<span class="tag t-mute">in anchor</span>
+          {{else}}<span class="tag t-ok">active</span>{{end}}
+        </td>
+        <td>{{date .RecordedAt}}</td>
+      </tr>
+    {{end}}</tbody>
+  </table>
+  {{else}}<div class="empty">No events recorded against this loan.</div>{{end}}
+</div>
+<p><a href="/loans">← All loans</a></p>
+{{end}}
+{{template "layout" .}}

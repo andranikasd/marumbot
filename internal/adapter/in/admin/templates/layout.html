@@ -1,0 +1,25 @@
+{{define "layout"}}<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Marum admin</title>
+<link rel="stylesheet" href="/style.css">
+</head><body>
+{{if .SignedIn}}
+<header class="top">
+  <div class="brand">Marum <span>admin</span></div>
+  <nav class="main">
+    <a href="/" {{if eq .Nav "dashboard"}}class="on"{{end}}>Overview</a>
+    <a href="/loans" {{if eq .Nav "loans"}}class="on"{{end}}>Loans</a>
+    <a href="/users" {{if eq .Nav "users"}}class="on"{{end}}>Users</a>
+    <a href="/policies" {{if eq .Nav "policies"}}class="on"{{end}}>Policies</a>
+    <a href="/commands" {{if eq .Nav "commands"}}class="on"{{end}}>Inbox</a>
+    <a href="/deliveries" {{if eq .Nav "deliveries"}}class="on"{{end}}>Outbox</a>
+    <a href="/reconciliation" {{if eq .Nav "reconciliation"}}class="on"{{end}}>Reconciliation</a>
+  </nav>
+  <form method="post" action="/logout"><button class="quiet">Sign out</button></form>
+</header>
+{{end}}
+<main>{{template "content" .}}</main>
+<footer>{{.Env}} · {{.Version}}</footer>
+</body></html>{{end}}

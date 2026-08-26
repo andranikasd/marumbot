@@ -75,11 +75,25 @@ func TestFromMajor_AcrossExponents(t *testing.T) {
 	}
 }
 
+func TestString_ShowsSubUnitsOnlyWhenTheyCirculate(t *testing.T) {
+	// A dram amount that is NOT a whole dram keeps its digits: hiding them
+	// would hide a rounding bug.
+	if got := money(157).String(); got != "1.57 AMD" {
+		t.Errorf("a part-dram amount must keep its digits, got %q", got)
+	}
+	if got := money(-250000).String(); got != "-2,500 AMD" {
+		t.Errorf("negatives group and sign correctly, got %q", got)
+	}
+}
+
+func money(minor int64) Amount { return FromMinor(minor, AMD) }
+
 func TestString_FormatsPerExponent(t *testing.T) {
 	cases := []struct{ code, want string }{
-		{"AMD", "1500.00 AMD"},
-		{"JPY", "1500 JPY"},
-		{"KWD", "1500.000 KWD"},
+		{"AMD", "1,500 AMD"},     // whole drams: the luma does not circulate
+		{"USD", "1,500.00 USD"},  // cents do
+		{"JPY", "1,500 JPY"},     // no minor unit at all
+		{"KWD", "1,500.000 KWD"}, // three decimal places
 	}
 	for _, tc := range cases {
 		a, _ := FromMajor(1500, MustLookup(tc.code))

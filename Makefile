@@ -63,8 +63,14 @@ migrate-status: goose-image ## Show which migrations are applied
 migrate-check: goose-image ## Prove the newest migration is reversible: up, down, up
 	$(GOOSE) up && $(GOOSE) down && $(GOOSE) up
 
+seed: ## Load demo data for local development
+	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U marum -d marum < migrations/seed.sql
+
+admin-password: ## Print a value for MARUM_ADMIN_PASSWORD_HASH
+	@$(RUN) $(GO_ALPINE) go run ./cmd/marum -hash-password
+
 shell: ## psql into the local database
 	docker compose exec postgres psql -U marum -d marum
 
 .PHONY: help up down reset logs test test-short vet lint fmt tidy shell \
-	goose-image migrate migrate-down migrate-status migrate-check
+	goose-image migrate migrate-down migrate-status migrate-check seed admin-password
