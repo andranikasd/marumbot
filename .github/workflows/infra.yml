@@ -88,10 +88,32 @@ jobs:
           terraform_version: 1.13.3
           terraform_wrapper: false
 
+      # Formatting needs no credentials, so it is checked either way.
       - name: Check formatting
         run: terraform fmt -check -recursive -diff
 
+      - name: Validate
+        run: |
+          terraform init -backend=false -input=false >/dev/null
+          terraform validate
+
+      # Until the TF_* repository secrets exist, there is no state to compare
+      # against and no plan to produce. Say so plainly rather than failing: a
+      # red cross here would read as a broken pipeline when it actually means
+      # "not configured yet", and that is the kind of noise people learn to
+      # ignore before it turns into a real failure.
+      - name: Are the infrastructure secrets configured?
+        id: configured
+        run: |
+          if [ -n "${{ secrets.TF_R2_ACCESS_KEY_ID }}" ] && [ -n "${{ secrets.TF_CLOUDFLARE_API_TOKEN }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "TF_* repository secrets are not set; formatting and validation ran, the plan did not." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Init
+        if: steps.configured.outputs.ready == 'true'
         run: |
           terraform init \
             -backend-config=envs/${{ matrix.environment }}.backend.hcl \
@@ -102,11 +124,9 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.TF_R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_R2_SECRET_ACCESS_KEY }}
 
-      - name: Validate
-        run: terraform validate
-
       - name: Plan
         id: plan
+        if: steps.configured.outputs.ready == 'true'
         # A plan that fails must fail the job, but a plan that finds changes
         # must not. -detailed-exitcode separates the two: 1 is an error, 2 is
         # "there are changes", 0 is "nothing to do".
@@ -146,7 +166,12 @@ jobs:
                 (changes ? '**This plan changes infrastructure.**\n\n' : 'No changes.\n\n') +
                 '```terraform\n' + text + '\n```'
             } catch {
-              body = `${marker}\n### Terraform plan · \`${env}\`\n\nThe plan did not run. See the job log.`
+              const ready = '${{ steps.configured.outputs.ready }}' === 'true'
+              body = ready
+                ? `${marker}\n### Terraform plan · \`${env}\`\n\nThe plan did not run. See the job log.`
+                : `${marker}\n### Terraform plan · \`${env}\`\n\nSkipped: the \`TF_*\` repository secrets are not configured yet. ` +
+                  `Formatting and \`terraform validate\` both ran and passed. ` +
+                  `See [deploy/terraform/README.md](../blob/main/deploy/terraform/README.md).`
             }
             const {owner, repo} = context.repo
             const issue_number = context.issue.number
