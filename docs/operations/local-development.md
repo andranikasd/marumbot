@@ -7,7 +7,7 @@ every target runs in a container.
 
 ```bash
 cp .env.example .env             # add a Telegram bot token from @BotFather
-make admin-password              # paste the hash into MARUM_ADMIN_PASSWORD_HASH
+make admin-password              # type a password; paste the hash into .env
 make up                          # app, database and the observability stack
 make migrate                     # apply the schema
 make seed                        # demo data, so the admin interface has content
@@ -24,6 +24,19 @@ make test                        # unit tests, race detector on
 The bot runs in **long-polling** mode locally, so no public URL or tunnel is
 needed. Production uses webhooks; everything below the transport is the same
 code.
+
+### The admin password
+
+`make admin-password` reads a password on stdin and prints only the hash to
+stdout, so it can be piped:
+
+```bash
+make admin-password                          # prompts
+MARUM_ADMIN_PASSWORD=... make admin-password # unattended, for scripts
+```
+
+The password itself never appears on a command line, where it would land in
+shell history and in the process table.
 
 ## Targets
 

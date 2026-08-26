@@ -43,9 +43,15 @@ func FromMajor(major int64, cur Currency) (Amount, error) {
 
 // Minor returns the raw count of minor units. Intended for persistence and
 // tests; callers must not compute with it.
-func (a Amount) Minor() int64       { return a.minor }
+func (a Amount) Minor() int64 { return a.minor }
+
+// Currency returns the unit the amount is denominated in.
 func (a Amount) Currency() Currency { return a.cur }
-func (a Amount) IsZero() bool       { return a.minor == 0 }
+
+// IsZero reports whether the amount is exactly zero.
+func (a Amount) IsZero() bool { return a.minor == 0 }
+
+// Sign returns -1, 0 or 1 as the amount is negative, zero or positive.
 func (a Amount) Sign() int {
 	switch {
 	case a.minor > 0:

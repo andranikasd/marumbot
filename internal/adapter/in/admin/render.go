@@ -13,6 +13,15 @@ import (
 	"github.com/andranikasd/marumbot/pkg/core/money"
 )
 
+// Tag classes, named so a colour is chosen in one place rather than spelled
+// out at every call site.
+const (
+	tagOK   = "t-ok"
+	tagWarn = "t-warn"
+	tagStop = "t-stop"
+	tagMute = "t-mute"
+)
+
 // funcs are the template helpers. They exist so templates contain no logic
 // beyond choosing what to show, and so money is formatted in exactly one place.
 func funcs() template.FuncMap {
@@ -38,51 +47,51 @@ func funcs() template.FuncMap {
 		},
 		"reliability": func(s *string) string {
 			if s == nil {
-				return "t-mute"
+				return tagMute
 			}
 			switch *s {
 			case "confirmed":
-				return "t-ok"
+				return tagOK
 			case "estimated", "stale":
-				return "t-warn"
+				return tagWarn
 			default:
-				return "t-stop"
+				return tagStop
 			}
 		},
 		"trust": func(s string) string {
 			if s == "bank_confirmed" || s == "imported_verified" {
-				return "t-ok"
+				return tagOK
 			}
-			return "t-warn"
+			return tagWarn
 		},
 		"status": func(s string) string {
 			switch s {
 			case "completed", "sent":
-				return "t-ok"
+				return tagOK
 			case "pending", "leased":
-				return "t-warn"
+				return tagWarn
 			case "dead":
-				return "t-stop"
+				return tagStop
 			}
-			return "t-mute"
+			return tagMute
 		},
 		"access": func(s string) string {
 			switch s {
 			case "active", "trial":
-				return "t-ok"
+				return tagOK
 			case "grace":
-				return "t-warn"
+				return tagWarn
 			}
-			return "t-stop"
+			return tagStop
 		},
 		"excess": func(s string) string {
 			switch s {
 			case "reduce_principal":
-				return "t-ok"
+				return tagOK
 			case "unknown":
-				return "t-stop"
+				return tagStop
 			}
-			return "t-warn"
+			return tagWarn
 		},
 		"order": func(raw []byte) string {
 			var def struct {

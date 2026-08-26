@@ -30,6 +30,8 @@ func (r Rate) String() string {
 // year. It is a contract term, never an assumption.
 type DayCount uint8
 
+// The day-count conventions the engine supports. Which one applies is a
+// contract term, never an assumption.
 const (
 	Actual365 DayCount = iota // Armenian consumer default
 	Actual360

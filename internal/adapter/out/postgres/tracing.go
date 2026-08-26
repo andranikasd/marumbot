@@ -47,6 +47,8 @@ func (t *queryTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx
 	// instead of an edge into nothing.
 	_, dbSpan := obs.ComponentStore.CallService(ctx, "postgresql", "postgresql."+name)
 	return context.WithValue(ctx, tracerKey{}, &tracerState{
+		//nolint:forbidigo // a stopwatch, not business time: I2 exists so a due
+		// date never comes from the wall clock, and a query duration is not one.
 		start: time.Now(), name: name, span: span, dbSpan: dbSpan,
 	})
 }
@@ -56,6 +58,7 @@ func (t *queryTracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.T
 	if !ok {
 		return
 	}
+	//nolint:forbidigo // elapsed measurement, not business time; see above.
 	elapsed := time.Since(st.start).Seconds()
 	if t.metrics != nil {
 		t.metrics.DBQueryDuration.Record(ctx, elapsed, obs.Query(st.name))

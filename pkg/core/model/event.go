@@ -16,6 +16,7 @@ import (
 // corrected by a new bank snapshot; a wrong entry is undone by a void.
 type EventKind uint8
 
+// The event kinds a borrower can report.
 const (
 	PaymentReported EventKind = iota
 	PrepaymentReported
@@ -83,6 +84,7 @@ type Event struct {
 	IntendedPrepayment bool
 }
 
+// Validate rejects an event that cannot exist.
 func (e Event) Validate() error {
 	switch {
 	case e.LoanID == "":

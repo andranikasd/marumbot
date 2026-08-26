@@ -4,6 +4,7 @@ package money
 // resolved.
 type Mode uint8
 
+// The rounding modes a lender may specify.
 const (
 	HalfUp   Mode = iota // 0.5 rounds away from zero — the Armenian default
 	HalfEven             // 0.5 rounds to the even neighbour

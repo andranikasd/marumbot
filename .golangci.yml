@@ -128,6 +128,14 @@ linters:
 
   exclusions:
     rules:
+      # revive's exported rule earns its keep in pkg/core, which is published
+      # and importable by anyone. Nothing under internal/ or cmd/ can be
+      # imported from outside this module, so requiring a doc comment on every
+      # accessor there is ceremony rather than documentation.
+      - path: (internal|cmd)/
+        text: "exported: exported"
+        linters:
+          - revive
       # sysclock is the single sanctioned caller of time.Now.
       - path: internal/adapter/out/sysclock/
         linters:

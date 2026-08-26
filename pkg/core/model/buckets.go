@@ -17,6 +17,7 @@ import (
 // convention (see package allocation).
 type Bucket uint8
 
+// The buckets a position is made of, in the order lenders usually settle them.
 const (
 	Penalties Bucket = iota
 	OverdueFees

@@ -53,8 +53,10 @@ func baseInput(events ...model.Event) Input {
 		Anchor:    anchor(model.BankConfirmed, "2026-01-31", 1_000_000),
 		Events:    events,
 		Policies: map[model.PolicyRef]allocation.Policy{
-			testPolicy: {Ref: testPolicy, Order: allocation.StandardOrder,
-				Excess: allocation.ExcessReducePrincipal, Source: "fixture"},
+			testPolicy: {
+				Ref: testPolicy, Order: allocation.StandardOrder,
+				Excess: allocation.ExcessReducePrincipal, Source: "fixture",
+			},
 		},
 		AsOf:          d("2026-02-28"),
 		EngineVersion: "test",
@@ -326,8 +328,10 @@ func TestReplay_RebuildMatchesCache(t *testing.T) {
 	in := baseInput(
 		payment("e1", 1, "2026-02-05", 30_000),
 		payment("e2", 2, "2026-02-12", 15_000),
-		model.Event{ID: "e3", LoanID: "loan-1", RecordedSeq: 3, Kind: model.BankFeeReported,
-			ValueDate: d("2026-02-15"), Amount: amd(1_500)},
+		model.Event{
+			ID: "e3", LoanID: "loan-1", RecordedSeq: 3, Kind: model.BankFeeReported,
+			ValueDate: d("2026-02-15"), Amount: amd(1_500),
+		},
 	)
 	cached, err := Replay(in)
 	if err != nil {

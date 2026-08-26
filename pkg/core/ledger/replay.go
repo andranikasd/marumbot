@@ -53,6 +53,8 @@ type AppliedEvent struct {
 	Skipped  string       // non-empty when the event was excluded, with the reason
 }
 
+// ErrNoContract means no contract version covers the date in question, so
+// replay stops rather than picking one.
 var ErrNoContract = errors.New("no contract version covers the date")
 
 const defaultFreshnessDays = 35
