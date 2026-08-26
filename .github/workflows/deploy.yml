@@ -119,6 +119,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # The container talks to Postgres directly. Hyperdrive's connection
+          # string does not resolve inside a container sandbox -- see the
+          # comment in worker/index.ts.
+          MARUM_DATABASE_URL: ${{ secrets.MARUM_DATABASE_URL }}
           MARUM_BOT_TOKEN: ${{ secrets.MARUM_BOT_TOKEN }}
           MARUM_WEBHOOK_SECRET: ${{ secrets.MARUM_WEBHOOK_SECRET }}
           MARUM_SERVICE_TOKEN: ${{ secrets.MARUM_SERVICE_TOKEN }}
@@ -194,6 +198,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # The container talks to Postgres directly. Hyperdrive's connection
+          # string does not resolve inside a container sandbox -- see the
+          # comment in worker/index.ts.
+          MARUM_DATABASE_URL: ${{ secrets.MARUM_DATABASE_URL }}
           MARUM_BOT_TOKEN: ${{ secrets.MARUM_BOT_TOKEN }}
           MARUM_WEBHOOK_SECRET: ${{ secrets.MARUM_WEBHOOK_SECRET }}
           MARUM_SERVICE_TOKEN: ${{ secrets.MARUM_SERVICE_TOKEN }}

@@ -18,9 +18,21 @@ export class MarumApp extends Container<Env> {
    * environment, exactly as it does under `make up`. Nothing is baked into the
    * image, so the same image runs in dev and production.
    *
-   * The database URL comes from the Hyperdrive binding rather than a secret:
-   * Hyperdrive hands back a local connection string that points at the pool,
-   * not at Neon, so the origin credentials never enter the container at all.
+   * The database URL is a secret, NOT env.HYPERDRIVE.connectionString.
+   *
+   * Hyperdrive hands back a hostname of the form <id>.hyperdrive.local, and
+   * that name only resolves inside the Workers runtime. A container is a
+   * separate network sandbox, so the lookup fails immediately and the Go
+   * process exits before it can bind a port -- which surfaces as the thoroughly
+   * misleading "Container crashed while checking for ports". Cloudflare confirm
+   * the limitation in cloudflare/containers#97: "hyperdrive from inside a
+   * container isn't supported currently - its on the roadmap".
+   *
+   * Losing Hyperdrive here costs less than it looks. Hyperdrive exists because
+   * a Worker holds no persistent connections and can start anywhere, so every
+   * isolate would otherwise handshake afresh. The container is the opposite: a
+   * long-lived process with its own pgxpool. It needs the direct, unpooled
+   * connection string precisely so it can hold that pool itself.
    */
   constructor(ctx: DurableObjectState<Env>, env: Env) {
     super(ctx, env);
@@ -29,7 +41,7 @@ export class MarumApp extends Container<Env> {
       // The edge already owns the transport. Long polling here would mean two
       // readers of the same bot and a race for every update.
       MARUM_MODE: "webhook",
-      MARUM_DATABASE_URL: env.HYPERDRIVE.connectionString,
+      MARUM_DATABASE_URL: env.MARUM_DATABASE_URL,
       MARUM_BOT_TOKEN: env.MARUM_BOT_TOKEN,
       MARUM_WEBHOOK_SECRET: env.MARUM_WEBHOOK_SECRET,
       MARUM_IDENTITY_KEY: env.MARUM_IDENTITY_KEY,
@@ -51,7 +63,11 @@ export class MarumApp extends Container<Env> {
 interface Env {
   MARUM_APP: DurableObjectNamespace<MarumApp>;
   ASSETS: Fetcher;
+  // Bound and provisioned, but unused until Cloudflare ships Hyperdrive support
+  // for containers. Kept so that becomes a one-line change rather than a
+  // Terraform migration.
   HYPERDRIVE: Hyperdrive;
+  MARUM_DATABASE_URL: string;
   MARUM_WEBHOOK_SECRET: string;
   MARUM_SERVICE_TOKEN: string;
   MARUM_BOT_TOKEN: string;
