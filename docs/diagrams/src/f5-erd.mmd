@@ -1,0 +1,71 @@
+erDiagram
+  users ||--o| identities : "encrypted link"
+  users ||--o{ loans : owns
+  loans ||--|{ loan_contract_versions : "terms, versioned"
+  allocation_policy_versions ||--o{ loan_contract_versions : governs
+  loans ||--o{ loan_snapshots : "bank said, dated"
+  loans ||--|{ loan_events : "append only"
+  loan_snapshots ||--o{ snapshot_event_coverage : "already includes"
+  loan_events ||--o| snapshot_event_coverage : "covered by"
+  loan_events ||--o{ loan_event_allocations : "interpreted as"
+  loans ||--|| loan_state : "rebuildable cache"
+  loan_snapshots ||--o{ loan_state : anchors
+  users {
+    uuid id PK
+    text access_state
+  }
+  identities {
+    uuid user_id PK
+    text telegram_user_hmac UK
+    smallint key_version
+  }
+  loans {
+    uuid id PK
+    uuid user_id FK
+    bigint next_event_seq
+  }
+  allocation_policy_versions {
+    uuid id PK
+    text policy_key
+    integer version
+  }
+  loan_contract_versions {
+    uuid id PK
+    uuid loan_id FK
+    integer version
+    date effective_from
+    uuid allocation_policy_version_id FK
+  }
+  loan_snapshots {
+    uuid id PK
+    uuid loan_id FK
+    date as_of
+    text trust
+    text idempotency_key UK
+  }
+  loan_events {
+    uuid id PK
+    uuid loan_id FK
+    bigint recorded_seq
+    text kind
+    date value_date
+    integer bank_order
+    text idempotency_key UK
+  }
+  snapshot_event_coverage {
+    uuid snapshot_id PK
+    uuid event_id PK
+  }
+  loan_event_allocations {
+    uuid id PK
+    uuid event_id FK
+    text confidence
+    uuid supersedes_allocation_id FK
+  }
+  loan_state {
+    uuid loan_id PK
+    bigint state_version
+    uuid anchor_snapshot_id FK
+    bytea event_set_hash
+    text reliability_state
+  }

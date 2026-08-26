@@ -1,0 +1,42 @@
+flowchart LR
+  subgraph out["Outside the trust boundary"]
+    direction TB
+    user["Borrower<br>Telegram client"]
+    tg["Telegram Bot API"]
+    cf["Cloudflare<br>DNS, TLS, WAF"]
+    mon["External monitor<br>synthetic + status"]
+  end
+  subgraph app["Marum — one Go binary, always on"]
+    direction TB
+    hook["webhook<br>validate, normalise,<br>durable insert, 200 OK"]
+    work["command worker<br>lease, apply, enqueue"]
+    core["pkg/core<br>pure engine"]
+    sched["scheduler<br>60s tick, advisory lock"]
+    send["sender<br>single leader, 28/s"]
+  end
+  subgraph data["Durable"]
+    direction TB
+    pg[("Managed PostgreSQL<br>inbox · ledger · state · outbox")]
+    obj[("Encrypted object storage<br>dumps + deletion journal")]
+  end
+  bk["backup job<br>own credential,<br>direct connection"]
+  user --> tg
+  tg --> cf
+  cf --> hook
+  mon --> hook
+  send --> tg
+  hook --> pg
+  work --> pg
+  work --> core
+  sched --> pg
+  send --> pg
+  bk --> pg
+  bk --> obj
+  classDef ext fill:#f5f5f5,stroke:#666666
+  classDef a fill:#ffe6cc,stroke:#d79b00
+  classDef d fill:#d5e8d4,stroke:#82b366
+  classDef p fill:#e1d5e7,stroke:#9673a6
+  class user,tg,cf,mon ext
+  class hook,work,sched,send,bk a
+  class pg,obj d
+  class core p

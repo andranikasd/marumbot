@@ -1,0 +1,33 @@
+flowchart TB
+  subgraph t1["Process 1 — webhook"]
+    s1["span: webhook.update<br>ROOT of the trace"]
+  end
+  subgraph t2["Process 2 — command worker"]
+    s2["span: command.process"]
+    s3["span: core.replay"]
+    s4["span: db.append_event"]
+  end
+  subgraph t3["Process 3 — sender"]
+    s5["span: delivery.send"]
+    s6["span: telegram.sendMessage"]
+  end
+  s1 -. "traceparent persisted in<br>telegram_commands.trace_context" .-> s2
+  s2 --> s3
+  s2 --> s4
+  s2 -. "traceparent persisted in<br>notification_deliveries.trace_context" .-> s5
+  s5 --> s6
+  gc["Grafana Cloud<br>OTLP gateway"]
+  s1 --> gc
+  s2 --> gc
+  s5 --> gc
+  gc --> tempo["Tempo<br>traces"]
+  gc --> loki["Loki<br>logs, trace_id in<br>structured metadata"]
+  gc --> mimir["Mimir<br>metrics + exemplars"]
+  tempo <-. "trace_id" .-> loki
+  mimir -. "exemplar" .-> tempo
+  classDef span fill:#dae8fc,stroke:#6c8ebf
+  classDef store fill:#d5e8d4,stroke:#82b366
+  classDef gw fill:#ffe6cc,stroke:#d79b00
+  class s1,s2,s3,s4,s5,s6 span
+  class tempo,loki,mimir store
+  class gc gw

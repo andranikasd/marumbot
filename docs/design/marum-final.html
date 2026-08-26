@@ -1,0 +1,896 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Marum — MVP System and Architecture Design</title>
+<style>
+  @page { size: A4; margin: 17mm 15mm 15mm 15mm; }
+  :root{
+    --ink:#1a1c1f; --muted:#5b6470; --line:#d9dee5; --soft:#f5f7fa;
+    --accent:#1f5fa8; --accent-soft:#e8f0fa;
+    --ok:#2e7d4f; --ok-soft:#e9f5ee;
+    --warn:#a8611f; --warn-soft:#fdf1e4;
+    --stop:#a63232; --stop-soft:#fbecec;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+  body{
+    font-family:"Inter","Noto Sans","Noto Sans Armenian","DejaVu Sans",sans-serif;
+    font-size:10pt; line-height:1.55; color:var(--ink); margin:0;
+    font-feature-settings:"cv05","ss01","tnum" 0;
+  }
+  h1,h2,h3,h4{line-height:1.25; color:var(--ink); margin:0 0 .4em}
+  h1{font-size:20pt; font-weight:700; letter-spacing:-.4px; padding-bottom:.28em; border-bottom:2.5px solid var(--accent);
+     page-break-before:always; break-before:page; margin-top:0}
+  h1.nobreak{page-break-before:avoid; break-before:avoid}
+  h2{font-size:13.5pt; font-weight:650; margin-top:1.5em; color:#123a66}
+  h3{font-size:11pt; font-weight:650; margin-top:1.2em}
+  h4{font-size:10pt; font-weight:650; margin-top:1em; color:var(--muted)}
+  h2,h3,h4{page-break-after:avoid; break-after:avoid}
+  p{margin:0 0 .65em}
+  ul,ol{margin:0 0 .7em; padding-left:1.15em}
+  li{margin:.16em 0}
+  a{color:var(--accent); text-decoration:none}
+  code,kbd{font-family:"JetBrains Mono","Geist Mono","DejaVu Sans Mono",monospace; font-size:8.6pt;
+    background:var(--soft); border:1px solid var(--line); border-radius:3px; padding:.5px 3px}
+  pre{font-family:"JetBrains Mono","Geist Mono","DejaVu Sans Mono",monospace; font-size:8pt; line-height:1.45;
+    background:#fbfcfd; border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:4px; padding:9px 11px; overflow-x:auto; margin:.5em 0 .9em;
+    page-break-inside:avoid; break-inside:avoid; white-space:pre-wrap; word-wrap:break-word}
+  pre code{background:none;border:none;padding:0;font-size:inherit}
+  table{width:100%; border-collapse:collapse; font-size:8.6pt; margin:.4em 0 1em;
+    page-break-inside:avoid; break-inside:avoid}
+  th{background:var(--soft); text-align:left; font-weight:650; color:#123a66;
+     border-bottom:1.5px solid var(--line); padding:5px 7px; vertical-align:bottom}
+  td{border-bottom:1px solid var(--line); padding:5px 7px; vertical-align:top}
+  td code{word-break:break-word; overflow-wrap:anywhere}
+  table{table-layout:fixed}
+  tbody tr:nth-child(even) td{background:#fcfdfe}
+  td.num,th.num{text-align:right; font-variant-numeric:tabular-nums;
+    font-family:"JetBrains Mono","DejaVu Sans Mono",monospace; font-size:8.2pt}
+  figure{margin:1em 0 1.2em; page-break-inside:avoid; break-inside:avoid; text-align:center}
+  figure svg{display:block; margin:0 auto; max-width:100%; max-height:225mm; width:auto; height:auto}
+  figcaption{font-size:8.4pt; color:var(--muted); margin-top:.55em; text-align:left;
+    border-top:1px solid var(--line); padding-top:.4em}
+  figcaption b{color:var(--ink)}
+  .box{border:1px solid var(--line); border-left:3px solid var(--accent); background:var(--accent-soft);
+    border-radius:4px; padding:8px 11px; margin:.7em 0; font-size:9.2pt; page-break-inside:avoid; break-inside:avoid}
+  .box.ok{border-left-color:var(--ok); background:var(--ok-soft)}
+  .box.warn{border-left-color:var(--warn); background:var(--warn-soft)}
+  .box.stop{border-left-color:var(--stop); background:var(--stop-soft)}
+  .box .lbl{display:block; font-size:7.6pt; letter-spacing:.7px; text-transform:uppercase;
+    font-weight:700; color:var(--accent); margin-bottom:.25em}
+  .box.ok .lbl{color:var(--ok)} .box.warn .lbl{color:var(--warn)} .box.stop .lbl{color:var(--stop)}
+  .lead{font-size:11pt; color:var(--muted); margin-bottom:1.2em}
+  .cover{height:250mm; display:flex; flex-direction:column; justify-content:center; page-break-after:always}
+  .cover .kicker{font-size:9pt; letter-spacing:2.6px; text-transform:uppercase; color:var(--accent); font-weight:700}
+  .cover h1{font-size:44pt; border:none; padding:0; margin:.15em 0 0; page-break-before:avoid; letter-spacing:-1.6px}
+  .cover .arm{font-size:26pt; color:var(--muted); font-weight:400; margin:.1em 0 .5em}
+  .cover .tag{font-size:14pt; color:var(--ink); margin:0 0 2.2em}
+  .cover .meta{border-top:2px solid var(--accent); padding-top:12px; font-size:9.4pt; color:var(--muted);
+    display:grid; grid-template-columns:repeat(2,1fr); gap:5px 30px; max-width:135mm}
+  .cover .meta b{color:var(--ink); font-weight:650}
+  .toc{column-count:2; column-gap:26px; font-size:9pt}
+  .toc div{break-inside:avoid; margin:.14em 0}
+  .toc .l1{font-weight:650; margin-top:.55em; color:#123a66}
+  .toc .l2{padding-left:12px; color:var(--muted)}
+  .kv{display:grid; grid-template-columns:auto 1fr; gap:2px 14px; font-size:9pt; margin:.3em 0 1em}
+  .kv dt{font-weight:650; color:var(--muted)}
+  .kv dd{margin:0}
+  .pill{display:inline-block; font-size:7.4pt; font-weight:700; letter-spacing:.5px; text-transform:uppercase;
+    padding:1.5px 6px; border-radius:9px; border:1px solid currentColor}
+  .p-mvp{color:var(--ok); background:var(--ok-soft)}
+  .p-later{color:var(--muted); background:var(--soft)}
+  .p-risk{color:var(--stop); background:var(--stop-soft)}
+  .two{display:grid; grid-template-columns:1fr 1fr; gap:0 22px}
+  .two > *{break-inside:avoid}
+  @page landscape { size: A4 landscape; margin: 14mm; }
+  figure.land{ page:landscape; break-before:page; break-after:page; page-break-before:always; page-break-after:always;
+    margin:0; height:170mm; display:flex; flex-direction:column; justify-content:center }
+  figure.land svg{ max-height:148mm; max-width:100% }
+  figure.tall{ break-before:page; break-after:page; page-break-before:always; page-break-after:always;
+    margin:0; height:250mm; display:flex; flex-direction:column; justify-content:center }
+  figure.tall svg{ max-height:228mm; max-width:100% }
+  hr{border:none; border-top:1px solid var(--line); margin:1.3em 0}
+  .small{font-size:8.6pt; color:var(--muted)}
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div class="kicker">MVP system and architecture design · v1.0</div>
+  <h1>Marum</h1>
+  <div class="arm">Մարում</div>
+  <div class="tag">A loan ledger that knows what it does not know.</div>
+  <div class="meta">
+    <div><b>Date</b></div><div>26 August 2026</div>
+    <div><b>Runtime</b></div><div>One always-on Go binary + managed PostgreSQL</div>
+    <div><b>Edge</b></div><div>Cloudflare — DNS, TLS, WAF. No logic, no secrets.</div>
+    <div><b>Delivery</b></div><div>At-least-once, measured</div>
+    <div><b>Financial events</b></div><div>Exactly-once by idempotency key</div>
+    <div><b>Market</b></div><div>Armenia · AMD · Armenian and English</div>
+    <div><b>Access</b></div><div>60-day trial → 7-day grace → paused. Export and erasure always free.</div>
+    <div><b>Telemetry</b></div><div>OpenTelemetry → Grafana Cloud <b>Free tier, permanently</b>. One trace per user action across three processes.</div>
+    <div><b>Detail</b></div><div><code>docs/Marum-Reliable-MVP-Design.md</code> v0.3.1 — full DDL and rationale</div>
+  </div>
+</section>
+
+<h1 class="nobreak" id="s1">1 · What this is</h1>
+<p>Marum keeps a borrower's loans in one place, reminds them before each due date, records what they paid, and computes a repayment plan. It moves no money, holds no bank credentials, recommends no lender, and contains no AI. Every number is deterministic and traceable to an input.</p>
+
+<h2>Four boundaries the design is built on</h2>
+<ol>
+<li>A Telegram update becomes a durable command <b>before</b> Telegram receives <code>200 OK</code>.</li>
+<li>User-reported facts are append-only. Balances and payment splits are rebuildable caches.</li>
+<li>A bank-confirmed snapshot is the authoritative anchor. Marum never invents historical bank state.</li>
+<li>Message delivery is at-least-once. Rare duplicates are accepted, worded for, and measured.</li>
+</ol>
+
+<h2>Out of the MVP</h2>
+<p>Fee-aware <code>min_cost</code> optimisation · variable rates · declining-principal loans · revolving cards · delinquent or restructured loans · cross-currency planning · effective-rate comparison · OCR · bank integrations · Telegram Stars. Each returns only after the ledger and engine are proven against real Armenian schedules.</p>
+
+<h1 id="s2">2 · Architecture</h1>
+<figure class="land">
+<!--SVG:f1-topology-->
+<figcaption><b>Figure 1 — Deployment.</b> One binary, one database, one language. The backup job holds its own credential and connects directly. The external monitor calls an authenticated status endpoint; it never touches PostgreSQL.</figcaption>
+</figure>
+<table>
+<thead><tr><th style="width:20%">Component</th><th>Responsibility</th></tr></thead>
+<tbody>
+<tr><td>Cloudflare</td><td>DNS, TLS, WAF, DDoS. No business logic, no application secrets.</td></tr>
+<tr><td>webhook</td><td>Validates the secret-token header before reading the body, bounds and normalises the update, inserts a durable command, answers 200 only after commit.</td></tr>
+<tr><td>command worker</td><td>Leases a command with a fencing token, applies the whole business effect in one transaction, completes the command with the same token.</td></tr>
+<tr><td>scheduler</td><td>60-second tick under a transaction-scoped advisory lock. Generates reminder occurrences, groups them into deliveries, runs reconciliation. Catch-up tick on startup — it never assumes the previous minute ran.</td></tr>
+<tr><td>sender</td><td>Exactly one active leader, holding a session-level advisory lock on a dedicated connection. 28 msg/s global, 1 msg/s per chat — meaningful because the bucket is genuinely global.</td></tr>
+<tr><td><code>pkg/core</code></td><td>Pure engine. No database, network, filesystem, clock, randomness, or logging. Time enters as a parameter.</td></tr>
+<tr><td>backup job</td><td>Separate schedule and credential, direct connection. Dump, encrypt, upload, verify, restore-drill.</td></tr>
+<tr><td>PostgreSQL</td><td>System of record: durable inbox, ledger, snapshots, derived state, occurrences, delivery outbox.</td></tr>
+</tbody>
+</table>
+<p><b>Two instances</b> may run for webhook availability. Command processing is safely concurrent through leases; sending is not, and the advisory lock enforces that. During a leader handover there is a brief window where both instances believe they hold the role: the send rate may briefly exceed 28/s, which Telegram absorbs as throttling, and a delivery may be attempted twice — the fencing token turns that into one successful mark and one rejection.</p>
+<p>No Redis, no broker, no serverless container, no microservices.</p>
+
+<h1 id="s3">3 · Reliability invariants</h1>
+<p>Implementation requirements, not aspirations. Each is testable, and each has a named failpoint test in <code>Marum-Reliable-MVP-Design.md</code> §17.4.</p>
+<table>
+<thead><tr><th style="width:5%">#</th><th style="width:30%">Invariant</th><th>Consequence</th></tr></thead>
+<tbody>
+<tr><td>R1</td><td>Acknowledgement means durable acceptance</td><td>200 OK only after the command commits. A crash after the response cannot lose the action.</td></tr>
+<tr><td>R2</td><td>One update causes at most one business effect</td><td><code>telegram_update_id</code> is permanently unique — it survives account erasure with the payload cleared. Every financial event also carries its own idempotency key.</td></tr>
+<tr><td>R3</td><td>Facts are append-only</td><td>Payments, snapshots, voids and billing events are never edited. A mistake is superseded or voided by another row.</td></tr>
+<tr><td>R4</td><td>Derived state is disposable</td><td><code>loan_state</code> and allocation results can be deleted and rebuilt from the anchor snapshot plus active events.</td></tr>
+<tr><td>R5</td><td>A bank snapshot outranks Marum's reconstruction</td><td>A confirmed snapshot becomes the new replay anchor. Drift is measured, never hidden, and never corrected twice.</td></tr>
+<tr><td>R6</td><td>No silent financial assumptions</td><td>Every projection carries its assumption ledger: day count, rounding, contract version, snapshot date, allocation policy, prepayment behaviour, missing fields.</td></tr>
+<tr><td>R7</td><td>Delivery is at-least-once</td><td>The gap between Telegram accepting and Marum recording <code>message_id</code> cannot be closed. Reminder text reads correctly if it arrives twice.</td></tr>
+<tr><td>R8</td><td>No network I/O inside a transaction</td><td>Telegram, object storage and telemetry calls happen only after commit.</td></tr>
+<tr><td>R9</td><td>Money is never floating point</td><td><code>int64</code> minor units, checked arithmetic, explicit rounding policy. See §6.</td></tr>
+<tr><td>R10</td><td>Business dates are not timestamps</td><td>Due dates and value dates are date-only. Time zones apply only when converting a local reminder slot to an instant.</td></tr>
+<tr><td>R11</td><td>Deletion survives restore</td><td>An encrypted deletion journal lives outside the backup chain and is replayed after any restore.</td></tr>
+<tr><td>R12</td><td>Stale or unsupported state cannot produce a confident plan</td><td>The eligibility guard is centralised and cannot be bypassed by a handler. See §7.</td></tr>
+</tbody>
+</table>
+
+<h1 id="s4">4 · Processing model</h1>
+<figure>
+<!--SVG:f3-inbound-->
+<figcaption><b>Figure 2 — The durable inbound path.</b> The webhook's only job is to make the update durable. Everything expensive happens afterwards, under a lease, in one transaction, with no network call inside it.</figcaption>
+</figure>
+<h2>Why a durable inbox rather than a dedup table</h2>
+<p>A table holding only <code>update_id</code> is unsafe: if the row is inserted and the process dies before the action is applied, Telegram's retry is discarded as a duplicate and the user's payment is silently lost. The inbox stores the <b>normalised command and its processing state</b>, so a retry finds work still pending.</p>
+<h2>The business transaction</h2>
+<p>For a payment-recording command, one transaction does all of this or none of it:</p>
+<ol>
+<li>Lock the command by its lease token.</li>
+<li>Lock the loan's event-sequence row.</li>
+<li>Confirm no financial event already uses this idempotency key.</li>
+<li>Insert the immutable payment fact.</li>
+<li>Advance or rebuild derived state.</li>
+<li>Write a versioned allocation result.</li>
+<li>Cancel and regenerate affected future reminder occurrences.</li>
+<li>Enqueue the reply delivery.</li>
+<li>Complete the command with its fencing token.</li>
+</ol>
+<p>The webhook does not store the raw Telegram payload. Input resembling credentials or card data produces a <code>reject_sensitive_input</code> command with the value discarded.</p>
+
+<h1 id="s5">5 · Domain model</h1>
+<figure class="land">
+<!--SVG:f2-domain-->
+<figcaption><b>Figure 3 — Facts, anchor, interpretation.</b> Contract versions and reported events are immutable. A confirmed snapshot is the replay anchor. Allocations and state are derived and versioned. Projections are never stored.</figcaption>
+</figure>
+<table>
+<thead><tr><th style="width:24%">Layer</th><th>Rule</th></tr></thead>
+<tbody>
+<tr><td>Loan identity</td><td>Holds no financial terms and no balance. Just the enduring user-owned record.</td></tr>
+<tr><td>Contract versions</td><td>A restructuring, rate change or maturity change creates a new version. Effective periods may not overlap. Every event records the version under which it was interpreted.</td></tr>
+<tr><td>Bank snapshots</td><td>An observation of lender state at the end of a stated business date, split into independently allocatable buckets: principal, accrued interest, unpaid interest, current fees, overdue fees, penalties, overdue principal, advance credit, next instalment. Trust is <code>user_entered</code>, <code>bank_confirmed</code>, or <code>imported_verified</code>. <b>Only <code>bank_confirmed</code> resets drift.</b></td></tr>
+<tr><td>Loan events</td><td>What the user reported, not Marum's interpretation. Five kinds: <code>payment_reported</code>, <code>prepayment_reported</code>, <code>bank_fee_reported</code>, <code>entry_voided</code>, <code>loan_closed_reported</code>. There is no generic correction event — a new snapshot corrects state.</td></tr>
+<tr><td>Allocation results</td><td>The split into interest, fees, penalties, overdue and scheduled principal, extra principal or advance credit. Stored separately from the fact, stamped with policy version, contract version, engine version, replay generation and confidence. A late earlier event supersedes the result; it never rewrites it.</td></tr>
+<tr><td>Derived state</td><td><code>anchor snapshot + active events + policy interpretation</code>, carrying an <code>event_set_hash</code>. Nightly reconciliation recomputes it; a mismatch rebuilds the cache and raises an alert.</td></tr>
+<tr><td>Projection</td><td>Schedules and plans are function results. No table.</td></tr>
+</tbody>
+</table>
+
+<h2>5.1 The two rules that stop double-counting</h2>
+<p><b>Snapshot boundary.</b> When an event arrives with <code>value_date &lt;= anchor.as_of</code>, Marum asks whether the bank balance already included it. Yes writes an immutable coverage assertion and the event is kept for audit but not re-applied. No or unknown sets the loan to <code>needs_reconciliation</code> and asks for a fresh balance.</p>
+<p><b>Two orders, never conflated.</b> <code>recorded_seq</code> is gapless per loan and records the order Marum learned things. Financial replay orders by <code>value_date</code>, then the lender's <code>bank_order</code> where supplied, then <code>recorded_seq</code> as a deterministic tie-break.</p>
+
+<h1 id="s6">6 · Money, dates, accrual</h1>
+<table>
+<thead><tr><th style="width:22%">Concern</th><th>Rule</th></tr></thead>
+<tbody>
+<tr><td>Representation</td><td><code>int64</code> minor units with the currency in the type. AMD has 100 minor units to the dram; whole-dram input is multiplied by 100.</td></tr>
+<tr><td>Settlement rounding</td><td>Default unit is <b>100 minor units</b> — lenders settle in whole drams. A different unit requires a real schedule to confirm it.</td></tr>
+<tr><td>Rates</td><td>Scaled integers in the core (parts per billion); <code>numeric(12,9)</code> in PostgreSQL. Never through <code>float64</code>.</td></tr>
+<tr><td>Dates</td><td>Date-only in the core. Due-date clamping is centralised: the 31st falls to the last day of a shorter month and returns the following month.</td></tr>
+<tr><td>Instalment</td><td>Integer bisection for the smallest instalment that closes the dated schedule, using the same builder as projection. The closed-form annuity formula is a test cross-check and an initial bound — never authoritative for irregular periods.</td></tr>
+</tbody>
+</table>
+<div class="box stop"><span class="lbl">Accrual must not be evaluated in 64-bit arithmetic</span>
+<p style="margin-bottom:.4em"><code>interest = principal × rate × days / denominator</code> overflows <code>int64</code> at ordinary local loan sizes:</p>
+<table style="margin:.3em 0 .5em">
+<thead><tr><th>Loan @ 18%</th><th class="num">× rate</th><th class="num">× 31 days</th><th style="width:22%">int64</th></tr></thead>
+<tbody>
+<tr><td>4,000,000 AMD</td><td class="num">7.2 × 10¹⁶</td><td class="num">2.2 × 10¹⁸</td><td>fits</td></tr>
+<tr><td><b>16,529,340 AMD</b></td><td class="num">—</td><td class="num">9.22 × 10¹⁸</td><td><b>last value that fits</b></td></tr>
+<tr><td>30,000,000 AMD</td><td class="num">5.4 × 10¹⁷</td><td class="num">1.7 × 10¹⁹</td><td>overflow</td></tr>
+<tr><td>80,000,000 AMD</td><td class="num">1.44 × 10¹⁸</td><td class="num">4.5 × 10¹⁹</td><td>overflow — 66 bits</td></tr>
+</tbody>
+</table>
+<p style="margin-bottom:0">At a card rate of 26% the ceiling falls to about 11,443,389 AMD. Compute the numerator in a <b>128-bit intermediate</b> (<code>math/bits.Mul64</code> with a 128÷64 division), then divide and round once. Do not reorder into <code>(principal × days) / denom × rate</code> — that dodges the range problem by rounding twice and silently changes the schedule. Overflow is a typed error, never a wrap.</p>
+</div>
+
+<h1 id="s7">7 · Eligibility</h1>
+<p>Planning is gated, but the gate is graded. A single confirmed-and-fresh check in front of every calculation would refuse most users most of the time, and a tool that usually refuses is one people stop opening.</p>
+<table>
+<thead><tr><th style="width:14%">Tier</th><th style="width:32%">Condition</th><th>May show / must not show</th></tr></thead>
+<tbody>
+<tr><td><code>confident</code></td><td>Supported contract, <code>bank_confirmed</code> snapshot within the freshness threshold (initially 35 days), no ambiguous pre-snapshot event, no unsupported overdue or penalty state, known allocation and prepayment policy, successful replay</td><td>Plans, savings, debt-free dates, strategy comparison.</td></tr>
+<tr><td><code>indicative</code></td><td>Confirmed snapshot older than the threshold; nothing else wrong</td><td>Projections labelled with the snapshot date and its age, next payment, reminders. <b>Not</b> savings figures or a debt-free date stated as fact. Carries a one-tap confirm action that promotes the loan back.</td></tr>
+<tr><td><code>blocked</code></td><td>Ambiguous pre-snapshot event, unsupported overdue or penalty state, unknown allocation policy, or failed replay</td><td>The ledger, the reminders, and the exact reason. No projection.</td></tr>
+</tbody>
+</table>
+<p>The eligibility function returns machine-readable reasons, and those reasons are what the user sees.</p>
+<h2>7.1 Safe degradation</h2>
+<table>
+<thead><tr><th style="width:34%">Condition</th><th>Behaviour</th></tr></thead>
+<tbody>
+<tr><td>Allocation policy unknown</td><td>Record the fact, do not claim a balance, ask for the bank-reported figure and use it as the new anchor.</td></tr>
+<tr><td>Unpaid interest, penalties, overdue principal</td><td>Reminders continue; optimisation is disabled; ask for an official payoff figure.</td></tr>
+<tr><td>Contractual instalment omitted</td><td>Solve it from the dated schedule, label it calculated, show the assumption.</td></tr>
+<tr><td>Prepayment requires a bank request</td><td>Show the operational step; do not reduce projected principal until a later snapshot confirms it.</td></tr>
+<tr><td>Contract behaviour unsupported</td><td>Keep the ledger and reminders; show no savings and no debt-free date.</td></tr>
+</tbody>
+</table>
+
+<h1 id="s8">8 · Data model</h1>
+<figure class="tall">
+<!--SVG:f5-erd-->
+<figcaption><b>Figure 4 — Core schema.</b> Keys and relationships only; full DDL in <code>Marum-Reliable-MVP-Design.md</code> §8. Facts and the anchor on the left, derived interpretation on the right. The application role is denied <code>UPDATE</code> and <code>DELETE</code> on facts and snapshots; erasure uses a separate narrowly scoped maintenance role.</figcaption>
+</figure>
+<p>The remaining tables are operational rather than financial:</p>
+<table>
+<thead><tr><th style="width:26%">Table</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>telegram_commands</code></td><td>The durable inbox. Unique <code>telegram_update_id</code>, status, attempts, <code>next_attempt_at</code>, lease owner and token, plus <code>trace_context</code> so one trace survives the queue (§11.3.1).</td></tr>
+<tr><td><code>conversation_states</code></td><td>Persisted, optimistic-versioned flow position. Advanced in the same transaction that completes its command, so a redelivery cannot advance it twice.</td></tr>
+<tr><td><code>budgets</code></td><td>Monthly amount, reserve floor, month-keyed overrides. The plan itself is not stored.</td></tr>
+<tr><td><code>reminder_rules</code></td><td>Per-loan offsets and local send time.</td></tr>
+<tr><td><code>reminder_occurrences</code></td><td>One row per loan fact due to be reminded. Generated 35 days ahead; cancelled and regenerated transactionally when a payment, snapshot or contract change lands.</td></tr>
+<tr><td><code>notification_deliveries</code> + <code>_items</code></td><td>One Telegram message bundling several occurrences, carrying <code>trace_context</code> for trace continuity. A partial unique index keeps an occurrence attached to at most one <i>live</i> delivery, so a dead delivery releases its occurrences instead of stranding them.</td></tr>
+<tr><td><code>reconciliation_runs</code></td><td>Drift per bucket at each new anchor. Repeated drift on one policy version disables confident planning for it until reviewed.</td></tr>
+</tbody>
+</table>
+
+<h1 id="s9">9 · Reminders and delivery</h1>
+<figure>
+<!--SVG:f4-delivery-->
+<figcaption><b>Figure 5 — Delivery lifecycle.</b> Claim under a fencing token, send after commit, mark on success. Everything between the claim and the mark is idempotent, because the process may die at any point in it.</figcaption>
+</figure>
+<table>
+<thead><tr><th style="width:24%">Concern</th><th>Rule</th></tr></thead>
+<tbody>
+<tr><td>Aggregation</td><td>The scheduler groups a user's due occurrences into one delivery per local send bucket. The delivery row is created shortly before its bucket, not 35 days ahead, so the frozen payload cannot carry a stale balance.</td></tr>
+<tr><td>Quiet hours</td><td>21:00–09:00 in the user's timezone. Deferred reminders group into a 09:00 delivery.</td></tr>
+<tr><td>Jitter</td><td>Deterministic, derived from the occurrence ID — spreads the 09:00 spike without becoming irreproducible.</td></tr>
+<tr><td>Send-time guard</td><td>Immediately before sending, the sender checks that at least one attached occurrence is still valid; otherwise the delivery is cancelled. A payment can still land inside the remaining window, so reminder text says "if you have already paid, ignore this or record it here".</td></tr>
+<tr><td>Retry</td><td>429 returns to pending honouring <code>retry_after</code> without blocking other chats. Timeout and 5xx back off exponentially with jitter, six attempts. 403 marks dead and suspends that user's reminders.</td></tr>
+<tr><td>Batching</td><td>At most 20 deliveries per claim with a 120-second lease, renewed when processing passes half the lease.</td></tr>
+</tbody>
+</table>
+<p><b>Capacity is sized on bursts, not averages.</b> The binding case is the 09:00 release after quiet hours on a salary day. Collapsing a user's due loans into one message before rows are generated is what keeps that within the SLO — without it the 15-minute target breaks at roughly 20,000 users; with it there is headroom past 50,000.</p>
+
+<h1 id="s10">10 · Operations</h1>
+<h2>10.1 Objectives</h2>
+<table>
+<thead><tr><th style="width:52%">SLO</th><th>Target</th></tr></thead>
+<tbody>
+<tr><td>Durable webhook acknowledgement</td><td>99.9% under 2 s over 30 days</td></tr>
+<tr><td>Command completion</td><td>99% within 5 s; 99.9% within 60 s</td></tr>
+<tr><td>Reminder delivery</td><td>99% within 15 minutes of the scheduled slot</td></tr>
+<tr><td>Ledger and cache reconciliation</td><td>100% nightly; no unresolved mismatch older than 24 h</td></tr>
+<tr><td>Recovery point</td><td>15 minutes or better once real financial history exists</td></tr>
+<tr><td>Restore time</td><td>Under 2 hours, measured monthly</td></tr>
+</tbody>
+</table>
+<h2>10.2 External watchdog</h2>
+<p>One check that must work when everything else does not: an external monitor calls an authenticated status endpoint whose body comes from bounded queries — last successful tick, oldest pending command, oldest pending delivery, expired leases, dead counts, reconciliation mismatches. PostgreSQL is never exposed publicly.</p>
+<p>Alerts route through a <b>separate bot token</b>, so a compromise of the product's token cannot silence the alarm about it. Full telemetry design is §11.</p>
+<h2>10.3 Backups</h2>
+<p>Two layers. Managed PITR for operational loss — this forces a paid database tier from Phase 2, roughly $19–25/month, and should be budgeted then rather than discovered later. Plus a nightly <code>pg_dump -Fc</code>, separately encrypted, 30 daily and 6 monthly, for logical corruption and provider escape.</p>
+<p>A backup counts as successful only after a restore passes: migration verification, constraint checks, application startup, identity decryption for every active key version, <code>replay == loan_state</code>, claim queries, deletion-journal application, and a representative read-only journey. Row counts prove nothing.</p>
+<h2>10.4 Erasure and restore</h2>
+<p>Before primary deletion the erasure worker writes a subject tombstone to an encrypted append-only journal held outside the backup chain. Any restore proceeds: restore into an isolated database → apply every journal entry included in or newer than the backup → verify erased subject HMACs are absent → run integrity tests → only then promote. Restoring a backup cannot resurrect an erased account.</p>
+
+<h1 id="s11">11 · Observability</h1>
+<p class="lead">Five signals — traces, metrics, logs, continuous profiles and synthetic checks — all pushed to Grafana Cloud and joined by one trace ID. Deep enough to answer "why was this reminder late" and "which function burned the CPU while it happened", and small enough to stay permanently inside the free tier.</p>
+
+<h2>11.1 Design rules</h2>
+<table>
+<thead><tr><th style="width:6%">#</th><th style="width:32%">Rule</th><th>Reason</th></tr></thead>
+<tbody>
+<tr><td>O1</td><td>One trace spans the whole user action</td><td>A payment crosses the webhook, the command worker and the sender, with durable queues between them. A trace that stops at the webhook explains nothing.</td></tr>
+<tr><td>O2</td><td>Every log line carries <code>trace_id</code> and <code>span_id</code></td><td>Log → trace and trace → log are one click. Correlation is not a convention people remember.</td></tr>
+<tr><td>O3</td><td>Histograms carry exemplars</td><td>A latency spike on a dashboard links directly to the trace that caused it.</td></tr>
+<tr><td>O4</td><td>No amount, chat ID, lender name, or raw payload in any signal</td><td>Telemetry leaves the trust boundary and lives 14 days in a third-party system.</td></tr>
+<tr><td>O5</td><td>No unbounded label</td><td>Free-tier metrics are billed by active series. A label whose cardinality grows with users is a bill and an outage.</td></tr>
+<tr><td>O6</td><td>Liveness signals are derived from the database, not from the process</td><td>A gauge in a process that has stopped ticking reports nothing. The thing that is broken cannot be the thing that reports it.</td></tr>
+<tr><td>O7</td><td>Business correctness is instrumented, not only latency</td><td>Reconciliation drift and reliability-tier distribution are the metrics that say whether the product is telling the truth.</td></tr>
+</tbody>
+</table>
+
+<h2>11.2 Coverage matrix</h2>
+<p>Every layer of the stack is instrumented, and every layer names what instruments it. A layer with no owner is a blind spot waiting for an incident.</p>
+<table>
+<thead><tr><th style="width:20%">Layer</th><th style="width:26%">Instrumented by</th><th>What it answers</th></tr></thead>
+<tbody>
+<tr><td>Telegram edge</td><td>Synthetic check + <code>marum_updates_total</code></td><td>Is the public path up when nobody is using it?</td></tr>
+<tr><td>HTTP server</td><td><code>otelhttp</code> middleware</td><td>Route-level RED, status codes, durable-ack latency</td></tr>
+<tr><td>HTTP client (Telegram)</td><td><code>otelhttp</code> transport</td><td>Per-call latency, 429 and 5xx rates, retry-after honoured</td></tr>
+<tr><td>Command inbox</td><td>Hand-written consumer spans + inbox metrics</td><td>Lease behaviour, backlog, dead commands</td></tr>
+<tr><td>Financial engine</td><td>Hand-written internal spans</td><td>Replay cost, solver convergence, engine errors</td></tr>
+<tr><td>Database</td><td><code>otelpgx</code> tracer + pool metrics</td><td>Per-named-query latency, pool saturation, rows touched</td></tr>
+<tr><td>Go runtime</td><td><code>contrib/instrumentation/runtime</code></td><td>Goroutines, heap, GC pauses, scheduler latency</td></tr>
+<tr><td>CPU and memory attribution</td><td><code>pyroscope-go</code> continuous profiles</td><td>Which function, which line, during which span</td></tr>
+<tr><td>Scheduler and sender</td><td>Hand-written spans + leadership gauge</td><td>Tick liveness, exactly-one-sender, delivery lag</td></tr>
+<tr><td>Business correctness</td><td>Hand-written metrics</td><td>Drift, reconciliation mismatches, eligibility mix</td></tr>
+</tbody>
+</table>
+<div class="box"><span class="lbl">Auto first, hand-written where it matters</span>Framework instrumentation (<code>otelhttp</code>, <code>otelpgx</code>, runtime) is free coverage and goes on everywhere. Hand-written spans are reserved for places where the domain vocabulary matters — <code>core.replay</code>, <code>command.process</code>, <code>delivery.send</code> — because "POST /tg/update took 400 ms" is not a useful sentence and "replaying 218 events took 400 ms" is.</div>
+
+<h2>11.3 Pipeline</h2>
+<figure>
+<!--SVG:f6-telemetry-->
+<figcaption><b>Figure 6 — One trace across three processes.</b> The W3C <code>traceparent</code> is persisted alongside the work itself, so the trace survives the durable inbox and the delivery outbox. All three signals leave through a single OTLP gateway; Tempo, Loki and Mimir are joined by <code>trace_id</code> and by exemplars.</figcaption>
+</figure>
+<p>Traces, metrics and logs travel as OpenTelemetry over OTLP/HTTP to one Grafana Cloud gateway. Profiles use the Pyroscope push protocol to the same stack — OpenTelemetry's profiling signal is not yet stable, and a working profiler today beats a standard one later. No scrape endpoint, no agent, no sidecar: a scrape target would be a second thing to keep alive.</p>
+<pre><code># OTLP — traces, metrics, logs
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-&lt;zone&gt;.grafana.net/otlp
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic ${GRAFANA_OTLP_TOKEN}   # base64(instanceID:token)
+OTEL_SERVICE_NAME=marum
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment=prod,service.namespace=marum
+
+# Pyroscope — continuous profiles
+PYROSCOPE_SERVER_ADDRESS=https://profiles-&lt;zone&gt;.grafana.net
+PYROSCOPE_BASIC_AUTH_USER=&lt;stack-user&gt;
+PYROSCOPE_BASIC_AUTH_PASSWORD=&lt;api-token&gt;</code></pre>
+<pre><code>func Init(ctx context.Context, cfg Config) (func(context.Context) error, error) {
+    res, err := resource.Merge(resource.Default(), resource.NewWithAttributes(
+        semconv.SchemaURL,
+        semconv.ServiceName("marum"),
+        semconv.DeploymentEnvironmentName(cfg.Env),
+        semconv.ServiceInstanceID(cfg.InstanceID),
+        // service.version is deliberately NOT here — see 11.6.3.
+    ))
+    if err != nil { return nil, err }
+
+    tp := trace.NewTracerProvider(
+        trace.WithResource(res),
+        trace.WithSampler(trace.ParentBased(trace.AlwaysSample())),   // see 11.4.4
+        trace.WithBatcher(otlptracehttp.NewUnstarted()),
+    )
+    mp := metric.NewMeterProvider(
+        metric.WithResource(res),
+        metric.WithReader(metric.NewPeriodicReader(
+            otlpmetrichttp.NewUnstarted(), metric.WithInterval(30*time.Second))),
+    )
+    lp := log.NewLoggerProvider(
+        log.WithResource(res),
+        log.WithProcessor(log.NewBatchProcessor(otlploghttp.NewUnstarted())),
+    )
+
+    // Span profiles: every span carries pprof labels, so Tempo can show the
+    // flame graph for one span rather than a process-wide average (11.7.1).
+    otel.SetTracerProvider(otelpyroscope.NewTracerProvider(tp))
+    otel.SetMeterProvider(mp)
+    otel.SetTextMapPropagator(propagation.TraceContext{})   // W3C only, no B3
+
+    // Free coverage: Go runtime metrics — GC, heap, goroutines, scheduler.
+    if err := runtimemetrics.Start(
+        runtimemetrics.WithMinimumReadMemStatsInterval(10*time.Second)); err != nil {
+        return nil, err
+    }
+
+    prof, err := startProfiler(cfg)          // 11.7
+    if err != nil { return nil, err }
+
+    return func(ctx context.Context) error {
+        return errors.Join(prof.Stop(), tp.Shutdown(ctx),
+            mp.ForceFlush(ctx), mp.Shutdown(ctx), lp.Shutdown(ctx))
+    }, nil
+}</code></pre>
+<p>Auto-instrumentation is wired at the boundaries every request crosses:</p>
+<pre><code>// inbound: route-level RED plus a server span per request
+handler := otelhttp.NewHandler(mux, "marum",
+    otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/healthz" }))
+
+// outbound: every Telegram call becomes a client span inside the delivery span
+tgClient := &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
+
+// database: a span per named query, plus pool metrics
+pgCfg.ConnConfig.Tracer = otelpgx.NewTracer(otelpgx.WithTrimSQLInSpanName())
+otelpgx.RecordStats(pool)</code></pre>
+<p>The health endpoint is filtered out of tracing deliberately: a check every 60 seconds would otherwise be the most-traced operation in the system and would tell nobody anything.</p>
+
+<h2>11.4 Traces</h2>
+<h3>11.4.1 Continuity across a durable queue</h3>
+<p>The interesting problem is not instrumenting a request — it is that a user action is <b>three processes separated by two database tables</b>. The webhook returns before the work happens, and the sender runs minutes later. Two columns solve it:</p>
+<pre><code>ALTER TABLE telegram_commands        ADD COLUMN trace_context text;  -- W3C traceparent
+ALTER TABLE notification_deliveries  ADD COLUMN trace_context text;</code></pre>
+<p>The producer injects the current context at insert time; the consumer extracts it and continues the same trace. One <code>trace_id</code> then covers webhook → command → reply, which is exactly the object a support question is about.</p>
+<pre><code>// producer — inside the same transaction that inserts the row
+carrier := propagation.MapCarrier{}
+otel.GetTextMapPropagator().Inject(ctx, carrier)
+cmd.TraceContext = carrier["traceparent"]
+
+// consumer — the lease already returned cmd
+ctx = otel.GetTextMapPropagator().Extract(ctx,
+    propagation.MapCarrier{"traceparent": cmd.TraceContext})
+ctx, span := tracer.Start(ctx, "command.process",
+    trace.WithSpanKind(trace.SpanKindConsumer))</code></pre>
+<p><b>The fan-in exception.</b> An aggregated reminder delivery bundles occurrences created by several unrelated actions, so it has no single parent. It starts a <b>new trace with one span link per occurrence</b>, which keeps the causal graph honest instead of arbitrarily picking one parent.</p>
+
+<h3>11.4.2 Span taxonomy</h3>
+<table>
+<thead><tr><th style="width:26%">Span</th><th style="width:12%">Kind</th><th>Notable attributes</th></tr></thead>
+<tbody>
+<tr><td><code>webhook.update</code></td><td>server</td><td><code>marum.update_kind</code>, <code>marum.command_kind</code>, <code>marum.duplicate</code></td></tr>
+<tr><td><code>command.process</code></td><td>consumer</td><td><code>marum.command_kind</code>, <code>marum.attempt</code>, <code>marum.lease_ms</code></td></tr>
+<tr><td><code>core.replay</code></td><td>internal</td><td><code>marum.events_replayed</code>, <code>marum.anchor_age_days</code>, <code>marum.engine_version</code></td></tr>
+<tr><td><code>core.schedule</code></td><td>internal</td><td><code>marum.periods</code>, <code>marum.solver_iterations</code></td></tr>
+<tr><td><code>core.plan</code></td><td>internal</td><td><code>marum.strategy</code>, <code>marum.loan_count</code>, <code>marum.eligibility_tier</code></td></tr>
+<tr><td><code>db.&lt;query_name&gt;</code></td><td>client</td><td><code>db.system</code>, <code>db.operation</code>, <code>marum.rows</code> — never the SQL arguments</td></tr>
+<tr><td><code>scheduler.tick</code></td><td>internal</td><td><code>marum.occurrences_generated</code>, <code>marum.deliveries_grouped</code></td></tr>
+<tr><td><code>delivery.send</code></td><td>producer</td><td><code>marum.delivery_kind</code>, <code>marum.occurrence_count</code>, <code>marum.attempt</code></td></tr>
+<tr><td><code>telegram.sendMessage</code></td><td>client</td><td><code>http.response.status_code</code>, <code>marum.retry_after_s</code></td></tr>
+<tr><td><code>reconcile.loan</code></td><td>internal</td><td><code>marum.drift_bucket</code>, <code>marum.mismatch</code></td></tr>
+</tbody>
+</table>
+
+<h3>11.4.3 What a span may and may not carry</h3>
+<div class="two">
+<div>
+<h4>Allowed</h4>
+<ul>
+<li><code>marum.correlation_id</code> — short-lived, quotable by the user</li>
+<li><code>marum.loan_ref</code> — first 8 hex of a keyed HMAC of the loan ID: stable enough to follow one loan, not reversible</li>
+<li>Counts, durations, iteration numbers, bucket names</li>
+<li>Enumerations: command kind, strategy, tier, error code</li>
+</ul>
+</div>
+<div>
+<h4>Never</h4>
+<ul>
+<li>Any <code>money.Amount</code>, in any form</li>
+<li>Telegram user ID or chat ID</li>
+<li>Internal user UUID</li>
+<li>Lender name, loan name, or free text the user typed</li>
+<li>SQL arguments or request bodies</li>
+</ul>
+</div>
+</div>
+<p>An error span records the error <i>class</i> and the correlation ID. The message shown to the user carries the same correlation ID, which is how a support conversation reaches the right trace without anyone pasting a balance into a chat.</p>
+
+<h3>11.4.4 Sampling</h3>
+<p>At MVP scale, <b>sample everything</b>. Grafana Cloud meters logs and traces separately and on three axes — processed, written, and retained as GB-months — each with its own 50 GB free allowance per signal:</p>
+<table>
+<thead><tr><th style="width:26%">At 5,000 users</th><th class="num">Written / mo</th><th class="num">Retained (14 d)</th><th class="num">Free</th><th class="num">Binds at</th></tr></thead>
+<tbody>
+<tr><td>Traces — 74,700 spans/day</td><td class="num">2.14 GB</td><td class="num">1.00 GB-mo</td><td class="num">50 GB</td><td class="num">~117,000 users</td></tr>
+<tr><td>Logs — 26,440 lines/day</td><td class="num">0.33 GB</td><td class="num">0.15 GB-mo</td><td class="num">50 GB</td><td class="num">~758,000 users</td></tr>
+</tbody>
+</table>
+<p>100% head sampling uses about 4% of the trace allowance and removes an entire class of "the interesting request wasn't sampled" investigation. Revisit at 25 GB written per month, and then move to tail sampling that keeps every error, every span over 1 s, and 10% of the rest — never a blanket ratio.</p>
+
+<h2>11.5 Logs</h2>
+<h3>11.5.1 Shape</h3>
+<p>Structured <code>slog</code>, JSON, emitted to stdout for local development and to OTLP in production through one handler chain: <code>redact → enrich → fan-out</code>. Enrichment pulls <code>trace_id</code>, <code>span_id</code> and <code>correlation_id</code> from the context, so no call site has to remember them.</p>
+<pre><code>{
+  "time":       "2026-08-26T09:04:12.318Z",
+  "level":      "INFO",
+  "msg":        "command completed",
+  "trace_id":   "4bf92f3577b34da6a3ce929d0e0e4736",
+  "span_id":    "00f067aa0ba902b7",
+  "correlation":"cr_8f21ba",
+  "command":    "record_payment",
+  "attempt":    1,
+  "duration_ms":47,
+  "loan_ref":   "9c1af0b2",
+  "outcome":    "completed"
+}</code></pre>
+<table>
+<thead><tr><th style="width:12%">Level</th><th style="width:30%">Used for</th><th>Alerting</th></tr></thead>
+<tbody>
+<tr><td><code>DEBUG</code></td><td>Local development only. Disabled in production.</td><td>—</td></tr>
+<tr><td><code>INFO</code></td><td>Business transitions: command completed, snapshot confirmed, delivery sent, tick finished.</td><td>—</td></tr>
+<tr><td><code>WARN</code></td><td>Recoverable: 429 backoff, lease expiry, replay rebuild, drift within tolerance.</td><td>Rate-based only</td></tr>
+<tr><td><code>ERROR</code></td><td>Something is dead or wrong: command dead, delivery dead, reconciliation mismatch, engine error.</td><td>Yes</td></tr>
+</tbody>
+</table>
+
+<h3>11.5.2 Redaction is a type rule, not a habit</h3>
+<pre><code>// The handler drops, before anything is serialised:
+//   - any attribute whose value is a money.Amount (type switch, not name match)
+//   - any key in the denylist: amount, balance, principal, payment, chat,
+//     telegram_id, token, secret, payload, body
+//   - any value longer than 512 bytes
+// A unit test asserts a log line built from a fully populated LoanState
+// contains none of the digits of its balance.</code></pre>
+
+<h3>11.5.3 Loki label policy</h3>
+<p>Loki bills and indexes by label. Only <b><code>service_name</code>, <code>deployment_environment</code> and <code>level</code></b> become labels — nine streams in total. <code>trace_id</code>, <code>correlation</code>, <code>command</code> and <code>loan_ref</code> go into <b>structured metadata</b>, which is queryable and filterable without creating a stream per value. Promoting <code>trace_id</code> to a label would create one stream per request and is the single fastest way to break a Loki tenant.</p>
+
+<h2>11.6 Metrics</h2>
+<h3>11.6.1 Catalogue</h3>
+<table>
+<thead><tr><th style="width:36%">Metric</th><th style="width:10%">Type</th><th style="width:18%">Labels</th><th>Answers</th></tr></thead>
+<tbody>
+<tr><td colspan="4" style="background:var(--soft);font-weight:650">Webhook — is the front door healthy?</td></tr>
+<tr><td><code>marum_updates_total</code></td><td>counter</td><td>kind, result</td><td>Traffic, duplicate rate, rejection rate</td></tr>
+<tr><td><code>marum_webhook_duration_seconds</code></td><td>histogram</td><td>kind</td><td>The 2 s durable-ack SLO</td></tr>
+<tr><td colspan="4" style="background:var(--soft);font-weight:650">Inbox — is work getting done?</td></tr>
+<tr><td><code>marum_commands_total</code></td><td>counter</td><td>command_kind, outcome</td><td>Completion vs retry vs dead</td></tr>
+<tr><td><code>marum_command_duration_seconds</code></td><td>histogram</td><td>command_kind</td><td>The 5 s / 60 s completion SLO</td></tr>
+<tr><td><code>marum_command_backlog</code></td><td>gauge</td><td>—</td><td>Are we falling behind?</td></tr>
+<tr><td><code>marum_command_oldest_pending_seconds</code></td><td>gauge</td><td>—</td><td>Worst-case user wait</td></tr>
+<tr><td><code>marum_command_lease_expired_total</code></td><td>counter</td><td>—</td><td>Workers dying mid-command</td></tr>
+<tr><td colspan="4" style="background:var(--soft);font-weight:650">Engine — is the arithmetic sound?</td></tr>
+<tr><td><code>marum_replay_duration_seconds</code></td><td>histogram</td><td>trigger</td><td>Replay cost as ledgers grow</td></tr>
+<tr><td><code>marum_replay_events</code></td><td>histogram</td><td>—</td><td>When to introduce checkpoints</td></tr>
+<tr><td><code>marum_solver_iterations</code></td><td>histogram</td><td>—</td><td>Bisection converging as expected</td></tr>
+<tr><td><code>marum_engine_errors_total</code></td><td>counter</td><td>kind</td><td>Negative amortisation, bad contract, unsupported</td></tr>
+<tr><td><code>marum_accrual_overflow_total</code></td><td>counter</td><td>—</td><td><b>Must stay at zero.</b> Any increment is a §6 violation reaching production</td></tr>
+<tr><td colspan="4" style="background:var(--soft);font-weight:650">Correctness — is Marum telling the truth?</td></tr>
+<tr><td><code>marum_reconciliation_mismatch_total</code></td><td>counter</td><td>reason</td><td>Cache disagreeing with the ledger</td></tr>
+<tr><td><code>marum_drift_minor</code></td><td>histogram</td><td>bucket</td><td>How far our reconstruction sits from the bank</td></tr>
+<tr><td><code>marum_loan_reliability_state</code></td><td>gauge</td><td>state</td><td>How much of the book is confirmed vs stale</td></tr>
+<tr><td><code>marum_eligibility_tier</code></td><td>gauge</td><td>tier</td><td>How often users can actually get a plan</td></tr>
+<tr><td><code>marum_snapshot_age_days</code></td><td>histogram</td><td>—</td><td>Whether the freshness threshold is realistic</td></tr>
+<tr><td><code>marum_allocation_confidence_total</code></td><td>counter</td><td>confidence</td><td>Estimated vs bank-confirmed splits</td></tr>
+<tr><td colspan="4" style="background:var(--soft);font-weight:650">Delivery — did the reminder arrive?</td></tr>
+<tr><td><code>marum_deliveries_total</code></td><td>counter</td><td>kind, result</td><td>The product's core promise</td></tr>
+<tr><td><code>marum_delivery_lag_seconds</code></td><td>histogram</td><td>kind</td><td>The 15-minute SLO</td></tr>
+<tr><td><code>marum_delivery_backlog</code></td><td>gauge</td><td>—</td><td>Burst absorption</td></tr>
+<tr><td><code>marum_telegram_errors_total</code></td><td>counter</td><td>code</td><td>429 vs 403 vs 5xx need different responses</td></tr>
+<tr><td><code>marum_send_throttled_total</code></td><td>counter</td><td>—</td><td>Sender at its ceiling</td></tr>
+<tr><td><code>marum_sender_is_leader</code></td><td>gauge</td><td>—</td><td>Must sum to exactly 1 across instances</td></tr>
+<tr><td colspan="4" style="background:var(--soft);font-weight:650">Scheduler, database, product</td></tr>
+<tr><td><code>marum_tick_last_success_timestamp</code></td><td>gauge</td><td>—</td><td>Dead-man switch</td></tr>
+<tr><td><code>marum_tick_duration_seconds</code></td><td>histogram</td><td>—</td><td>Tick outgrowing its interval</td></tr>
+<tr><td><code>marum_occurrences_collapsed_total</code></td><td>counter</td><td>—</td><td>Aggregation actually working (§9)</td></tr>
+<tr><td><code>marum_db_query_duration_seconds</code></td><td>histogram</td><td>query</td><td>Named sqlc queries only — a bounded set</td></tr>
+<tr><td><code>marum_db_pool</code></td><td>gauge</td><td>state</td><td>Saturation before it becomes latency</td></tr>
+<tr><td><code>marum_users_by_access_state</code></td><td>gauge</td><td>state</td><td>Trial → grace → paused funnel</td></tr>
+<tr><td><code>marum_build_info</code></td><td>gauge</td><td>version, commit</td><td>Which build is running — the only place a version appears</td></tr>
+</tbody>
+</table>
+
+<h3>11.6.2 Cardinality budget</h3>
+<p>Counted as label combinations, histograms at twelve buckets plus <code>_sum</code> and <code>_count</code>:</p>
+<table>
+<thead><tr><th style="width:46%">Group</th><th class="num">Series / instance</th><th class="num">Share</th></tr></thead>
+<tbody>
+<tr><td>Database — 40 named queries × 14</td><td class="num">563</td><td class="num">49%</td></tr>
+<tr><td>Inbox</td><td class="num">173</td><td class="num">15%</td></tr>
+<tr><td>Correctness</td><td class="num">84</td><td class="num">7%</td></tr>
+<tr><td>Go runtime — <code>contrib/runtime</code></td><td class="num">80</td><td class="num">7%</td></tr>
+<tr><td>Engine</td><td class="num">77</td><td class="num">7%</td></tr>
+<tr><td>Delivery</td><td class="num">62</td><td class="num">5%</td></tr>
+<tr><td>Webhook</td><td class="num">54</td><td class="num">5%</td></tr>
+<tr><td>HTTP server and client — <code>otelhttp</code></td><td class="num">40</td><td class="num">3%</td></tr>
+<tr><td>Scheduler, product, meta</td><td class="num">25</td><td class="num">2%</td></tr>
+<tr><td><b>Total per instance</b></td><td class="num"><b>1,158</b></td><td class="num"></td></tr>
+<tr><td><b>Two instances</b></td><td class="num"><b>2,316</b></td><td class="num">23% of the free 10,000</td></tr>
+</tbody>
+</table>
+<p>Roughly 7,700 series of headroom, and the number does not grow with users because every label is bounded. Database histograms are half the total and are the first lever if that changes — six buckets instead of twelve frees about 240 series per instance.</p>
+
+<h3>11.6.3 The version-label trap</h3>
+<div class="box stop"><span class="lbl">Do not put service.version in resource attributes</span>
+<p style="margin-bottom:.4em">Resource attributes become metric labels. Free-tier billing counts <b>active series per month</b>, so a label that changes on every deploy multiplies the whole catalogue by the number of releases:</p>
+<table style="margin:.3em 0 .5em">
+<thead><tr><th>Deploys / month</th><th class="num">Monthly active series</th><th style="width:30%">Free tier (10,000)</th></tr></thead>
+<tbody>
+<tr><td>4</td><td class="num">9,264</td><td>fits, barely</td></tr>
+<tr><td>10</td><td class="num">23,160</td><td><b>over — $6.50 per extra 1k</b></td></tr>
+<tr><td>30</td><td class="num">69,480</td><td><b>far over</b></td></tr>
+</tbody>
+</table>
+<p style="margin-bottom:0">The version belongs on <code>marum_build_info</code> — one series per build — and on spans and <b>profile tags</b>, where it is an attribute rather than a series dimension. The same reasoning bans <code>pod</code> and <code>container_id</code>; <code>service.instance.id</code> is stable per deployment slot, not per restart.</p>
+</div>
+
+<h2>11.7 Continuous profiling</h2>
+<p>Metrics say the p99 moved. Traces say which span. <b>Profiles say which function, on which line.</b> Without them every CPU or memory question ends in a guess, or in a local reproduction that does not reproduce.</p>
+<pre><code>func startProfiler(cfg Config) (*pyroscope.Profiler, error) {
+    runtime.SetMutexProfileFraction(0)   // off by default — see the type table
+    runtime.SetBlockProfileRate(0)
+
+    return pyroscope.Start(pyroscope.Config{
+        ApplicationName:   "marum",
+        ServerAddress:     cfg.PyroscopeAddr,
+        BasicAuthUser:     cfg.PyroscopeUser,
+        BasicAuthPassword: cfg.PyroscopeToken,
+        UploadRate:        60 * time.Second,   // see 11.7.2 — not the default
+        Tags: map[string]string{
+            "env":      cfg.Env,
+            "instance": cfg.InstanceID,
+            "version":  cfg.Version,   // safe here: profile tags are not metric series
+        },
+        ProfileTypes: []pyroscope.ProfileType{
+            pyroscope.ProfileCPU,
+            pyroscope.ProfileAllocObjects,
+            pyroscope.ProfileAllocSpace,
+            pyroscope.ProfileInuseObjects,
+            pyroscope.ProfileInuseSpace,
+        },
+    })
+}</code></pre>
+<table>
+<thead><tr><th style="width:24%">Profile type</th><th style="width:10%">MVP</th><th>Reason</th></tr></thead>
+<tbody>
+<tr><td>CPU</td><td><span class="pill p-mvp">On</span></td><td>Replay and the bisection solver are the only CPU-heavy paths; a regression shows here first.</td></tr>
+<tr><td>Alloc objects / space</td><td><span class="pill p-mvp">On</span></td><td>Allocation churn in schedule building is the likeliest source of GC pressure.</td></tr>
+<tr><td>In-use objects / space</td><td><span class="pill p-mvp">On</span></td><td>A leak in a long-lived process is invisible until it is an outage.</td></tr>
+<tr><td>Goroutines</td><td><span class="pill p-later">Off</span></td><td>Enable while investigating a suspected leak; the runtime goroutine metric already alerts on the symptom.</td></tr>
+<tr><td>Mutex, block</td><td><span class="pill p-later">Off</span></td><td>Both add runtime overhead and double profile volume. Temporary settings when contention is suspected — the single-leader sender makes it unlikely.</td></tr>
+</tbody>
+</table>
+
+<h3>11.7.1 Span profiles — the part that earns its keep</h3>
+<p>The profiler tags every sample with the span active at the time, so a slow span in Tempo links to the CPU profile of <i>that span</i> rather than a process-wide average. One line of wiring, already shown in §11.3:</p>
+<pre><code>otel.SetTracerProvider(otelpyroscope.NewTracerProvider(tp))</code></pre>
+<p>That turns "the plan computation was slow for this user last Tuesday" into a flame graph of exactly that computation, fourteen days later, with no reproduction.</p>
+
+<h3>11.7.2 Volume</h3>
+<p>Profiles are metered like logs and traces — 50 GB written per month on the free tier. Volume is upload interval × profile types × instances, and payload size is not knowable in advance:</p>
+<table>
+<thead><tr><th>Interval</th><th>Types</th><th>Instances</th><th class="num">Pushes / mo</th><th class="num">@10 KB</th><th class="num">@20 KB</th><th class="num">@30 KB</th></tr></thead>
+<tbody>
+<tr><td>15 s (SDK default)</td><td>5</td><td>2</td><td class="num">1,728,000</td><td class="num">17.3 GB</td><td class="num">34.6 GB</td><td class="num"><b>51.8 GB over</b></td></tr>
+<tr><td>30 s</td><td>5</td><td>2</td><td class="num">864,000</td><td class="num">8.6 GB</td><td class="num">17.3 GB</td><td class="num">25.9 GB</td></tr>
+<tr><td><b>60 s — chosen</b></td><td><b>5</b></td><td><b>2</b></td><td class="num"><b>432,000</b></td><td class="num"><b>4.3 GB</b></td><td class="num"><b>8.6 GB</b></td><td class="num"><b>13.0 GB</b></td></tr>
+<tr><td>15 s</td><td>10</td><td>2</td><td class="num">3,456,000</td><td class="num">34.6 GB</td><td class="num"><b>69.1 GB over</b></td><td class="num"><b>103.7 GB over</b></td></tr>
+</tbody>
+</table>
+<p><b>60-second uploads, five types, two instances.</b> Safe at any plausible payload size — at most 13 GB of a 50 GB allowance even if profiles are three times larger than expected. The SDK default of 15 seconds is a coin flip against the cap and buys resolution nobody needs for a service handling a few requests per second.</p>
+<p><b>Roll out by measurement, not estimate:</b> enable on one instance, read the real figure in Cost Management after 48 hours, extrapolate, then enable the second. The guardrail alert fires at 40 GB regardless.</p>
+
+<h2>11.8 Synthetic monitoring and load</h2>
+<p>Everything above observes real traffic. Two things observe its absence.</p>
+<h3>11.8.1 The synthetic check</h3>
+<p>One HTTP check, two probe locations, 60-second interval, against the authenticated status endpoint. It asserts more than a 200:</p>
+<table>
+<thead><tr><th style="width:38%">Assertion</th><th>Catches</th></tr></thead>
+<tbody>
+<tr><td>HTTP 200 within 2 s</td><td>The public path is down, or Cloudflare is not reaching the origin</td></tr>
+<tr><td><code>tick_age_seconds &lt; 300</code></td><td>The scheduler has silently stopped — the failure most likely to go unnoticed</td></tr>
+<tr><td><code>sender_leader == 1</code></td><td>Nothing is sending, or two things are</td></tr>
+<tr><td><code>oldest_pending_command_s &lt; 120</code></td><td>Commands are accepted but not applied</td></tr>
+<tr><td><code>db_reachable == true</code></td><td>The application is up but the database is not</td></tr>
+</tbody>
+</table>
+<p>The check runs from outside our infrastructure and depends on none of it. That is the point: it has to work when the thing it watches does not.</p>
+<h3>11.8.2 Load testing</h3>
+<p>k6 at phase gates rather than continuously — 500 virtual-user hours per month on the free tier, and four runs of 200 VUs for 15 minutes is about 200 of them. Scenarios are those in §9: the 09:00 quiet-hours release, a salary-day peak, 24-hour outage recovery, a mass 429 wave, and a deploy while commands and deliveries are leased.</p>
+
+<h2>11.9 Correlation in practice</h2>
+<p>Five signals are only worth their cost if moving between them is one click.</p>
+<table>
+<thead><tr><th style="width:28%">Starting point</th><th>Path</th></tr></thead>
+<tbody>
+<tr><td>A latency spike on a dashboard</td><td>Histogram exemplar → the exact trace in Tempo → its spans → <b>the flame graph for the slow span</b> → the logs of that span.</td></tr>
+<tr><td>An error alert</td><td>Alert annotation carries <code>trace_id</code> → trace → the failing span's attributes and events.</td></tr>
+<tr><td>A user quotes a correlation ID</td><td>Loki filter on structured metadata <code>correlation="cr_8f21ba"</code> → <code>trace_id</code> → the full cross-process trace.</td></tr>
+<tr><td>"This loan's balance looks wrong"</td><td><code>loan_ref</code> → Loki → every replay and allocation touching it, with the engine version that produced each.</td></tr>
+<tr><td>CPU is high but no single trace is slow</td><td>Pyroscope directly, filtered by <code>instance</code> and time window — the case traces cannot answer, and the reason profiles are on.</td></tr>
+<tr><td>Memory climbing over days</td><td>In-use space profile diffed across the period.</td></tr>
+</tbody>
+</table>
+
+<h2>11.10 Dashboards</h2>
+<table>
+<thead><tr><th style="width:22%">Dashboard</th><th>Panels</th></tr></thead>
+<tbody>
+<tr><td><b>Service health</b></td><td>Update rate by result · webhook p50/p95/p99 · command completion vs dead · backlog and oldest pending · database pool and query p99 · error-log rate</td></tr>
+<tr><td><b>Delivery</b></td><td>Reminders sent vs failed · delivery lag percentiles against the 15-minute line · backlog through the 09:00 window · Telegram errors by code · sender leadership (must equal 1) · collapse ratio</td></tr>
+<tr><td><b>Financial correctness</b></td><td>Reconciliation mismatches (target zero) · drift distribution by bucket · reliability-state mix over time · eligibility-tier mix · snapshot-age histogram · <code>accrual_overflow_total</code> (target zero)</td></tr>
+<tr><td><b>Product</b></td><td>Access-state funnel · active loans · second-payment-recorded rate — the retention signal that matters · plan computations by strategy</td></tr>
+<tr><td><b>Runtime</b></td><td>Goroutine count · heap in use and allocation rate · GC pause percentiles · scheduler latency · flame graphs linked from each panel</td></tr>
+</tbody>
+</table>
+<p>Dashboards are provisioned as JSON in <code>deploy/grafana/</code> and version-controlled. A dashboard built by hand in the UI does not survive the person who built it.</p>
+
+<h2>11.11 Alerts</h2>
+<table>
+<thead><tr><th style="width:20%">Alert</th><th style="width:27%">Condition</th><th style="width:8%">Sev</th><th style="width:45%">First action</th></tr></thead>
+<tbody>
+<tr><td>Scheduler stopped</td><td><code>time() − marum_tick_last_success_timestamp &gt; 300</code></td><td>Page</td><td>Check instance liveness and the advisory lock; a tick that never runs is silent by nature</td></tr>
+<tr><td>No sender leader</td><td><code>sum(marum_sender_is_leader) != 1</code> for 2 min</td><td>Page</td><td>Zero means nothing is sending; more than one means the rate limit is not global</td></tr>
+<tr><td>Delivery backlog</td><td><code>marum_delivery_backlog &gt; 200</code> for 15 min</td><td>Page</td><td>Split by Telegram error code; if 429-dominated, lower the global rate and let it drain</td></tr>
+<tr><td>Reminder lag</td><td>p99 <code>marum_delivery_lag_seconds &gt; 900</code></td><td>Page</td><td>The 15-minute SLO is breaking</td></tr>
+<tr><td>Command backlog</td><td><code>marum_command_oldest_pending_seconds &gt; 120</code></td><td>Page</td><td>User actions are not being applied</td></tr>
+<tr><td>Accrual overflow</td><td><code>increase(marum_accrual_overflow_total[1h]) &gt; 0</code></td><td>Page</td><td>Stop showing projections for affected loans. This must never fire</td></tr>
+<tr><td>Reconciliation mismatch</td><td><code>increase(marum_reconciliation_mismatch_total[24h]) &gt; 0</code></td><td>Page</td><td>The cache disagrees with the ledger; rebuild and find out why</td></tr>
+<tr><td>Webhook errors</td><td>error ratio &gt; 2% for 10 min</td><td>Page</td><td>Compare against the deploy annotation; roll back first, diagnose second</td></tr>
+<tr><td>Drift rising for one policy</td><td>p90 <code>marum_drift_minor</code> above threshold, 7-day window</td><td>Ticket</td><td>Disable confident planning for that allocation policy version and review it</td></tr>
+<tr><td>Series budget</td><td>active series &gt; 8,000 (80% of free)</td><td>Ticket</td><td>Something added a label. Find it before the bill does</td></tr>
+<tr><td>Profile volume</td><td>&gt; 40 GB written in a rolling month</td><td>Ticket</td><td>Raise the upload interval or drop a profile type (§11.7.2)</td></tr>
+<tr><td>Log or trace volume</td><td>&gt; 40 GB written in a rolling month</td><td>Ticket</td><td>Introduce tail sampling per 11.4.4</td></tr>
+<tr><td>Synthetic executions</td><td>&gt; 80,000 in a rolling month</td><td>Ticket</td><td>A probe or a check was added. Only one check with two probes is budgeted (§11.12.2)</td></tr>
+<tr><td>Instance count</td><td><code>count(marum_build_info) &gt; 2</code> for 1 h</td><td>Ticket</td><td>An extra instance is affordable but changes every per-instance meter — confirm it was intended</td></tr>
+</tbody>
+</table>
+<p>All alerts carry the runbook link and, where available, an exemplar <code>trace_id</code>. They route to a private Telegram channel owned by a <b>separate bot</b>: Marum's own alerting must not depend on Marum's bot token.</p>
+
+<h2>11.12 Staying inside the free tier</h2>
+<p>The plan is Grafana Cloud Free, permanently, not a starting point. With all five signals switched on it is still comfortably met — because the risk was never volume.</p>
+<div class="box ok"><span class="lbl">The finding</span><b>Volume is not the constraint. Configuration is.</b> Trace volume binds at roughly 117,000 users and log volume at 758,000. The meters that can be exceeded <i>next week</i> are tied to how many things are switched on: synthetic probes, profile upload interval, Grafana seats, and any label somebody adds.</div>
+
+<h3>11.12.1 Every metered product, decided</h3>
+<table>
+<thead><tr><th style="width:22%">Product</th><th style="width:9%">Use</th><th style="width:20%">Free allowance</th><th>Decision and reason</th></tr></thead>
+<tbody>
+<tr><td>Metrics (Mimir)</td><td><b>Yes</b></td><td>10k active series, 14 d</td><td>2,316 series across two instances, every label bounded.</td></tr>
+<tr><td>Logs (Loki)</td><td><b>Yes</b></td><td>50 GB processed / written / retained</td><td>0.33 GB written per month. Three labels only.</td></tr>
+<tr><td>Traces (Tempo)</td><td><b>Yes</b></td><td>50 GB each</td><td>2.14 GB written per month at 100% sampling.</td></tr>
+<tr><td>Profiles (Pyroscope)</td><td><b>Yes</b></td><td>50 GB each</td><td>4–13 GB at 60-second uploads with five types. Span profiles are the deepest insight available for the price.</td></tr>
+<tr><td>Synthetics</td><td><b>Yes</b></td><td>100k API executions</td><td>One check, two probes, 60 s — 86% of the allowance. See 11.12.2.</td></tr>
+<tr><td>k6</td><td><b>Yes, at gates</b></td><td>500 VUh</td><td>~200 VUh per month of burst testing.</td></tr>
+<tr><td>Grafana Alerting</td><td><b>Yes</b></td><td>Included</td><td>Rules provisioned as code; Telegram contact point on a separate bot.</td></tr>
+<tr><td>Visualization seats</td><td><b>Yes</b></td><td>3 active users</td><td>One maintainer. A fourth viewer is $8/month — share snapshots instead.</td></tr>
+<tr><td><b>Application Observability</b></td><td><b>No</b></td><td>2,232 host hours</td><td>The host-hour charge attaches to <i>using the product</i>. Grafana's billing documentation states that building your own dashboards, alerts and workflows incurs no host-hour fee — so we send OTLP, build our own, and this meter stays at zero.</td></tr>
+<tr><td>Database Observability</td><td><b>No</b></td><td>2,232 host hours</td><td>Same host-hour meter. <code>otelpgx</code> spans plus <code>marum_db_*</code> answer pool saturation and query latency without it.</td></tr>
+<tr><td>Frontend Observability</td><td><b>No</b></td><td>50k sessions</td><td>No web frontend in the MVP.</td></tr>
+<tr><td>Kubernetes Monitoring</td><td><b>No</b></td><td>host + container hours</td><td>No Kubernetes.</td></tr>
+<tr><td>IRM · Assistant</td><td><b>No</b></td><td>3 users each</td><td>Incident response for a one-person team is a Telegram channel and a runbook. Both are seat meters.</td></tr>
+</tbody>
+</table>
+
+<h3>11.12.2 The synthetics probe trap</h3>
+<div class="box warn"><span class="lbl">Each probe location counts as an execution</span>
+<p style="margin-bottom:.4em">The free allowance is 100,000 API test executions per month, which is <b>2.31 executions per minute in total</b> — across every check multiplied by every probe location. A single check that looks harmless in the UI goes over the moment a third probe is ticked:</p>
+<table style="margin:.3em 0 .5em">
+<thead><tr><th>Checks</th><th>Probes</th><th>Interval</th><th class="num">Executions / month</th><th style="width:22%">Free tier</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>1</td><td>60 s</td><td class="num">43,200</td><td>fits</td></tr>
+<tr><td>1</td><td>2</td><td>60 s</td><td class="num">86,400</td><td>fits — <b>our configuration</b></td></tr>
+<tr><td>1</td><td><b>3</b></td><td>60 s</td><td class="num">129,600</td><td><b>over</b></td></tr>
+<tr><td>2</td><td>2</td><td>60 s</td><td class="num">172,800</td><td><b>over</b></td></tr>
+</tbody>
+</table>
+<p style="margin-bottom:0"><b>Configuration:</b> one HTTP check against the authenticated status endpoint, two probe locations (one European, one other, so a single probe outage is not a false page), 60-second interval. 86,400 executions per month, 86% of the allowance, and no room for a second check — which is correct, because a second synthetic would be watching something the first already covers.</p>
+</div>
+
+<h3>11.12.3 Headroom with everything enabled</h3>
+<table>
+<thead><tr><th style="width:26%">Meter</th><th class="num" style="width:15%">Projected</th><th class="num" style="width:13%">Free</th><th class="num" style="width:9%">Used</th><th>Binds when</th></tr></thead>
+<tbody>
+<tr><td>Metric active series</td><td class="num">2,316</td><td class="num">10,000</td><td class="num">23%</td><td>A 9th instance, or an unbounded label</td></tr>
+<tr><td>Traces written</td><td class="num">2.14 GB</td><td class="num">50 GB</td><td class="num">4%</td><td>~117,000 users at full sampling</td></tr>
+<tr><td>Logs written</td><td class="num">0.33 GB</td><td class="num">50 GB</td><td class="num">&lt;1%</td><td>~758,000 users</td></tr>
+<tr><td>Profiles written</td><td class="num">4–13 GB</td><td class="num">50 GB</td><td class="num">9–26%</td><td>A shorter upload interval or extra profile types</td></tr>
+<tr><td>Synthetic executions</td><td class="num">86,400</td><td class="num">100,000</td><td class="num">86%</td><td><b>A third probe or a second check</b></td></tr>
+<tr><td>k6 virtual-user hours</td><td class="num">~200</td><td class="num">500</td><td class="num">40%</td><td>Load tests above 200 VUs run monthly</td></tr>
+<tr><td>App O11y host hours</td><td class="num">0</td><td class="num">2,232</td><td class="num">0%</td><td>Opening the Application Observability UI</td></tr>
+<tr><td>Grafana seats</td><td class="num">1</td><td class="num">3</td><td class="num">33%</td><td>A fourth person needs a login</td></tr>
+</tbody>
+</table>
+<p>Two meters sit near their ceiling and both are configuration, not growth. Everything driven by user count has two to three orders of magnitude of headroom.</p>
+
+<h3>11.12.4 The rules that keep it free</h3>
+<ol>
+<li><b>No unbounded metric label, ever.</b> Reviewed on every pull request; <code>service.version</code> stays out of resource attributes (§11.6.3).</li>
+<li><b>One synthetic check, at most two probes, 60-second interval.</b> Changing any of the three means redoing the arithmetic.</li>
+<li><b>Profiles upload every 60 seconds, five types.</b> Shorter intervals and the mutex, block and goroutine types are temporary investigation settings, reverted afterwards.</li>
+<li><b>Never open the Application Observability UI.</b> Using it starts a host-hour meter that sending OTLP alone does not.</li>
+<li><b>Host-hour products stay off</b> — Database Observability and Kubernetes Monitoring for the same reason.</li>
+<li><b>Two application instances.</b> A third is affordable on every meter; a fourth needs the budget re-checked.</li>
+<li><b>Nothing important lives only in Grafana.</b> Retention is 14 days — incident write-ups, drift investigations and golden fixtures are copied into the repository.</li>
+<li><b>Alert at 80% of every meter</b> (§11.11), so the first sign is a ticket rather than an invoice.</li>
+</ol>
+
+<h3>11.12.5 What would actually force Pro</h3>
+<p>In the order they are likely to arrive: a <b>fourth person</b> needing a Grafana login ($8/month), <b>metric retention beyond 14 days</b> to compare this quarter's drift against last quarter's, or an <b>uptime SLA</b> becoming a commitment to paying customers. None is a volume problem and none arrives before Phase 4.</p>
+<p>Pro is $19/month plus usage. If it becomes necessary the cost is small — but it should be a chosen upgrade, not an overage discovered in a bill, which is the purpose of 11.12.3 and the guardrail alerts.</p>
+
+<h1 id="s12">12 · Release and migration</h1>
+<ol>
+<li><b>Expand.</b> Additive migration, compatible with the running binary.</li>
+<li><b>Verify.</b> CI runs the <i>previous</i> release's integration suite against the expanded schema. This matters more than <code>up → down → up</code>.</li>
+<li><b>Deploy</b> dual-schema code.</li>
+<li><b>Smoke</b> in production: webhook echo, tick, replay, claim queries, database round trip.</li>
+<li><b>Backfill</b> in a separate idempotent, resumable, observable job — never inside a migration.</li>
+<li><b>Switch</b> reads and writes.</li>
+<li><b>Contract</b> in a later release, once nothing reads the old representation.</li>
+</ol>
+<p>Binary rollback never requires a schema rollback. Immutable financial data is never mechanically rewritten without a versioned migration report and a replay comparison. Production and the cloud test environment share a binary, a PostgreSQL major version and a migration path; the test environment exists with its own bot token and database before public beta.</p>
+
+<h1 id="s13">13 · Roadmap</h1>
+<table>
+<thead><tr><th style="width:8%">Phase</th><th style="width:30%">Scope</th><th>Exit gate</th></tr></thead>
+<tbody>
+<tr><td><b>0</b></td><td>Collect contracts and official schedules; document lender policies</td><td>Ten schedules, four lenders, supported behaviours confirmed to the dram</td></tr>
+<tr><td><b>1</b></td><td>Money and date engine, dated solver, snapshots, immutable events, replay, allocation versions</td><td>Golden and property tests pass; late-event and reconciliation cases proven</td></tr>
+<tr><td><b>2</b></td><td>Durable inbox, conversation state, one loan, reminders, payment recording, export and erasure</td><td>Ten beta users, two cycles, no lost commands, every discrepancy resolved</td></tr>
+<tr><td><b>3</b></td><td>Multiple loans; highest-rate-first, smallest-balance-first, selected-loan, custom</td><td>Real portfolio comparisons reviewed; 10× burst test passes</td></tr>
+<tr><td><b>4</b></td><td>Test environment, Telegram Stars event ledger, entitlement derivation, trial lifecycle</td><td>Purchase, renewal, refund, cancellation, chargeback, duplicate and out-of-order cases proven</td></tr>
+<tr><td><b>5</b></td><td>Carried-cash fee-aware optimiser, further repayment types, effective rate</td><td>Driven by real contracts and repeated demand; brute-force comparison on small portfolios</td></tr>
+</tbody>
+</table>
+
+<h1 id="s14">14 · Open questions</h1>
+<table>
+<thead><tr><th style="width:46%">Question</th><th style="width:12%">Needed by</th><th>Why it blocks</th></tr></thead>
+<tbody>
+<tr><td>Day count and rounding behaviour per lender and product</td><td>Phase 1</td><td>Changes every schedule row</td></tr>
+<tr><td>Payment allocation order per product</td><td>Phase 1</td><td>Decides whether Marum may derive state at all</td></tr>
+<tr><td>What a balance's <code>as_of</code> date includes — same-day transactions or not</td><td>Phase 1</td><td>Defines the replay boundary</td></tr>
+<tr><td>Whether excess payments reduce principal, advance instalments, or need a request</td><td>Phase 2</td><td>Decides whether savings may be shown</td></tr>
+<tr><td>Freshness threshold for a confirmed balance</td><td>Phase 2</td><td>Controls when plans become indicative</td></tr>
+<tr><td>Legal retention for subscription records after erasure</td><td>Phase 4</td><td>Changes erasure semantics</td></tr>
+<tr><td>Telegram Stars net proceeds and subscription event behaviour</td><td>Phase 4</td><td>Required for pricing and entitlement design</td></tr>
+</tbody>
+</table>
+
+<h1 id="s15">15 · Acceptance</h1>
+<p>Not ready for public beta until every line is true.</p>
+<div class="two">
+<div>
+<ul>
+<li>Durable inbox survives crash-after-ack</li>
+<li>A repeated update produces one financial event</li>
+<li>Facts are immutable under the application role</li>
+<li>Anchor plus active events rebuilds state exactly</li>
+<li>Late pre-snapshot events cannot double-count</li>
+<li>Allocations supersede without rewriting history</li>
+<li>Every event ties to a contract version</li>
+<li>Stale or unsupported state cannot produce a confident plan</li>
+<li>Accrual is exact for an 80,000,000 AMD loan over 31 days</li>
+</ul>
+</div>
+<div>
+<ul>
+<li>Ten real schedules from four lenders match to the dram</li>
+<li>Occurrences aggregate into one delivery where appropriate</li>
+<li>A dead delivery releases its occurrences</li>
+<li>Command and delivery leases use fencing tokens</li>
+<li>Sender leadership stops on lock loss</li>
+<li>The duplicate-message failpoint is tested and accepted</li>
+<li>10× burst and outage recovery meet the reminder SLO</li>
+<li>PITR and logical restore drills pass</li>
+<li>Restore does not resurrect erased accounts</li>
+<li>Erasure preserves <code>telegram_update_id</code> uniqueness</li>
+<li>Export and erasure work without payment</li>
+<li>One trace covers webhook → command → reply</li>
+<li>No log line contains an amount or a chat ID</li>
+<li>Active series stay under 8,000</li>
+<li>Grafana Cloud usage stays inside every free-tier meter</li>
+</ul>
+</div>
+</div>
+
+<hr>
+<p class="small"><b>Marum — MVP system and architecture design v1.0, 26 August 2026.</b> Detailed schema, rationale and revision history in <code>docs/Marum-Reliable-MVP-Design.md</code> v0.3.1; coding conventions in <code>docs/engineering-guide.md</code>. Marum provides calculations and organisational tools. It does not lend, recommend lenders, refinance, access accounts, move money, or guarantee savings. The lender's agreement and official schedule always take precedence.</p>
+
+</body>
+</html>

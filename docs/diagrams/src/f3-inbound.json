@@ -1,0 +1,25 @@
+{
+  "title": "Durable inbound path",
+  "participants": [
+    {"id": "tg", "label": "Telegram"},
+    {"id": "w", "label": "Webhook"},
+    {"id": "db", "label": "PostgreSQL"},
+    {"id": "c", "label": "Command worker"},
+    {"id": "s", "label": "Sender"}
+  ],
+  "messages": [
+    {"from": "tg", "to": "w", "label": "update (secret-token header)"},
+    {"from": "w", "to": "w", "label": "validate, bound, normalise to a command"},
+    {"from": "w", "to": "db", "label": "INSERT ON CONFLICT (telegram_update_id) DO NOTHING"},
+    {"from": "db", "to": "w", "label": "commit", "return": true},
+    {"from": "w", "to": "tg", "label": "200 OK — only after durable commit", "return": true},
+    {"note": "Crash before this point: Telegram retries. Crash after: the command is already durable.", "over": "w"},
+    {"from": "c", "to": "db", "label": "lease command (fencing token)"},
+    {"from": "c", "to": "c", "label": "apply effect: event, allocation, state, occurrences"},
+    {"from": "c", "to": "db", "label": "one transaction; complete command with the same token"},
+    {"note": "No Telegram call inside this transaction (R8)", "over": "c"},
+    {"from": "s", "to": "db", "label": "claim reply delivery"},
+    {"from": "s", "to": "tg", "label": "sendMessage"},
+    {"from": "s", "to": "db", "label": "mark sent + message_id"}
+  ]
+}
