@@ -140,7 +140,7 @@ jobs:
       # node_modules. wrangler-action does not install anything, so without this
       # the build fails on `Could not resolve "@cloudflare/containers"` -- and it
       # fails at deploy time, after the migration has already been applied.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
