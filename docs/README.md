@@ -24,6 +24,7 @@ explain why the code is shaped the way it is.
 | Document | Covers |
 | --- | --- |
 | [Local development](operations/local-development.md) | Getting running, every make target, the demo data |
+| [Environments](operations/environments.md) | dev and production: what differs, what is enforced, what to set |
 | [Releasing](operations/releases.md) | Versioning, tags, the release pipeline |
 | [Deployment](operations/deployment.md) | Cloudflare setup, secrets, the deploy order |
 | [Runbooks](operations/runbooks.md) | What to do when something is wrong |
