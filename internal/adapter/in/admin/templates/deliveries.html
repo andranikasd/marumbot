@@ -1,0 +1,30 @@
+{{define "content"}}
+<h1>Delivery outbox</h1>
+<p class="lead">
+  Reminders and replies waiting to reach Telegram. Delivery is at-least-once: a message accepted by
+  Telegram but not marked locally will be sent again, which is why reminder text reads correctly twice.
+</p>
+<div class="panel">
+  <div class="hd">{{len .Rows}} most recent</div>
+  {{if .Rows}}
+  <table>
+    <thead><tr><th>Kind</th><th>Status</th><th class="num">Priority</th><th>Scheduled</th>
+      <th>Next attempt</th><th class="num">Attempts</th><th class="num">Message</th><th>Sent</th><th>Error</th></tr></thead>
+    <tbody>{{range .Rows}}
+      <tr>
+        <td>{{.Kind}}</td>
+        <td><span class="tag {{status .Status}}">{{.Status}}</span></td>
+        <td class="num">{{.Priority}}</td>
+        <td>{{stamp .ScheduledAt}}</td>
+        <td>{{stamp .NextAttempt}}</td>
+        <td class="num">{{.Attempts}}</td>
+        <td class="num mono">{{if .MessageID}}{{.MessageID}}{{else}}—{{end}}</td>
+        <td>{{if .SentAt}}{{stamp .SentAt}}{{else}}<span class="t-mute">—</span>{{end}}</td>
+        <td class="mono">{{if .LastError}}{{.LastError}}{{else}}—{{end}}</td>
+      </tr>
+    {{end}}</tbody>
+  </table>
+  {{else}}<div class="empty">Nothing queued.</div>{{end}}
+</div>
+{{end}}
+{{template "layout" .}}

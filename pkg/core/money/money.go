@@ -56,16 +56,48 @@ func (a Amount) Sign() int {
 	return 0
 }
 
+// String renders the amount for a human.
+//
+// Sub-units are shown only when the currency actually circulates them: AMD has
+// two decimal places on paper but the luma is obsolete and lenders settle in
+// whole drams, so "1,740,927 AMD" is what a borrower recognises and
+// "1740927.00 AMD" is noise. A value that is not a whole settlement unit keeps
+// its digits, because hiding them would hide a rounding bug.
 func (a Amount) String() string {
 	scale := pow10(a.cur.Exponent)
-	whole, freq := a.minor/scale, a.minor%scale
-	if freq < 0 {
-		freq = -freq
+	minor := a.minor
+	sign := ""
+	if minor < 0 {
+		sign, minor = "-", -minor
 	}
-	if a.cur.Exponent == 0 {
-		return fmt.Sprintf("%d %s", whole, a.cur.Code)
+	whole, frac := minor/scale, minor%scale
+
+	unit := a.cur.SettlementUnit
+	if unit < 1 {
+		unit = 1
 	}
-	return fmt.Sprintf("%d.%0*d %s", whole, int(a.cur.Exponent), freq, a.cur.Code)
+	if a.cur.Exponent == 0 || (unit > 1 && frac == 0) {
+		return fmt.Sprintf("%s%s %s", sign, group(whole), a.cur.Code)
+	}
+	return fmt.Sprintf("%s%s.%0*d %s", sign, group(whole), int(a.cur.Exponent), frac, a.cur.Code)
+}
+
+// group inserts thin thousands separators. A seven-digit balance is unreadable
+// without them, and a misread balance is the failure this product exists to
+// prevent.
+func group(n int64) string {
+	s := fmt.Sprintf("%d", n)
+	if len(s) <= 3 {
+		return s
+	}
+	var out []byte
+	for i, c := range []byte(s) {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			out = append(out, ',')
+		}
+		out = append(out, c)
+	}
+	return string(out)
 }
 
 // mustMatch panics on a currency mismatch. Mixing currencies is a bug in the

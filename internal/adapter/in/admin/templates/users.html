@@ -1,0 +1,26 @@
+{{define "content"}}
+<h1>Users</h1>
+<p class="lead">Internal identities only. Telegram identifiers live encrypted in a separate table and are never shown here.</p>
+<div class="panel">
+  <div class="hd">{{len .Rows}} users</div>
+  {{if .Rows}}
+  <table>
+    <thead><tr><th>ID</th><th>Access</th><th>Locale</th><th>Timezone</th>
+      <th class="num">Loans</th><th>Trial ends</th><th>Created</th><th>Deleted</th></tr></thead>
+    <tbody>{{range .Rows}}
+      <tr>
+        <td class="mono">{{short .ID}}</td>
+        <td><span class="tag {{access .AccessState}}">{{.AccessState}}</span></td>
+        <td>{{.Locale}}</td>
+        <td>{{.Timezone}}</td>
+        <td class="num">{{.LoanCount}}</td>
+        <td>{{date .TrialEndsAt}}</td>
+        <td>{{date .CreatedAt}}</td>
+        <td>{{if .DeletedAt}}<span class="tag t-stop">{{date .DeletedAt}}</span>{{else}}<span class="t-mute">—</span>{{end}}</td>
+      </tr>
+    {{end}}</tbody>
+  </table>
+  {{else}}<div class="empty">No users yet.</div>{{end}}
+</div>
+{{end}}
+{{template "layout" .}}

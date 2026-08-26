@@ -1,0 +1,77 @@
+{{define "content"}}
+<h1>Allocation policies</h1>
+<p class="lead">
+  Where a lender applies a payment, and what it does with money paid beyond what is owed.
+  Every policy is read off a real contract or schedule. A loan with no policy is not a failure:
+  it records payments and asks for a bank-confirmed balance instead of deriving one.
+</p>
+
+{{if .Notice}}<div class="note ok">{{.Notice}}</div>{{end}}
+{{if .Error}}<div class="note bad">{{.Error}}</div>{{end}}
+
+<div class="panel">
+  <div class="hd">{{len .Rows}} recorded</div>
+  {{if .Rows}}
+  <table>
+    <thead><tr><th>Key</th><th class="num">Version</th><th>Excess rule</th><th>Order</th><th>Source</th><th>Added</th></tr></thead>
+    <tbody>{{range .Rows}}
+      <tr>
+        <td class="mono">{{.Key}}</td>
+        <td class="num">{{.Version}}</td>
+        <td><span class="tag {{excess .ExcessRule}}">{{.ExcessRule}}</span></td>
+        <td class="mono">{{order .Definition}}</td>
+        <td>{{.Source}}</td>
+        <td>{{date .CreatedAt}}</td>
+      </tr>
+    {{end}}</tbody>
+  </table>
+  {{else}}<div class="empty">No policies yet. Every loan will ask for a bank balance after each payment until one is recorded.</div>{{end}}
+</div>
+
+<div class="panel">
+  <div class="hd">Record a policy</div>
+  <div class="bd">
+    <form method="post" action="/policies" class="stack">
+      <div>
+        <label for="policy_key">Key</label>
+        <input id="policy_key" name="policy_key" type="text" placeholder="ineco-consumer" required>
+        <div class="hint">Lender and product, lowercase. One key may have several versions.</div>
+      </div>
+      <div>
+        <label for="version">Version</label>
+        <input id="version" name="version" type="number" value="1" min="1">
+      </div>
+      <div>
+        <label>Settlement order</label>
+        <div class="checks">
+          <label><input type="checkbox" name="order" value="penalties" checked> penalties</label>
+          <label><input type="checkbox" name="order" value="overdue_fees" checked> overdue fees</label>
+          <label><input type="checkbox" name="order" value="unpaid_interest" checked> unpaid interest</label>
+          <label><input type="checkbox" name="order" value="current_fees" checked> current fees</label>
+          <label><input type="checkbox" name="order" value="accrued_interest" checked> accrued interest</label>
+          <label><input type="checkbox" name="order" value="overdue_principal" checked> overdue principal</label>
+          <label><input type="checkbox" name="order" value="principal" checked> principal</label>
+        </div>
+        <div class="hint">The order buckets are settled in. Ticked boxes are read top to bottom.</div>
+      </div>
+      <div>
+        <label for="excess_rule">Money beyond what is owed</label>
+        <select id="excess_rule" name="excess_rule">
+          <option value="reduce_principal">reduces principal immediately</option>
+          <option value="hold_as_advance">is held as a future instalment</option>
+          <option value="requires_bank_request">does nothing until a request is filed</option>
+          <option value="unknown">unknown — do not derive a balance</option>
+        </select>
+        <div class="hint">Choosing the wrong one invents an interest saving that never happened.</div>
+      </div>
+      <div>
+        <label for="source">Read from</label>
+        <input id="source" name="source" type="text" placeholder="clause 4.3 of the 2026 consumer agreement" required>
+        <div class="hint">A policy with no source is a guess, and guesses do not belong here.</div>
+      </div>
+      <div><button type="submit">Record policy</button></div>
+    </form>
+  </div>
+</div>
+{{end}}
+{{template "layout" .}}

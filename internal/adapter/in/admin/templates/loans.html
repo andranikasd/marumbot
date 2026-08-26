@@ -1,0 +1,31 @@
+{{define "content"}}
+<h1>Loans</h1>
+<p class="lead">Every loan, with the reliability its derived state carries. Blocked loans still receive reminders; they just produce no projection.</p>
+<div class="panel">
+  <div class="hd">{{len .Rows}} loans</div>
+  {{if .Rows}}
+  <table>
+    <thead><tr>
+      <th>Name</th><th>Lender</th><th>Cur</th><th class="num">Principal</th>
+      <th>As of</th><th>Reliability</th><th class="num">Events</th><th class="num">Snapshots</th><th>Created</th>
+    </tr></thead>
+    <tbody>
+    {{range .Rows}}
+      <tr>
+        <td><a href="/loans/{{.ID}}">{{.Name}}</a></td>
+        <td>{{if .Lender}}{{.Lender}}{{else}}<span class="t-mute">—</span>{{end}}</td>
+        <td class="mono">{{.Currency}}</td>
+        <td class="num">{{if .PrincipalMinor}}{{minor .PrincipalMinor .Currency}}{{else}}—{{end}}</td>
+        <td>{{if .BalanceAsOf}}{{date .BalanceAsOf}}{{else}}<span class="t-mute">never replayed</span>{{end}}</td>
+        <td>{{if .Reliability}}<span class="tag {{reliability .Reliability}}">{{.Reliability}}</span>{{else}}<span class="tag t-mute">no state</span>{{end}}</td>
+        <td class="num">{{.EventCount}}</td>
+        <td class="num">{{.SnapshotCount}}</td>
+        <td>{{date .CreatedAt}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}<div class="empty">No loans yet. Run <code>make seed</code> for a worked example.</div>{{end}}
+</div>
+{{end}}
+{{template "layout" .}}

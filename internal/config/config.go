@@ -14,10 +14,10 @@ import (
 )
 
 type Config struct {
-	Env             string        // dev | test | prod
-	Mode            string        // polling | webhook
-	Addr            string        // public HTTP listener
-	AdminAddr       string        // private admin listener
+	Env             string // dev | test | prod
+	Mode            string // polling | webhook
+	Addr            string // public HTTP listener
+	AdminAddr       string // private admin listener
 	DatabaseURL     string
 	BotToken        string
 	WebhookSecret   string

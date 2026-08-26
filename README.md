@@ -16,12 +16,12 @@ the same inputs always produce the same answer.
 ## Status
 
 **Phase 1 — building the calculation engine.** Nothing is deployed and there is
-no public bot yet.
+no public bot yet. The engine, the schema and the admin interface run locally.
 
 | Phase | Scope | State |
 | --- | --- | --- |
 | 0 | Collect real Armenian schedules and lender policies | Not started |
-| **1** | **Money, dates, dated accrual, ledger replay** | **In progress** |
+| **1** | **Money, dates, dated accrual, ledger replay** | **Engine done; solver and golden corpus next** |
 | 2 | Durable Telegram inbox, one loan, reminders, payment recording | Not started |
 | 3 | Multiple loans, repayment strategies | Not started |
 | 4 | Test environment, Telegram Stars, entitlements | Not started |
@@ -38,11 +38,15 @@ Requires Docker with the Compose plugin. No local Go toolchain is needed —
 everything builds and tests inside a container.
 
 ```bash
-cp .env.example .env        # add a Telegram bot token from @BotFather
-make up                     # postgres + marum, in polling mode
-make test                   # unit + golden tests, race detector on
-make logs                   # follow the application log
+cp .env.example .env             # add a Telegram bot token from @BotFather
+make admin-password              # prints a hash for MARUM_ADMIN_PASSWORD_HASH
+make up                          # postgres + marum, in polling mode
+make migrate                     # apply the schema
+make seed                        # demo data, so the admin interface has something to show
+make test                        # unit tests, race detector on
 ```
+
+Then open <http://127.0.0.1:8081> and sign in with the password you hashed.
 
 The bot runs in **long-polling** mode locally, so no public URL or tunnel is
 required. Production uses webhooks; everything below the transport is the same
@@ -144,6 +148,26 @@ docs/diagrams/build.sh && docs/design/build.sh
 
 ---
 
+## Admin interface
+
+A private, server-rendered interface on `127.0.0.1:8081` for the operator. It is
+read-mostly: the overview, every loan with its contract versions, bank snapshots
+and ledger, users, the command inbox, the delivery outbox and reconciliation
+drift.
+
+The one write it exists for is **recording a lender's allocation policy** —
+where a payment settles first, and what happens to money paid beyond what is
+owed. That is read off a real contract by a person, and there is no other
+surface that can capture it. A loan with no policy still records payments; it
+just asks for a bank-confirmed balance instead of deriving one.
+
+Security is deliberately plain: one operator, PBKDF2-hashed password, an
+HMAC-signed session cookie derived from that hash so changing the password
+invalidates every session, failed-attempt backoff, a strict Content Security
+Policy, and no third-party asset of any kind. **Without
+`MARUM_ADMIN_PASSWORD_HASH` the interface does not start**, so a misconfigured
+deployment has no admin interface rather than an open one.
+
 ## Development
 
 ```bash
@@ -152,6 +176,7 @@ make down        # stop everything, keep the volume
 make reset       # stop and destroy the database volume
 make test        # go test ./... -race
 make lint        # gofumpt + golangci-lint
+make seed        # load demo data
 make migrate     # apply pending migrations
 make migrate-check  # prove the newest migration is reversible: up, down, up
 make shell       # psql into the local database

@@ -1,0 +1,45 @@
+{{define "content"}}
+<h1>Overview</h1>
+<p class="lead">Everything the system currently holds, and whether the parts that must keep moving are moving.</p>
+
+{{if not .Health.DatabaseOK}}
+<div class="note bad">Database unreachable: {{.Health.DatabaseError}}</div>
+{{end}}
+
+<h2>Ledger</h2>
+<div class="cards">
+  <div class="card"><div class="n">{{.O.Users}}</div><div class="k">users</div></div>
+  <div class="card"><div class="n">{{.O.Loans}}</div><div class="k">active loans</div></div>
+  <div class="card"><div class="n">{{.O.Events}}</div><div class="k">ledger events</div></div>
+  <div class="card"><div class="n">{{.O.Snapshots}}</div><div class="k">bank snapshots</div></div>
+  <div class="card"><div class="n">{{.O.Policies}}</div><div class="k">allocation policies</div></div>
+</div>
+
+<h2>Work in flight</h2>
+<div class="cards">
+  <div class="card {{if gt .O.CommandsPending 50}}alert{{end}}">
+    <div class="n">{{.O.CommandsPending}}</div><div class="k">commands pending</div></div>
+  <div class="card {{if gt .O.OldestCommandAgeS 120}}alert{{end}}">
+    <div class="n">{{duration .O.OldestCommandAgeS}}</div><div class="k">oldest pending command</div></div>
+  <div class="card {{if gt .O.CommandsDead 0}}alert{{end}}">
+    <div class="n">{{.O.CommandsDead}}</div><div class="k">commands dead</div></div>
+  <div class="card {{if gt .O.DeliveriesPending 200}}alert{{end}}">
+    <div class="n">{{.O.DeliveriesPending}}</div><div class="k">deliveries pending</div></div>
+  <div class="card {{if gt .O.OldestDeliveryAgeS 900}}alert{{end}}">
+    <div class="n">{{duration .O.OldestDeliveryAgeS}}</div><div class="k">oldest pending delivery</div></div>
+  <div class="card {{if gt .O.DeliveriesDead 0}}alert{{end}}">
+    <div class="n">{{.O.DeliveriesDead}}</div><div class="k">deliveries dead</div></div>
+  <div class="card"><div class="n">{{.O.OccurrencesScheduled}}</div><div class="k">reminders scheduled</div></div>
+</div>
+
+<h2>System</h2>
+<div class="panel"><div class="bd">
+  <dl class="kv">
+    <dt>Database</dt><dd>{{if .Health.DatabaseOK}}<span class="tag t-ok">reachable</span>{{else}}<span class="tag t-stop">unreachable</span>{{end}}</dd>
+    <dt>Schema version</dt><dd class="mono">{{.Health.MigrationVersion}}</dd>
+    <dt>Environment</dt><dd>{{.Env}}</dd>
+    <dt>Build</dt><dd class="mono">{{.Version}}</dd>
+  </dl>
+</div></div>
+{{end}}
+{{template "layout" .}}
