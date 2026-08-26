@@ -1,0 +1,34 @@
+name: marum
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: marum
+      POSTGRES_PASSWORD: marum
+      POSTGRES_DB: marum
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marum -d marum"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  marum:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    depends_on:
+      postgres: {condition: service_healthy}
+    env_file: [.env]
+    environment:
+      MARUM_DATABASE_URL: postgres://marum:marum@postgres:5432/marum?sslmode=disable
+    # Bound to loopback: neither port is meant to be reachable from the network.
+    ports:
+      - "127.0.0.1:8080:8080"   # health, readiness, status
+      - "127.0.0.1:8081:8081"   # private admin interface
+    restart: unless-stopped
+
+volumes:
+  pgdata:
