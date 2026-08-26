@@ -151,7 +151,7 @@ jobs:
 
       # 2. Deploy the code that reads both the old and the new schema.
       - name: Deploy Worker and container
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -201,7 +201,7 @@ jobs:
       #    which is safe precisely because it is backward compatible.
       - name: Roll back on failure
         if: failure() && steps.smoke.outcome == 'failure'
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
