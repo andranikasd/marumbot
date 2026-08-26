@@ -21,6 +21,20 @@ tested without a socket.
 The container runs the same image as `make up`. Nothing about the application
 is Cloudflare-shaped, so the self-hosting path stays real.
 
+## Two environments
+
+Everything below is done **twice**, once per environment, with different values:
+
+| | dev | production |
+| --- | --- | --- |
+| Worker | `marum-dev` | `marum` |
+| Domain | `dev.marum.am` | `marum.am` |
+| Bot | a separate @BotFather bot | the real one |
+| Database | its own | its own |
+
+Nothing is deployed to the top-level wrangler config: every deploy names an
+environment explicitly, so a stray `wrangler deploy` cannot reach production.
+
 ## One-time setup
 
 ```bash
@@ -33,19 +47,19 @@ npx wrangler login
 handshake on every wake:
 
 ```bash
-npx wrangler hyperdrive create marum-db --connection-string "$DATABASE_URL"
-# put the returned id into wrangler.toml
+npx wrangler hyperdrive create marum-dev-db  --connection-string "$DEV_DATABASE_URL"
+npx wrangler hyperdrive create marum-prod-db --connection-string "$PROD_DATABASE_URL"
+# put each returned id into the matching [[env.*.hyperdrive]] block
 ```
 
 **2. Secrets.** Never committed, never on a command line:
 
 ```bash
-npx wrangler secret put MARUM_BOT_TOKEN
-npx wrangler secret put MARUM_WEBHOOK_SECRET
-npx wrangler secret put MARUM_SERVICE_TOKEN
-npx wrangler secret put MARUM_ADMIN_PASSWORD_HASH
-npx wrangler secret put MARUM_IDENTITY_KEY
-npx wrangler secret put OTEL_EXPORTER_OTLP_HEADERS
+for s in MARUM_BOT_TOKEN MARUM_WEBHOOK_SECRET MARUM_SERVICE_TOKEN \
+         MARUM_ADMIN_PASSWORD_HASH MARUM_IDENTITY_KEY OTEL_EXPORTER_OTLP_HEADERS; do
+  npx wrangler secret put "$s" --env dev
+  npx wrangler secret put "$s" --env production
+done
 ```
 
 `MARUM_WEBHOOK_SECRET` and the bot token are the same class of credential:
@@ -63,11 +77,16 @@ curl -X POST "https://api.telegram.org/bot$TOKEN/setWebhook" \
 
 **4. GitHub repository configuration**
 
-| Kind | Name |
-| --- | --- |
-| Secret | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL`, `GRAFANA_TOKEN` |
-| Variable | `PUBLIC_URL`, `GRAFANA_URL` |
-| Environment | `staging`, `production` — put a required reviewer on production |
+Secrets and variables are set **per environment**, so dev credentials can never
+reach production by accident.
+
+| Scope | Kind | Name |
+| --- | --- | --- |
+| `dev` and `production` | Secret | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL`, `GRAFANA_TOKEN` |
+| `dev` and `production` | Variable | `PUBLIC_URL`, `GRAFANA_URL` |
+
+`production` carries a **required reviewer**; `dev` has none, because a dev
+deploy that needs a human is a dev deploy that stops happening.
 
 ## Deploying
 

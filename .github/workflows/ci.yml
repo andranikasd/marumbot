@@ -118,6 +118,25 @@ jobs:
           goose -dir migrations up
           goose -dir migrations status
 
+  edge:
+    name: Worker and wrangler config
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: deploy/cloudflare }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: deploy/cloudflare/package-lock.json }
+      - run: npm ci || npm install
+      - name: Type-check the Worker
+        run: npx tsc --noEmit
+      # A wrangler config that does not parse is otherwise only discovered at
+      # deploy time, which is the worst moment to discover it.
+      - name: Both environments resolve
+        run: |
+          npx wrangler deploy --env dev --dry-run --outdir /tmp/dev
+          npx wrangler deploy --env production --dry-run --outdir /tmp/prod
+
   image:
     name: Image builds
     runs-on: ubuntu-latest

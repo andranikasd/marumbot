@@ -1,0 +1,46 @@
+name: CD · production
+
+# Production follows a published release and nothing else, so what runs there
+# is always a tag somebody chose to publish. The environment carries a required
+# reviewer, which is where the human decision belongs.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to deploy, e.g. 0.2.1"
+        required: true
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: cd-production
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Resolve the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        run: |
+          v="${{ github.event.inputs.version }}"
+          [ -n "$v" ] || v="${GITHUB_REF_NAME#v}"
+          if ! printf '%s' "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::'$v' is not a version"; exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: version
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+      wrangler_env: production
+      version: ${{ needs.version.outputs.version }}
+    secrets: inherit

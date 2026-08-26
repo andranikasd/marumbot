@@ -1,0 +1,10 @@
+# Everything needs a review from the owner while the team is one person. The
+# value is not the second opinion; it is that nothing reaches main without
+# passing CI and being looked at once more.
+*                       @andranikasd
+
+# The parts where a mistake is expensive rather than annoying.
+/pkg/core/              @andranikasd
+/migrations/            @andranikasd
+/.github/workflows/     @andranikasd
+/deploy/cloudflare/     @andranikasd
