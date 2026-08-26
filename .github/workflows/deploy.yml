@@ -149,6 +149,25 @@ jobs:
         working-directory: deploy/cloudflare
         run: npm ci
 
+      # Rolling back is only meaningful if there is something to roll back to.
+      # On a first deploy the previous version is whatever half-configured
+      # attempt came before it, so a rollback there replaces a working release
+      # with a broken one -- which is exactly what happened the first time this
+      # pipeline went green.
+      - name: Is there a previous deployment?
+        id: prior
+        working-directory: deploy/cloudflare
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if npx wrangler deployments list --env ${{ inputs.wrangler_env }} 2>/dev/null | grep -q 'Version(s)'; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # 2. Deploy the code that reads both the old and the new schema.
       - name: Deploy Worker and container
         uses: cloudflare/wrangler-action@v4
@@ -197,10 +216,11 @@ jobs:
         id: smoke
         run: ./deploy/cloudflare/smoke.sh "${{ vars.PUBLIC_URL }}"
 
-      # 4. A failed smoke rolls the binary back. The schema stays expanded,
-      #    which is safe precisely because it is backward compatible.
+      # 4. A failed smoke rolls the binary back, but only when a previous
+      #    deployment exists. The schema stays expanded, which is safe precisely
+      #    because it is backward compatible.
       - name: Roll back on failure
-        if: failure() && steps.smoke.outcome == 'failure'
+        if: failure() && steps.smoke.outcome == 'failure' && steps.prior.outputs.exists == 'true'
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
