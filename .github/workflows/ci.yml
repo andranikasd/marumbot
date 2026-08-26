@@ -27,9 +27,11 @@ jobs:
         run: |
           go run mvdan.cc/gofumpt@v0.7.0 -l . | tee /tmp/fmt
           test ! -s /tmp/fmt
-      # v7 or later: v6 refuses golangci-lint v2 outright.
+      # v7 or later: v6 refuses golangci-lint v2 outright. The pinned version
+      # must also be built with a Go at least as new as the module targets -
+      # v2.0.2 is built with 1.24 and refuses to load a 1.25 config.
       - uses: golangci/golangci-lint-action@v7
-        with: { version: v2.0.2 }
+        with: { version: v2.13.1 }
 
   vet:
     name: Vet and vulnerabilities

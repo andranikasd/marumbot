@@ -38,8 +38,12 @@ test-short: ## Tests without the race detector
 vet: ## go vet
 	$(RUN) $(GO_ALPINE) go vet ./...
 
+# Pinned, not :latest. CI pins a version; if this floats, local and CI disagree
+# and the disagreement only surfaces in a pull request.
+GOLANGCI_VERSION := v2.13.1
+
 lint: ## gofumpt and golangci-lint
-	$(RUN) golangci/golangci-lint:latest golangci-lint run --timeout 5m
+	$(RUN) golangci/golangci-lint:$(GOLANGCI_VERSION) golangci-lint run --timeout 5m
 
 fmt: ## Format with gofumpt
 	$(RUN) $(GO_ALPINE) sh -c 'go run mvdan.cc/gofumpt@latest -l -w .'
