@@ -1,53 +1,53 @@
 name: Deploy
 
-# Deployment follows a published release, never a branch. What runs in
-# production is always a tag somebody chose to publish.
+# A reusable deployment, called by the dev and production pipelines rather than
+# triggered directly. One definition means dev genuinely rehearses production:
+# the same steps, the same order, the same smoke test.
 on:
-  release:
-    types: [published]
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      version:
-        description: "Version to deploy, e.g. 0.2.1"
-        required: true
       environment:
-        description: "Target environment"
+        description: "GitHub environment: dev or production"
         required: true
-        default: staging
-        type: choice
-        options: [staging, production]
+        type: string
+      wrangler_env:
+        description: "Wrangler environment in deploy/cloudflare/wrangler.toml"
+        required: true
+        type: string
+      version:
+        description: "Version being deployed, for the build stamp and the annotation"
+        required: true
+        type: string
+      run_migrations:
+        description: "Apply pending migrations before deploying"
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
   deployments: write
 
-concurrency:
-  group: deploy-${{ github.event.inputs.environment || 'production' }}
-  cancel-in-progress: false     # never interrupt a deploy in flight
-
 jobs:
   deploy:
-    name: Deploy to Cloudflare
+    name: ${{ inputs.environment }}
     runs-on: ubuntu-latest
     environment:
-      name: ${{ github.event.inputs.environment || 'production' }}
+      name: ${{ inputs.environment }}
       url: ${{ vars.PUBLIC_URL }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve the version
-        id: v
-        run: |
-          v="${{ github.event.inputs.version }}"
-          [ -n "$v" ] || v="${GITHUB_REF_NAME#v}"
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-
-      # 1. Expand. Additive only, and compatible with the binary still running.
+      # 1. Expand. Additive only, and compatible with the binary still running,
+      #    so the deploy that follows can be rolled back without touching data.
       - uses: actions/setup-go@v5
+        if: inputs.run_migrations
         with: { go-version: "1.25", cache: true }
       - name: Install goose
+        if: inputs.run_migrations
         run: go install github.com/pressly/goose/v3/cmd/goose@v3.24.1
       - name: Expand migration
+        if: inputs.run_migrations
         env:
           GOOSE_DRIVER: postgres
           GOOSE_DBSTRING: ${{ secrets.DATABASE_URL }}
@@ -56,16 +56,16 @@ jobs:
           goose -dir migrations up
           goose -dir migrations status
 
-      # 2. Deploy the code that reads both schemas.
+      # 2. Deploy the code that reads both the old and the new schema.
       - name: Deploy Worker and container
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: deploy/cloudflare
-          command: deploy --var VERSION:${{ steps.v.outputs.version }}
+          command: deploy --env ${{ inputs.wrangler_env }} --var VERSION:${{ inputs.version }}
 
-      # 3. Prove it works before anyone finds out it does not.
+      # 3. Prove it works before anyone else finds out it does not.
       - name: Post-deploy smoke
         id: smoke
         run: ./deploy/cloudflare/smoke.sh "${{ vars.PUBLIC_URL }}"
@@ -79,7 +79,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: deploy/cloudflare
-          command: rollback --message "post-deploy smoke failed"
+          command: rollback --env ${{ inputs.wrangler_env }} --message "post-deploy smoke failed"
 
       - name: Annotate Grafana
         if: success() && vars.GRAFANA_URL != ''
@@ -88,4 +88,4 @@ jobs:
           curl -sf -X POST "${{ vars.GRAFANA_URL }}/api/annotations" \
             -H "Authorization: Bearer ${{ secrets.GRAFANA_TOKEN }}" \
             -H 'Content-Type: application/json' \
-            -d "{\"tags\":[\"deploy\"],\"text\":\"marum ${{ steps.v.outputs.version }} deployed\"}"
+            -d "{\"tags\":[\"deploy\",\"${{ inputs.environment }}\"],\"text\":\"marum ${{ inputs.version }} → ${{ inputs.environment }}\"}"

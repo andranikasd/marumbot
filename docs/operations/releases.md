@@ -5,16 +5,36 @@ so what is running can always be traced back to a tag.
 
 ```mermaid
 flowchart LR
-  pr["Pull request"] --> ci["CI: lint, vet, vuln,<br/>tests, migrations,<br/>engine purity, image"]
+  pr["Pull request"] --> ci["CI<br/><i>lint · vet · vuln · tests<br/>migrations · engine purity<br/>image · edge config</i>"]
   ci --> main["Merge to main"]
+  main --> dev["CD · dev<br/><i>automatic</i>"]
   main --> tag["Tag vX.Y.Z"]
-  tag --> rel["Release workflow"]
-  rel --> ver["Validate SemVer<br/>and ancestry"]
-  ver --> compat["Previous release<br/>vs this schema"]
-  compat --> img["Multi-arch image<br/>SBOM + provenance"]
-  img --> gh["GitHub Release<br/>generated notes"]
-  gh --> dep["Deploy workflow"]
+  tag --> rel["Release<br/><i>validate · compat · image · notes</i>"]
+  rel --> gh["GitHub Release"]
+  gh --> prod["CD · production<br/><i>required reviewer</i>"]
 ```
+
+## Two environments
+
+| | dev | production |
+| --- | --- | --- |
+| Deploys on | every merge to `main` | a published release |
+| Approval | none | required reviewer |
+| Bot | its own | its own |
+| Domain | `dev.marum.am` | `marum.am` |
+| Version | `0.2.1-dev.a1b2c3d` | `0.2.1` |
+| Instances | 1 | 2 |
+
+**A separate bot per environment, always.** Sharing one would mean a dev deploy
+silently taking over the webhook of the bot real people are talking to.
+
+dev is not a staging rehearsal that happens occasionally — it is where `main`
+runs continuously. By the time a release is cut, the code has already been
+serving on dev, so a release is a **promotion of something already running**
+rather than a leap.
+
+The dev version is a pre-release of the next patch, so it always sorts *before*
+any real release and can never be mistaken for one.
 
 ## Versioning
 
@@ -79,7 +99,7 @@ Subject ≤ 50 characters, imperative mood, no trailing period. The body explain
 
 ## Deploying
 
-Deployment follows a **published release**, never a branch.
+Production follows a **published release**, never a branch. dev follows `main`.
 
 ```
 expand migration → deploy dual-schema code → smoke → (rollback on failure)
@@ -89,11 +109,9 @@ Rolling back the binary never requires rolling back the schema, because the
 schema only ever expanded. A destructive contract migration happens in a later
 release, once nothing reads the old representation.
 
-Trigger manually for staging:
-
-```
-Actions → Deploy → Run workflow → version 0.3.0, environment staging
-```
+Both pipelines call the same reusable workflow, so dev genuinely rehearses
+production: the same steps, the same order, the same smoke test. Re-run either
+manually from **Actions → CD · dev** or **CD · production**.
 
 ## Hotfixes
 

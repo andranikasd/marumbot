@@ -1,0 +1,33 @@
+- name: discrepancy
+  color: b60205
+  description: Marum's number disagrees with the lender's. Triaged first, always.
+- name: correctness
+  color: d93f0b
+  description: The arithmetic or the ledger is wrong
+- name: reliability
+  color: fbca04
+  description: Delivery, leases, idempotency, recovery
+- name: security
+  color: b60205
+  description: Handled privately through a security advisory
+- name: engine
+  color: 1d76db
+  description: pkg/core
+- name: bot
+  color: 1d76db
+  description: The Telegram interface
+- name: admin
+  color: 1d76db
+  description: The operator interface
+- name: observability
+  color: 0e8a16
+  description: Traces, metrics, logs, profiles
+- name: infrastructure
+  color: 5319e7
+  description: Deployment, CI, Cloudflare
+- name: docs
+  color: 0075ca
+  description: Documentation
+- name: phase-0-evidence
+  color: c5def5
+  description: Blocked on real lender contracts and schedules
