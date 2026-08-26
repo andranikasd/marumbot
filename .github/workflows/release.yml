@@ -6,11 +6,16 @@ on:
   push:
     tags: ["v*.*.*"]
 
+# A called workflow's permissions must be a SUBSET of the caller's, so the
+# deployments scope the reusable deploy needs has to be granted here too. Miss
+# it and GitHub rejects the whole file at startup rather than failing the job,
+# which is a much quieter way to break.
 permissions:
   contents: write      # create the GitHub Release
   packages: write      # push the image to GHCR
   id-token: write      # provenance attestation
   attestations: write
+  deployments: write   # required by the chained deploy
 
 env:
   GO_VERSION: "1.25"
