@@ -24,12 +24,14 @@ datasources:
     url: http://loki:3100
     jsonData:
       derivedFields:
-        # A log line carries trace_id in structured metadata; this makes it a
-        # link rather than something to copy by hand.
+        # trace_id arrives as structured metadata, which Loki exposes as a
+        # label to the matcher. This turns it into a link to the trace rather
+        # than something to copy by hand.
         - name: trace_id
           matcherType: label
           matcherRegex: trace_id
-          url: '${__value.raw}'
+          url: '$${__value.raw}'
+          urlDisplayLabel: 'View trace'
           datasourceUid: marum-tempo
 
   - name: Tempo
@@ -40,9 +42,13 @@ datasources:
     jsonData:
       tracesToLogsV2:
         datasourceUid: marum-loki
-        spanStartTimeShift: -2m
-        spanEndTimeShift: 2m
-        filterByTraceID: true
+        spanStartTimeShift: -5m
+        spanEndTimeShift: 5m
+        # A custom query, not filterByTraceID. The built-in filter greps the log
+        # LINE for the trace ID, but the trace ID is structured metadata and
+        # never appears in the message, so the built-in filter matches nothing.
+        customQuery: true
+        query: '{service_name="marum"} | trace_id = `$${__span.traceId}`'
         tags: [{ key: service.name, value: service_name }]
       tracesToProfiles:
         datasourceUid: marum-pyroscope
