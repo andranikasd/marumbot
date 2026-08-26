@@ -41,7 +41,7 @@ custom_domain = true
 
 [[env.dev.containers]]
 class_name = "MarumApp"
-image = "./../Dockerfile"
+image = "../Dockerfile"
 max_instances = 1
 instance_type = "basic"
 
@@ -75,7 +75,7 @@ custom_domain = true
 
 [[env.production.containers]]
 class_name = "MarumApp"
-image = "./../Dockerfile"
+image = "../Dockerfile"
 max_instances = 2
 instance_type = "basic"
 

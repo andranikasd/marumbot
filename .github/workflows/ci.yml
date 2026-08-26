@@ -67,7 +67,7 @@ jobs:
         run: |
           mkdir -p /tmp/purecheck && cd /tmp/purecheck
           go mod init purecheck
-          go mod edit -replace github.com/andranikasd/marumbot=$GITHUB_WORKSPACE
+          go mod edit -replace "github.com/andranikasd/marumbot=$GITHUB_WORKSPACE"
           cat > main.go <<'GO'
           package main
 
@@ -133,10 +133,13 @@ jobs:
         run: npx tsc --noEmit
       # A wrangler config that does not parse is otherwise only discovered at
       # deploy time, which is the worst moment to discover it.
+      # --containers-rollout=none: this check is about the config and the
+      # Worker bundle resolving, and the image is already built by its own job.
+      # Without it the dry run insists on building the container too.
       - name: Both environments resolve
         run: |
-          npx wrangler deploy --env dev --dry-run --outdir /tmp/dev
-          npx wrangler deploy --env production --dry-run --outdir /tmp/prod
+          npx wrangler deploy --env dev        --dry-run --containers-rollout=none --outdir /tmp/dev
+          npx wrangler deploy --env production --dry-run --containers-rollout=none --outdir /tmp/prod
 
   image:
     name: Image builds
