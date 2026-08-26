@@ -1,0 +1,22 @@
+Marum — an open-source loan repayment planner for Telegram.
+
+Copyright (C) 2026 Marum contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License along
+with this program. If not, see <https://www.gnu.org/licenses/>.
+
+--------------------------------------------------------------------------------
+
+AGPL, not GPL, is deliberate. Marum is offered as a hosted service, and section
+13 of the AGPL is what makes that honest: anyone who runs a modified Marum over
+a network must offer its source to the people using it. Plain GPLv3 does not
+reach network use, which is the only distribution model this project has.
