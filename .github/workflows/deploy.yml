@@ -136,6 +136,19 @@ jobs:
           npx wrangler secret bulk /tmp/secrets.json --env ${{ inputs.wrangler_env }}
           rm -f /tmp/secrets.json
 
+      # wrangler bundles the Worker with esbuild, which resolves imports from
+      # node_modules. wrangler-action does not install anything, so without this
+      # the build fails on `Could not resolve "@cloudflare/containers"` -- and it
+      # fails at deploy time, after the migration has already been applied.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: deploy/cloudflare/package-lock.json
+      - name: Install Worker dependencies
+        working-directory: deploy/cloudflare
+        run: npm ci
+
       # 2. Deploy the code that reads both the old and the new schema.
       - name: Deploy Worker and container
         uses: cloudflare/wrangler-action@v3
