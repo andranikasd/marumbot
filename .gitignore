@@ -8,3 +8,13 @@ deploy/terraform/.terraform/
 *.tfstate.*
 *.tfplan
 *.auto.tfvars
+
+# Neon: `neon link` writes org, project and branch IDs here, and pulls env into
+# .env alongside it.
+.neon
+
+# Agent skill bodies are vendored third-party content, reinstallable from
+# skills-lock.json with `npx skills add`. The lock file IS committed, for the
+# same reason .terraform.lock.hcl is: so everyone resolves the same version.
+.agents/
+.claude/skills/

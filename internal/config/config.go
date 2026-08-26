@@ -14,7 +14,7 @@ import (
 )
 
 type Config struct {
-	Env             string // dev | test | prod
+	Env             string // dev | prod
 	Mode            string // polling | webhook
 	Addr            string // public HTTP listener
 	AdminAddr       string // private admin listener
