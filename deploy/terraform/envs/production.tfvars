@@ -1,7 +1,7 @@
 # Non-secret shape of production.
 
 environment = "production"
-hostname    = "marum.am"
+hostname    = "marum.loan"
 
 origin_connection_limit = 20
 

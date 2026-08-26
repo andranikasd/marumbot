@@ -114,7 +114,7 @@ resource "cloudflare_r2_bucket_lifecycle" "backups" {
 # review, and TLS settings are exactly the kind that get loosened once to debug
 # something and never tightened again.
 #
-# dev.marum.am and marum.am live in ONE zone, so these settings are shared. Only
+# dev.marum.loan and marum.loan live in ONE zone, so these settings are shared. Only
 # the production state manages them; if both did, each apply would revert the
 # other and the plan would never be empty.
 # ---------------------------------------------------------------------------

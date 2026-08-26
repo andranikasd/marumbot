@@ -21,7 +21,7 @@ flowchart LR
 | Deploys on | every merge to `main` | a published release |
 | Approval | none | required reviewer |
 | Bot | its own | its own |
-| Domain | `dev.marum.am` | `marum.am` |
+| Domain | `dev.marum.loan` | `marum.loan` |
 | Version | `0.2.1-dev.a1b2c3d` | `0.2.1` |
 | Instances | 1 | 2 |
 
