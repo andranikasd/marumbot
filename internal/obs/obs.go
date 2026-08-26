@@ -81,7 +81,8 @@ func Init(ctx context.Context, cfg Config) (*Providers, error) {
 	res, err := resource.Merge(resource.Default(), resource.NewSchemaless(
 		attribute.String("service.name", cfg.ServiceName),
 		attribute.String("service.instance.id", cfg.InstanceID),
-		attribute.String("deployment.environment", cfg.Env),
+		// One environment attribute, not two: Loki indexes both the old and
+		// the new semconv spelling, which would give two labels for one fact.
 		attribute.String("deployment.environment.name", cfg.Env),
 	))
 	if err != nil {
@@ -136,10 +137,12 @@ func Init(ctx context.Context, cfg Config) (*Providers, error) {
 
 	// Logs go to stdout and to OTLP, both through the redacting handler, so
 	// there is exactly one place an amount can be stripped.
-	p.Logger = slog.New(newRedactor(newFanout(
+	// Order matters: enrich with the trace first so trace_id reaches both
+	// sinks, then redact, so nothing sensitive can be added after the strip.
+	p.Logger = slog.New(newTraceEnricher(newRedactor(newFanout(
 		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}),
 		otelslog.NewHandler(cfg.ServiceName, otelslog.WithLoggerProvider(lp)),
-	)))
+	))))
 	slog.SetDefault(p.Logger)
 
 	// Free coverage: goroutines, heap, GC pauses, scheduler latency.
@@ -197,6 +200,6 @@ func startProfiler(cfg Config, log *slog.Logger) func() error {
 }
 
 func stdoutLogger() *slog.Logger {
-	return slog.New(newRedactor(
-		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	return slog.New(newTraceEnricher(newRedactor(
+		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))))
 }

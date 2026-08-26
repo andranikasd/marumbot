@@ -155,7 +155,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	passOK := verifyPassword(s.cfg.PasswordHash, pass)
 	if !userOK || !passOK {
 		s.thr.fail(addr, s.now())
-		s.log.Warn("admin sign-in refused", "addr", addr)
+		s.log.WarnContext(r.Context(), "admin sign-in refused", "addr", addr)
 		s.render(w, r, "login.html", map[string]any{
 			"Title": "Sign in", "Error": "Those details were not accepted.",
 		})
@@ -167,7 +167,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true, SameSite: http.SameSiteStrictMode,
 		Secure: r.TLS != nil, MaxAge: int(sessionTTL.Seconds()),
 	})
-	s.log.Info("admin signed in", "addr", addr)
+	s.log.InfoContext(r.Context(), "admin signed in", "addr", addr)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
@@ -272,7 +272,7 @@ func (s *Server) addPolicy(w http.ResponseWriter, r *http.Request) {
 		redirectWith(w, r, "/policies", "error", err.Error())
 		return
 	}
-	s.log.Info("allocation policy recorded", "key", key, "version", version)
+	s.log.InfoContext(r.Context(), "allocation policy recorded", "key", key, "version", version)
 	redirectWith(w, r, "/policies", "notice", fmt.Sprintf("Recorded %s v%d.", key, version))
 }
 
@@ -314,7 +314,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, page string, dat
 	}
 	t, ok := s.pages[page]
 	if !ok {
-		s.log.Error("no such admin page", "page", page)
+		s.log.ErrorContext(r.Context(), "no such admin page", "page", page)
 		http.Error(w, "page not found", http.StatusInternalServerError)
 		return
 	}
@@ -323,7 +323,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, page string, dat
 	// otherwise leave a half-written page with a 200 already committed.
 	var buf bytes.Buffer
 	if err := t.ExecuteTemplate(&buf, page, data); err != nil {
-		s.log.Error("rendering admin page", "page", page, "err", err)
+		s.log.ErrorContext(r.Context(), "rendering admin page", "page", page, "err", err)
 		http.Error(w, "the page could not be rendered", http.StatusInternalServerError)
 		return
 	}
@@ -333,7 +333,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, page string, dat
 // fail shows the operator what broke. This interface has one user, who is also
 // the person who would read the log, so hiding the detail helps nobody.
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
-	s.log.Error("admin request failed", "path", r.URL.Path, "err", err)
+	s.log.ErrorContext(r.Context(), "admin request failed", "path", r.URL.Path, "err", err)
 	w.WriteHeader(http.StatusInternalServerError)
 	s.render(w, r, "error.html", map[string]any{"Title": "Something broke", "Err": err.Error()})
 }
