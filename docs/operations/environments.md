@@ -71,3 +71,9 @@ git push origin v0.2.0
 ```
 
 Then approve the production deployment when the workflow asks.
+
+The deploy is chained from the release pipeline rather than triggered by the
+release event. A release published by `GITHUB_TOKEN` does not trigger further
+workflows — GitHub's recursion guard — so `on: release: published` never fires
+for a release the pipeline creates. Chaining keeps the approval gate: the
+`production` environment requires a reviewer, so the job waits.

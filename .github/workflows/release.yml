@@ -172,3 +172,21 @@ jobs:
           prerelease: ${{ needs.verify.outputs.prerelease }}
           generate_release_notes: false
           fail_on_unmatched_files: true
+
+  # The production deploy is chained here rather than left to the release event.
+  #
+  # A release published by GITHUB_TOKEN does not trigger further workflows -
+  # GitHub's recursion guard - so `on: release: published` never fires for a
+  # release this pipeline creates, and production would silently never deploy.
+  #
+  # Chaining keeps the human gate exactly where it belongs: the production
+  # environment carries a required reviewer, so this job waits for approval
+  # rather than proceeding on its own.
+  deploy:
+    needs: [verify, release]
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+      wrangler_env: production
+      version: ${{ needs.verify.outputs.version }}
+    secrets: inherit
