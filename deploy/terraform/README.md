@@ -115,26 +115,36 @@ Switching environments **requires re-running `init`** with the other backend
 config. Terraform will otherwise keep using the state file it initialised with,
 and a `dev` apply against `production` state is a bad afternoon.
 
-### After the first apply
+### The Hyperdrive binding is never pasted by hand
+
+`wrangler.toml` keeps a `set-after-creating-…` placeholder on purpose. The
+deploy workflow applies Terraform, reads `hyperdrive_id` from the output, and
+writes it into the file just before `wrangler deploy`.
+
+That keeps the ID out of git, where it would go stale the moment an environment
+was rebuilt, and removes the one manual step that every environment needs and
+nobody remembers. To see the value locally:
 
 ```bash
-terraform output -raw wrangler_hint
+make tf-output ENV=dev
 ```
-
-Paste the result into `deploy/cloudflare/wrangler.toml`, replacing the
-`set-after-creating-…` placeholder for that environment. The ID is stable across
-applies; this is a one-time step per environment.
 
 ## In CI
 
-The `Infrastructure` workflow plans both environments on every pull request that
-touches this directory and comments the result. It never applies automatically.
+Two paths, on purpose.
 
-To apply, run the workflow manually — **Actions → Infrastructure → Run
-workflow** — and choose the environment and `apply`. The `production`
-environment requires an approver, so the run pauses until a person has read the
-plan. The plan is saved to a file and `apply` is given that file, so the change
-that was approved is the change that runs.
+**Every deploy applies.** `deploy.yml` runs `terraform apply` for its
+environment before it touches the Worker, so infrastructure and code can never
+drift apart and no deploy can reach for a Hyperdrive config that does not exist.
+The approval gate has not gone anywhere: it sits on the GitHub environment that
+wraps the whole deploy job, so production still waits for a reviewer and dev
+deliberately does not.
+
+**Every pull request plans.** The `Infrastructure` workflow plans both
+environments on any change under this directory and comments the result, which
+is where an infrastructure change should actually be read. It can also apply on
+a manual run — **Actions → Infrastructure → Run workflow** — as an escape hatch
+for changing infrastructure without shipping code.
 
 These are **repository** secrets, not environment ones, and every name is
 prefixed `TF_`:

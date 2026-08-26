@@ -168,7 +168,7 @@ make test / test-short / lint / vet / fmt
 make migrate / migrate-down / migrate-status / migrate-check
 make seed / shell / admin-password
 make load / grafana
-make tf-plan ENV=dev / tf-apply ENV=dev / tf-output ENV=dev
+make tf-plan ENV=dev / tf-apply ENV=dev / tf-output ENV=dev   # deploys apply automatically
 ```
 
 All targets run inside containers.

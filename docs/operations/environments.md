@@ -72,9 +72,26 @@ both gates restrict which refs may deploy. A plan job declaring one is refused o
 every pull request, which is exactly the moment the plan is wanted. The gate sits
 on `apply` instead.
 
-Everything the application itself reads is a **Cloudflare** secret, set with
-`wrangler secret put NAME --env dev|production`, never a GitHub one. GitHub only
-needs what the pipeline uses.
+Everything the application itself reads is also a GitHub environment secret, and
+the deploy workflow pushes them into Cloudflare with `wrangler secret bulk`:
+
+| Kind | Name |
+| --- | --- |
+| Secret | `MARUM_BOT_TOKEN` — a different bot per environment, always |
+| Secret | `MARUM_WEBHOOK_SECRET`, `MARUM_SERVICE_TOKEN`, `MARUM_IDENTITY_KEY` |
+| Secret | `MARUM_ADMIN_USER`, `MARUM_ADMIN_PASSWORD_HASH` |
+| Secret | `WEBHOOK_PATH` — high-entropy path segment |
+| Secret | `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` |
+
+An earlier version of this document said these must never be GitHub secrets.
+That reasoning does not survive contact with the rest of the pipeline: the same
+environment already holds `CLOUDFLARE_API_TOKEN`, which can publish a Worker and
+therefore read anything the Worker can read. Keeping the bot token out bought
+nothing, and cost a manual `wrangler secret put` per environment — which is
+exactly the step that gets skipped or done wrong.
+
+The database URL is **not** in that list. It comes from the Hyperdrive binding
+at runtime, so the origin credentials never enter the container.
 
 ## Infrastructure per environment
 
