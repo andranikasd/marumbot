@@ -38,7 +38,33 @@ fmt: ## Format with gofumpt
 tidy: ## go mod tidy
 	$(RUN) $(GO_ALPINE) go mod tidy
 
+# --- migrations ---------------------------------------------------------
+# goose is baked into a small image so migration commands are fast and need
+# no network after the first build.
+GOOSE_IMAGE := marum-goose:3.24.1
+GOOSE := docker run --rm --network marum_default \
+	-v $(PWD)/migrations:/migrations \
+	-e GOOSE_DRIVER=postgres \
+	-e GOOSE_DBSTRING="postgres://marum:marum@postgres:5432/marum?sslmode=disable" \
+	$(GOOSE_IMAGE)
+
+goose-image: ## Build the migration runner image
+	docker build -q -f deploy/goose.Dockerfile -t $(GOOSE_IMAGE) . >/dev/null
+
+migrate: goose-image ## Apply pending migrations
+	$(GOOSE) up
+
+migrate-down: goose-image ## Roll back one migration
+	$(GOOSE) down
+
+migrate-status: goose-image ## Show which migrations are applied
+	$(GOOSE) status
+
+migrate-check: goose-image ## Prove the newest migration is reversible: up, down, up
+	$(GOOSE) up && $(GOOSE) down && $(GOOSE) up
+
 shell: ## psql into the local database
 	docker compose exec postgres psql -U marum -d marum
 
-.PHONY: help up down reset logs test test-short vet lint fmt tidy shell
+.PHONY: help up down reset logs test test-short vet lint fmt tidy shell \
+	goose-image migrate migrate-down migrate-status migrate-check

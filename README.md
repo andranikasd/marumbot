@@ -81,6 +81,17 @@ Two invariants matter more than the rest:
   message and Marum recording it cannot be closed, so reminders are worded to
   read correctly if one arrives twice.
 
+Currencies are supported from the start. A currency's ISO exponent and its
+settlement unit are separate facts: AMD has two decimal places on paper but
+settles in whole drams, the yen has none at all, and the dinar has three.
+Assuming two everywhere is a factor-of-100 error in one direction and a lost
+digit in the other, so unknown codes are rejected rather than guessed.
+
+Budgets and plans are **per currency**. Allocating a dram budget across a
+dollar loan needs an exchange rate, Marum has no validated source for one, and
+a plan that silently moves with the market is exactly the confident wrong
+answer the design refuses.
+
 ---
 
 ## Repository layout
@@ -141,8 +152,8 @@ make down        # stop everything, keep the volume
 make reset       # stop and destroy the database volume
 make test        # go test ./... -race
 make lint        # gofumpt + golangci-lint
-make migrate     # goose up against the local database
-make sqlc        # regenerate typed queries from queries/*.sql
+make migrate     # apply pending migrations
+make migrate-check  # prove the newest migration is reversible: up, down, up
 make shell       # psql into the local database
 ```
 
