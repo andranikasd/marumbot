@@ -30,7 +30,9 @@ Everything below is done **twice**, once per environment, with different values:
 | Worker | `marum-dev` | `marum` |
 | Domain | `dev.marum.am` | `marum.am` |
 | Bot | a separate @BotFather bot | the real one |
-| Database | its own | its own |
+| Database | its own Neon project | its own Neon project |
+| Hyperdrive | `marum-dev-postgres` | `marum-postgres` |
+| Query cache | 5 s, to exercise the path | **off** — a stale balance is a correctness bug |
 
 Nothing is deployed to the top-level wrangler config: every deploy names an
 environment explicitly, so a stray `wrangler deploy` cannot reach production.
@@ -43,14 +45,26 @@ npm install
 npx wrangler login
 ```
 
-**1. Hyperdrive**, so a cold container does not pay a TLS and Postgres
-handshake on every wake:
+**1. The database and Hyperdrive.**
+
+Cloudflare does not sell a managed PostgreSQL — D1 is SQLite, and the design
+rejected it because the ledger's arithmetic must be identical everywhere and
+there is no faithful local twin of D1. So Postgres is hosted at Neon and
+**Hyperdrive** pools in front of it, which is what makes Postgres usable from a
+Worker that has no persistent connections and can start anywhere.
+
+Create the Neon project by hand, then let Terraform create the Hyperdrive
+config:
 
 ```bash
-npx wrangler hyperdrive create marum-dev-db  --connection-string "$DEV_DATABASE_URL"
-npx wrangler hyperdrive create marum-prod-db --connection-string "$PROD_DATABASE_URL"
-# put each returned id into the matching [[env.*.hyperdrive]] block
+make tf-init  ENV=dev     # once per environment; re-run when switching
+make tf-plan  ENV=dev
+make tf-apply ENV=dev
+make tf-output ENV=dev    # the [[env.dev.hyperdrive]] block to paste in
 ```
+
+Terraform also owns the backup bucket and the zone's TLS settings. Full
+bootstrap, including the API token scopes: [deploy/terraform/README.md](../../deploy/terraform/README.md).
 
 **2. Secrets.** Never committed, never on a command line:
 
@@ -83,6 +97,7 @@ reach production by accident.
 | Scope | Kind | Name |
 | --- | --- | --- |
 | `dev` and `production` | Secret | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL`, `GRAFANA_TOKEN` |
+| `dev` and `production` | Secret | `CLOUDFLARE_ZONE_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `TF_DATABASE` — infrastructure only |
 | `dev` and `production` | Variable | `PUBLIC_URL`, `GRAFANA_URL` |
 
 `production` carries a **required reviewer**; `dev` has none, because a dev
