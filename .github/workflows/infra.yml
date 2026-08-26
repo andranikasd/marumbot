@@ -105,11 +105,13 @@ jobs:
       - name: Are the infrastructure secrets configured?
         id: configured
         run: |
-          if [ -n "${{ secrets.TF_R2_ACCESS_KEY_ID }}" ] && [ -n "${{ secrets.TF_CLOUDFLARE_API_TOKEN }}" ]; then
+          if [ -n "${{ secrets.TF_R2_ACCESS_KEY_ID }}" ] \
+             && [ -n "${{ secrets.TF_CLOUDFLARE_API_TOKEN }}" ] \
+             && [ -n "${{ secrets[matrix.database_secret] }}" ]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "TF_* repository secrets are not set; formatting and validation ran, the plan did not." >> "$GITHUB_STEP_SUMMARY"
+            echo "${{ matrix.database_secret }} or the shared TF_* secrets are not set; formatting and validation ran, the plan did not." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Init
@@ -169,7 +171,7 @@ jobs:
               const ready = '${{ steps.configured.outputs.ready }}' === 'true'
               body = ready
                 ? `${marker}\n### Terraform plan · \`${env}\`\n\nThe plan did not run. See the job log.`
-                : `${marker}\n### Terraform plan · \`${env}\`\n\nSkipped: the \`TF_*\` repository secrets are not configured yet. ` +
+                : `${marker}\n### Terraform plan · \`${env}\`\n\nSkipped: \`${{ matrix.database_secret }}\` (or the shared \`TF_*\` secrets) is not configured yet. ` +
                   `Formatting and \`terraform validate\` both ran and passed. ` +
                   `See [deploy/terraform/README.md](../blob/main/deploy/terraform/README.md).`
             }
