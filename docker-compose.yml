@@ -21,14 +21,105 @@ services:
       dockerfile: deploy/Dockerfile
     depends_on:
       postgres: {condition: service_healthy}
+      otel-collector: {condition: service_started}
     env_file: [.env]
     environment:
       MARUM_DATABASE_URL: postgres://marum:marum@postgres:5432/marum?sslmode=disable
+      # Same shape as production; only the endpoint differs.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
     # Bound to loopback: neither port is meant to be reachable from the network.
     ports:
       - "127.0.0.1:8080:8080"   # health, readiness, status
       - "127.0.0.1:8081:8081"   # private admin interface
     restart: unless-stopped
 
+  # ---- observability -----------------------------------------------------
+  # The application sends OTLP to one collector, exactly as it sends to the
+  # Grafana Cloud gateway in production. Only the URL differs, so what is
+  # exercised locally is what runs in production.
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.115.1
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes: ["./deploy/observability/otel-collector.yaml:/etc/otel/config.yaml:ro"]
+    ports: ["127.0.0.1:4318:4318"]
+    depends_on: [tempo, loki, prometheus]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=48h
+      - --web.enable-otlp-receiver      # accepts metrics from the collector
+      - --web.enable-remote-write-receiver  # accepts span metrics from Tempo
+      - --enable-feature=exemplar-storage
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports: ["127.0.0.1:9090:9090"]
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.3.2
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./deploy/observability/loki.yaml:/etc/loki/config.yaml:ro
+      - lokidata:/loki
+    ports: ["127.0.0.1:3100:3100"]
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.7.0
+    command: ["-config.file=/etc/tempo/config.yaml"]
+    volumes:
+      - ./deploy/observability/tempo.yaml:/etc/tempo/config.yaml:ro
+      - tempodata:/var/tempo
+    ports: ["127.0.0.1:3200:3200"]
+    restart: unless-stopped
+
+  pyroscope:
+    image: grafana/pyroscope:1.13.0
+    ports: ["127.0.0.1:4040:4040"]
+    volumes: ["pyroscopedata:/data"]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.5.1
+    environment:
+      # Local only, on loopback: a login screen between the operator and their
+      # own dashboards buys nothing here.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor,flameGraph
+      GF_LOG_LEVEL: warn
+    volumes:
+      - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [prometheus, loki, tempo, pyroscope]
+    restart: unless-stopped
+
+  # Run on demand: `make load`. Not started with the stack.
+  k6:
+    image: grafana/k6:0.55.0
+    profiles: [load]
+    volumes: ["./deploy/observability/k6:/scripts:ro"]
+    environment:
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+      K6_PROMETHEUS_RW_TREND_STATS: "p(95),p(99),min,max"
+      TARGET: http://marum:8080
+    command: ["run", "-o", "experimental-prometheus-rw", "/scripts/smoke.js"]
+
 volumes:
   pgdata:
+  promdata:
+  lokidata:
+  tempodata:
+  pyroscopedata:
+  grafanadata:

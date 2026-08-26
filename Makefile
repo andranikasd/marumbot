@@ -8,8 +8,17 @@ RUN       := docker run --rm -v $(PWD):/src -w /src -v marum-gomod:/go/pkg/mod
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-up: ## Start postgres and the application
+up: ## Start everything: postgres, the app, and the observability stack
 	docker compose up -d --build
+
+up-core: ## Start only postgres and the application
+	docker compose up -d --build postgres marum
+
+load: ## Run the k6 load profile against the local stack
+	docker compose --profile load run --rm k6
+
+grafana: ## Open Grafana
+	@echo "http://127.0.0.1:3000 - datasources and dashboards are provisioned"
 
 down: ## Stop everything, keep the database volume
 	docker compose down
@@ -73,4 +82,4 @@ shell: ## psql into the local database
 	docker compose exec postgres psql -U marum -d marum
 
 .PHONY: help up down reset logs test test-short vet lint fmt tidy shell \
-	goose-image migrate migrate-down migrate-status migrate-check seed admin-password
+	goose-image migrate migrate-down migrate-status migrate-check seed admin-password up-core load grafana

@@ -1,0 +1,24 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Nothing is scraped from the application: it pushes OTLP through the
+# collector, exactly as it does in production. These targets are the
+# observability stack watching itself.
+scrape_configs:
+  - job_name: prometheus
+    static_configs: [{ targets: ['localhost:9090'] }]
+  - job_name: tempo
+    static_configs: [{ targets: ['tempo:3200'] }]
+  - job_name: loki
+    static_configs: [{ targets: ['loki:3100'] }]
+  - job_name: pyroscope
+    static_configs: [{ targets: ['pyroscope:4040'] }]
+
+otlp:
+  # Keep resource attributes as labels so service.instance.id and
+  # deployment.environment are queryable.
+  promote_resource_attributes:
+    - service.name
+    - service.instance.id
+    - deployment.environment

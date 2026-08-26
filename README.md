@@ -201,19 +201,41 @@ the fix is written. The corpus is the asset.
 
 ## Observability
 
-Five signals go to Grafana Cloud from the first commit: traces, metrics, logs,
-continuous profiles and one synthetic check. A single trace covers a user
-action end to end — webhook, command worker, sender — because the W3C
-`traceparent` is persisted alongside the work in the durable queues.
+`make up` brings up a full local stack alongside the app. Grafana at
+<http://127.0.0.1:3000> needs no login and arrives with **datasources and
+dashboards already provisioned** — nothing is clicked into existence, so a
+rebuilt stack comes back identical.
 
-Set the OTLP variables in `.env` and it starts reporting. Leave
-`OTEL_EXPORTER_OTLP_ENDPOINT` empty and telemetry is disabled entirely, which
-is the right default for self-hosters.
+| Service | Address | Role |
+| --- | --- | --- |
+| Grafana | `:3000` | dashboards, provisioned from `deploy/observability/grafana` |
+| Prometheus | `:9090` | metrics, via the collector's OTLP export |
+| Loki | `:3100` | logs |
+| Tempo | `:3200` | traces, and span metrics it derives itself |
+| Pyroscope | `:4040` | continuous CPU and memory profiles |
+| OTel Collector | `:4318` | the single OTLP endpoint the app ships to |
 
-The whole design fits inside the Grafana Cloud **free tier** by construction:
-roughly 2,300 metric series, 2 GB of traces and 0.3 GB of logs per month at
-5,000 users. Section 11 of the design document explains the rules that keep it
-there — the binding constraints are configuration choices, not volume.
+The application sends OTLP to **one endpoint** in development and in
+production alike — locally the collector, in production the Grafana Cloud
+gateway. Only the URL differs, so what is exercised on a laptop is what runs in
+production. Leave `OTEL_EXPORTER_OTLP_ENDPOINT` empty and telemetry is disabled
+entirely, which is the right default for a self-hoster.
+
+**Marum · Overview** is the correlation dashboard: golden signals with
+exemplars, a trace table and an auto-derived service graph, log rate and log
+search, per-statement database latency, and runtime panels. A latency spike is
+one click from the trace that caused it; a span is one click from its logs and
+from the flame graph of that span.
+
+```bash
+make load        # k6 load profile, results land in Prometheus
+make grafana     # print the URL
+```
+
+Nothing sensitive reaches a sink. The redacting handler strips any
+`money.Amount` **by type** rather than by field name, drops a denylist of keys,
+and truncates oversized values. No user, loan or chat identifier is ever a
+metric label.
 
 ---
 
