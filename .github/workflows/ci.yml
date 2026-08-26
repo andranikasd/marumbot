@@ -27,7 +27,8 @@ jobs:
         run: |
           go run mvdan.cc/gofumpt@v0.7.0 -l . | tee /tmp/fmt
           test ! -s /tmp/fmt
-      - uses: golangci/golangci-lint-action@v6
+      # v7 or later: v6 refuses golangci-lint v2 outright.
+      - uses: golangci/golangci-lint-action@v7
         with: { version: v2.0.2 }
 
   vet:
