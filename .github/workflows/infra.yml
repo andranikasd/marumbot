@@ -1,0 +1,223 @@
+# Infrastructure changes.
+#
+# Terraform is separated from the deploy pipeline on purpose. A deploy runs on
+# every merge and must be fast and reversible; an infrastructure change is rare,
+# is reviewed as a plan before anyone can approve it, and can take a database
+# offline. Putting them in one workflow makes the frequent case slow and the
+# dangerous case routine.
+#
+#   pull request   plan only, posted as a comment, no credentials that can write
+#   manual run     apply, gated by the same environment protection as a deploy
+#
+# There is no automatic apply. Nothing here should ever change without a person
+# having read the plan first.
+
+name: Infrastructure
+
+on:
+  pull_request:
+    paths:
+      - "deploy/terraform/**"
+      - ".github/workflows/infra.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to apply to"
+        required: true
+        type: choice
+        options: [dev, production]
+      action:
+        description: "plan leaves everything untouched; apply changes real infrastructure"
+        required: true
+        default: plan
+        type: choice
+        options: [plan, apply]
+
+concurrency:
+  # Never two applies against one state file. Not cancel-in-progress: killing an
+  # apply half way through is how state ends up describing something that does
+  # not exist.
+  group: infra-${{ github.event.inputs.environment || github.head_ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
+
+jobs:
+  plan:
+    name: Plan
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    strategy:
+      # Both environments are planned on every change, because a change meant
+      # for dev that would also alter production must be visible while it is
+      # still a pull request.
+      fail-fast: false
+      matrix:
+        environment: [dev, production]
+
+    environment: ${{ matrix.environment }}
+    defaults:
+      run:
+        working-directory: deploy/terraform
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.3
+          terraform_wrapper: false
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive -diff
+
+      - name: Init
+        run: |
+          terraform init \
+            -backend-config=envs/${{ matrix.environment }}.backend.hcl \
+            -backend-config="endpoints={\"s3\":\"https://${AWS_ACCOUNT}.r2.cloudflarestorage.com\"}" \
+            -lockfile=readonly
+        env:
+          AWS_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Plan
+        id: plan
+        # A plan that fails must fail the job, but a plan that finds changes
+        # must not. -detailed-exitcode separates the two: 1 is an error, 2 is
+        # "there are changes", 0 is "nothing to do".
+        run: |
+          set +e
+          terraform plan -no-color -lock=false -detailed-exitcode \
+            -var-file=envs/${{ matrix.environment }}.tfvars \
+            -out=tfplan > plan.txt 2>&1
+          code=$?
+          set -e
+          echo "changes=$([ $code -eq 2 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          tail -c 60000 plan.txt
+          [ $code -ne 1 ]
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          TF_VAR_database: ${{ secrets.TF_DATABASE }}
+
+      - name: Comment the plan on the pull request
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs')
+            const env = '${{ matrix.environment }}'
+            const marker = `<!-- tfplan:${env} -->`
+            let body
+            try {
+              const raw = fs.readFileSync('deploy/terraform/plan.txt', 'utf8')
+              // Keep well under the 65536-character comment limit.
+              const text = raw.length > 55000 ? raw.slice(-55000) : raw
+              const changes = '${{ steps.plan.outputs.changes }}' === 'true'
+              body = `${marker}\n### Terraform plan · \`${env}\`\n\n` +
+                (changes ? '**This plan changes infrastructure.**\n\n' : 'No changes.\n\n') +
+                '```terraform\n' + text + '\n```'
+            } catch {
+              body = `${marker}\n### Terraform plan · \`${env}\`\n\nThe plan did not run. See the job log.`
+            }
+            const {owner, repo} = context.repo
+            const issue_number = context.issue.number
+            const existing = await github.paginate(github.rest.issues.listComments, {owner, repo, issue_number})
+            const mine = existing.find(c => c.body.startsWith(marker))
+            if (mine) {
+              await github.rest.issues.updateComment({owner, repo, comment_id: mine.id, body})
+            } else {
+              await github.rest.issues.createComment({owner, repo, issue_number, body})
+            }
+
+  apply:
+    name: ${{ github.event.inputs.action }} · ${{ github.event.inputs.environment }}
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    # The environment gate is the review. production requires an approver, so an
+    # apply there cannot start until a person has looked at it.
+    environment: ${{ github.event.inputs.environment }}
+
+    defaults:
+      run:
+        working-directory: deploy/terraform
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.3
+          terraform_wrapper: false
+
+      - name: Init
+        run: |
+          terraform init \
+            -backend-config=envs/${{ github.event.inputs.environment }}.backend.hcl \
+            -backend-config="endpoints={\"s3\":\"https://${AWS_ACCOUNT}.r2.cloudflarestorage.com\"}" \
+            -lockfile=readonly
+        env:
+          AWS_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+
+      - name: Plan
+        # Always planned to a file first, and apply is given that file. Applying
+        # a saved plan is what makes the approved change and the executed change
+        # the same change.
+        run: |
+          terraform plan -no-color \
+            -var-file=envs/${{ github.event.inputs.environment }}.tfvars \
+            -out=tfplan
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          TF_VAR_database: ${{ secrets.TF_DATABASE }}
+
+      - name: Apply
+        if: github.event.inputs.action == 'apply'
+        run: terraform apply -no-color -auto-approve tfplan
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          TF_VAR_database: ${{ secrets.TF_DATABASE }}
+
+      - name: Report the Hyperdrive binding
+        if: github.event.inputs.action == 'apply'
+        run: |
+          {
+            echo "### Applied to \`${{ github.event.inputs.environment }}\`"
+            echo
+            echo "Put this in \`deploy/cloudflare/wrangler.toml\`:"
+            echo
+            echo '```toml'
+            terraform output -raw wrangler_hint
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
