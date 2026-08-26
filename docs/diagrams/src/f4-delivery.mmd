@@ -1,0 +1,18 @@
+stateDiagram-v2
+  direction TB
+  [*] --> pending : scheduler groups occurrences<br>into one user delivery
+  pending --> leased : claim + fencing token,<br>lease 120s, batch 20
+  leased --> sent : Telegram 200,<br>store message_id
+  leased --> pending : 429 with retry_after,<br>5xx, or timeout
+  leased --> pending : lease expired<br>(worker died)
+  leased --> dead : 403 blocked, malformed,<br>or 6 attempts
+  pending --> canceled : send-time guard —<br>every occurrence satisfied
+  sent --> [*]
+  dead --> [*]
+  canceled --> [*]
+  note right of sent
+    Telegram accepts, then the process dies
+    before the mark. Delivery is AT LEAST ONCE.
+    Occurrences of a dead or canceled delivery
+    return to scheduled and regroup.
+  end note

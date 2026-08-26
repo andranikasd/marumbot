@@ -1,0 +1,27 @@
+flowchart TB
+  c["Contract versions<br>immutable, non-overlapping periods"]
+  s["Trusted bank snapshot<br>the replay anchor"]
+  e["Immutable loan events<br>what the user reported"]
+  cov["Snapshot coverage assertions<br>this event is already in that balance"]
+  r{{"Replay"}}
+  a["Versioned allocation results<br>superseded, never rewritten"]
+  st["Derived loan state<br>cache + event_set_hash"]
+  p["Projection<br>never stored"]
+  c --> r
+  s --> r
+  e --> r
+  cov --> r
+  r --> a
+  r --> st
+  st --> p
+  c --> p
+  st -. "nightly hash mismatch<br>rebuilds the cache" .-> r
+  s -. "new confirmed balance<br>becomes the anchor" .-> r
+  classDef fact fill:#dae8fc,stroke:#6c8ebf
+  classDef anchor fill:#fff2cc,stroke:#d6b656
+  classDef derived fill:#ffe6cc,stroke:#d79b00
+  classDef proj fill:#e1d5e7,stroke:#9673a6
+  class c,e,cov fact
+  class s anchor
+  class a,st derived
+  class p proj
