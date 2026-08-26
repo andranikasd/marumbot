@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/andranikasd/marumbot/internal/obs"
 	"github.com/andranikasd/marumbot/queries"
 )
 
@@ -20,7 +21,11 @@ type Store struct{ pool *pgxpool.Pool }
 
 // Open connects and verifies the database is reachable. It fails fast: a
 // service that starts and then cannot serve is worse than one that refuses.
-func Open(ctx context.Context, dsn string) (*Store, error) {
+//
+// The metrics handle may be nil, in which case queries are still traced but
+// not timed - useful in tests, and in a self-hosted deployment with telemetry
+// switched off entirely.
+func Open(ctx context.Context, dsn string, m *obs.Metrics) (*Store, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, fmt.Errorf("parsing database url: %w", err)
@@ -28,6 +33,7 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 	cfg.MaxConns = 8
 	cfg.MaxConnLifetime = time.Hour
 	cfg.HealthCheckPeriod = 30 * time.Second
+	cfg.ConnConfig.Tracer = newQueryTracer(m)
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {

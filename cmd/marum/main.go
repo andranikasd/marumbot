@@ -20,7 +20,15 @@ import (
 	"github.com/andranikasd/marumbot/internal/adapter/out/postgres"
 	"github.com/andranikasd/marumbot/internal/app"
 	"github.com/andranikasd/marumbot/internal/config"
+	"github.com/andranikasd/marumbot/internal/obs"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
+
+// notHealthCheck keeps the liveness probe out of tracing. A check every few
+// seconds would otherwise be the most-traced operation in the system and would
+// tell nobody anything.
+func notHealthCheck(r *http.Request) bool { return r.URL.Path != "/healthz" }
 
 var version = "dev"
 
@@ -46,7 +54,7 @@ func main() {
 	}
 }
 
-func run(log *slog.Logger) error {
+func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not complex
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -56,7 +64,32 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	store, err := postgres.Open(ctx, cfg.DatabaseURL)
+	telemetry, err := obs.Init(ctx, obs.Config{
+		ServiceName:   "marum",
+		Env:           cfg.Env,
+		InstanceID:    cfg.InstanceID,
+		Version:       cfg.Version,
+		OTLPEndpoint:  cfg.OTLPEndpoint,
+		PyroscopeAddr: cfg.PyroscopeAddr,
+		PyroscopeUser: os.Getenv("PYROSCOPE_BASIC_AUTH_USER"),
+		PyroscopePass: os.Getenv("PYROSCOPE_BASIC_AUTH_PASSWORD"),
+	})
+	if err != nil {
+		// Telemetry must never be the reason the service will not start, but a
+		// service reporting nothing looks exactly like a service doing nothing,
+		// so this is an error rather than a warning.
+		telemetry.Logger.Error("TELEMETRY DEGRADED - no traces, metrics or logs will be exported", "err", err)
+	}
+	log = telemetry.Logger
+	defer func() {
+		flushCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if err := telemetry.Shutdown(flushCtx); err != nil {
+			log.Warn("flushing telemetry", "err", err)
+		}
+	}()
+
+	store, err := postgres.Open(ctx, cfg.DatabaseURL, telemetry.Meter)
 	if err != nil {
 		return fmt.Errorf("database: %w", err)
 	}
@@ -66,7 +99,7 @@ func run(log *slog.Logger) error {
 
 	public := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           publicRoutes(adminSvc),
+		Handler:           otelhttp.NewHandler(publicRoutes(adminSvc), "marum", otelhttp.WithFilter(notHealthCheck)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	servers := []*http.Server{public}
@@ -83,7 +116,7 @@ func run(log *slog.Logger) error {
 		}
 		servers = append(servers, &http.Server{
 			Addr:              cfg.AdminAddr,
-			Handler:           srv.Handler(),
+			Handler:           otelhttp.NewHandler(srv.Handler(), "marum-admin"),
 			ReadHeaderTimeout: 5 * time.Second,
 		})
 	} else {
