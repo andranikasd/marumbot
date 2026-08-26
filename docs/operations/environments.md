@@ -54,9 +54,27 @@ never reach production by accident.
 | Variable | `PUBLIC_URL` | Where the smoke test points |
 | Variable | `GRAFANA_URL` | Optional; no annotation without it |
 
+The Infrastructure workflow needs four more, used by nothing else:
+
+| Kind | Name | What it is |
+| --- | --- | --- |
+| Secret | `CLOUDFLARE_ZONE_ID` | Zone for the apex domain |
+| Secret | `R2_ACCESS_KEY_ID` | Terraform state bucket, S3 API |
+| Secret | `R2_SECRET_ACCESS_KEY` | |
+| Secret | `TF_DATABASE` | Origin Postgres, as a JSON object |
+
 Everything the application itself reads is a **Cloudflare** secret, set with
 `wrangler secret put NAME --env dev|production`, never a GitHub one. GitHub only
 needs what the pipeline uses.
+
+## Infrastructure per environment
+
+The two environments have separate Terraform state files, separate Hyperdrive
+configs and separate Neon projects. They share **one** DNS zone, so the zone's
+TLS and HSTS settings are managed by the production state alone — if both
+managed them, each apply would revert the other and no plan would ever be empty.
+
+See [deploy/terraform/README.md](../../deploy/terraform/README.md).
 
 ## Promotion
 

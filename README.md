@@ -137,7 +137,7 @@ internal/
   config/             environment parsing and validation
 queries/              every SQL statement, embedded and named
 migrations/           goose SQL, expand-only
-deploy/               Dockerfile, Cloudflare, observability configs
+deploy/               Dockerfile, Cloudflare, Terraform, observability configs
 docs/                 architecture, operations, design
 ```
 
@@ -155,7 +155,7 @@ Everything lives in [`docs/`](docs/README.md).
 | | |
 | --- | --- |
 | **Architecture** | [Overview](docs/architecture/01-overview.md) · [Domain model](docs/architecture/02-domain-model.md) · [Ledger and replay](docs/architecture/03-ledger-replay.md) · [Money and dates](docs/architecture/04-money-and-dates.md) · [Database](docs/architecture/05-database.md) · [Admin UI](docs/architecture/06-admin-ui.md) · [Messaging](docs/architecture/07-messaging.md) · [Observability](docs/architecture/08-observability.md) |
-| **Operations** | [Local development](docs/operations/local-development.md) · [Environments](docs/operations/environments.md) · [Releasing](docs/operations/releases.md) · [Deployment](docs/operations/deployment.md) · [Runbooks](docs/operations/runbooks.md) |
+| **Operations** | [Local development](docs/operations/local-development.md) · [Environments](docs/operations/environments.md) · [Releasing](docs/operations/releases.md) · [Deployment](docs/operations/deployment.md) · [Infrastructure](deploy/terraform/README.md) · [Runbooks](docs/operations/runbooks.md) |
 | **Reference** | [Engineering guide](docs/engineering-guide.md) · [Design document (PDF)](docs/design/Marum-MVP-System-and-Architecture-Design.pdf) · [Long-form design](docs/design/reliable-mvp-design.md) · [AGENTS.md](AGENTS.md) |
 
 ---
@@ -168,6 +168,7 @@ make test / test-short / lint / vet / fmt
 make migrate / migrate-down / migrate-status / migrate-check
 make seed / shell / admin-password
 make load / grafana
+make tf-plan ENV=dev / tf-apply ENV=dev / tf-output ENV=dev
 ```
 
 All targets run inside containers.
@@ -203,7 +204,14 @@ The release workflow validates the tag, runs the full suite, checks that the
 with an SBOM and provenance, and publishes a GitHub Release. Deployment follows
 a published release, never a branch.
 
-Details: [releasing](docs/operations/releases.md) · [deployment](docs/operations/deployment.md)
+Infrastructure is separate and deliberately slower. Terraform owns the
+Hyperdrive configs, the backup bucket and the zone's TLS settings; `wrangler`
+owns the Worker and its secrets. Cloudflare sells no managed PostgreSQL, so the
+database is hosted at Neon and Hyperdrive pools in front of it. Nothing applies
+automatically: a pull request gets a plan as a comment, and applying is a manual
+run behind the same approval gate as a production deploy.
+
+Details: [releasing](docs/operations/releases.md) · [deployment](docs/operations/deployment.md) · [infrastructure](deploy/terraform/README.md)
 
 ---
 
