@@ -42,9 +42,18 @@ func TestLookup_NormalisesInput(t *testing.T) {
 
 // AMD is the one currency with a settlement rule that differs from its ISO
 // exponent, and it is the reason SettlementUnit exists as a separate field.
+//
+// The value is 10 -- a tenth of a dram -- because that is what a real loan
+// agreement does. It was 100 on the reasonable assumption that an obsolete
+// subunit goes unused, and the Inecobank contract in testdata/golden refutes
+// that: it quotes an instalment of 125,079.60 and interest of 73,018.20, and 10
+// is the only unit that reproduces its sixty rows.
+//
+// This assertion exists to make that change deliberate. Anyone moving it back
+// to 100 is asserting something the corpus disagrees with, and should say why.
 func TestSettlementUnits(t *testing.T) {
-	if got := MustLookup("AMD").SettlementUnit; got != 100 {
-		t.Errorf("AMD settles in whole drams: unit = %d, want 100", got)
+	if got := MustLookup("AMD").SettlementUnit; got != 10 {
+		t.Errorf("AMD settles to a tenth of a dram: unit = %d, want 10", got)
 	}
 	for _, code := range []string{"USD", "EUR", "JPY", "KWD"} {
 		if got := MustLookup(code).SettlementUnit; got != 1 {
