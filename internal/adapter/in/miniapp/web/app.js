@@ -38,6 +38,16 @@ const STRINGS = {
     "budget.lede": "Որքա՞ն կարող եք ամսական հատկացնել վարկերին։",
     "budget.monthly": "Ամսական գումար",
     "budget.hint": "Ներառեք բոլոր պարտադիր վճարումները։",
+    "manage.title": "Իմ վարկերը",
+    "manage.lede": "Փոխեք անվանումը կամ հեռացրեք վարկը։",
+    "manage.empty": "Դուք դեռ վարկ չեք ավելացրել։",
+    "manage.edit": "Փոխել",
+    "manage.remove": "Հեռացնել",
+    "manage.save": "Պահպանել",
+    "manage.cancel": "Չեղարկել",
+    "manage.confirm": "Հեռացնե՞լ այս վարկը։ Հաշվարկները կպահպանվեն։",
+    "manage.balance": "Մնացորդ՝ %s",
+    "manage.yours": "Ձեր նշած թիվը",
     "err.required": "Պարտադիր դաշտ", "err.number": "Մուտքագրեք թիվ",
     "err.positive": "Պետք է լինի զրոյից մեծ", "err.day": "1-ից 31",
     "err.order": "Ավարտը պետք է լինի սկզբից հետո", "err.rate": "0-ից 200 միջակայքում",
@@ -64,6 +74,16 @@ const STRINGS = {
     "budget.lede": "How much can you put towards your loans each month?",
     "budget.monthly": "Monthly amount",
     "budget.hint": "Include every required payment.",
+    "manage.title": "My loans",
+    "manage.lede": "Rename a loan or remove it.",
+    "manage.empty": "You have not added a loan yet.",
+    "manage.edit": "Edit",
+    "manage.remove": "Remove",
+    "manage.save": "Save",
+    "manage.cancel": "Cancel",
+    "manage.confirm": "Remove this loan? Its calculations are kept.",
+    "manage.balance": "Balance: %s",
+    "manage.yours": "Your own figure",
     "err.required": "Required", "err.number": "Enter a number",
     "err.positive": "Must be above zero", "err.day": "Between 1 and 31",
     "err.order": "Maturity must be after the start", "err.rate": "Between 0 and 200",
@@ -80,8 +100,8 @@ for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = T(el
 // webview reloads the whole app on navigation, and a second load is a second
 // cold start in front of the user.
 // ---------------------------------------------------------------------------
-const SCREEN = new URLSearchParams(location.search).get("screen") === "budget"
-  ? "budget" : "loan";
+const REQUESTED = new URLSearchParams(location.search).get("screen");
+const SCREEN = REQUESTED === "budget" || REQUESTED === "manage" ? REQUESTED : "loan";
 
 // ---------------------------------------------------------------------------
 // Sensible defaults, so the form opens mostly filled in.
@@ -300,7 +320,134 @@ async function saveBudget() {
   }
 }
 
-if (SCREEN === "budget") {
+// ---------------------------------------------------------------------------
+// Manage screen: rename or remove a loan.
+//
+// Contract terms are deliberately not editable here. Changing a rate or a date
+// rewrites what every past balance meant, and doing that in place would leave
+// no record that it happened. The schema keeps contract VERSIONS for exactly
+// that reason, so a genuine change adds one rather than overwriting.
+// ---------------------------------------------------------------------------
+const api = (path, init = {}) => fetch(path, {
+  ...init,
+  headers: {
+    "Content-Type": "application/json",
+    "X-Telegram-Init-Data": tg?.initData || "",
+    ...(init.headers || {}),
+  },
+});
+
+function fmt(s, ...args) {
+  let i = 0;
+  return s.replace(/%s/g, () => args[i++] ?? "");
+}
+
+function loanCard(loan) {
+  const el = document.createElement("div");
+  el.className = "card";
+  el.dataset.id = loan.id;
+
+  const view = document.createElement("div");
+  view.className = "view";
+  const h = document.createElement("h2");
+  h.textContent = loan.name;
+  const meta = document.createElement("p");
+  meta.className = "meta";
+  meta.textContent = fmt(T("manage.balance"), loan.balance)
+    + (loan.description ? " · " + loan.description : "")
+    + (loan.confirmed ? "" : " · " + T("manage.yours"));
+  const actions = document.createElement("div");
+  actions.className = "actions";
+
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.textContent = T("manage.edit");
+  edit.onclick = () => el.classList.add("editing");
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "danger";
+  remove.textContent = T("manage.remove");
+  remove.onclick = async () => {
+    // Telegram's own dialog, because a browser confirm() is blocked in the
+    // webview on some clients and silently does nothing.
+    const go = await new Promise((resolve) => {
+      if (tg?.showConfirm) tg.showConfirm(T("manage.confirm"), resolve);
+      else resolve(window.confirm(T("manage.confirm")));
+    });
+    if (!go) return;
+    const res = await api("api/loans/" + encodeURIComponent(loan.id), { method: "DELETE" });
+    if (res.ok) { el.remove(); refreshEmpty(); tg?.HapticFeedback?.notificationOccurred("success"); }
+    else tg?.HapticFeedback?.notificationOccurred("error");
+  };
+
+  actions.append(edit, remove);
+  view.append(h, meta, actions);
+
+  const form = document.createElement("div");
+  form.className = "edit";
+  const name = document.createElement("input");
+  name.value = loan.name; name.maxLength = 60;
+  const desc = document.createElement("input");
+  desc.value = loan.description || ""; desc.maxLength = 200;
+  desc.placeholder = T("description");
+  const row = document.createElement("div");
+  row.className = "actions";
+
+  const save = document.createElement("button");
+  save.type = "button";
+  save.textContent = T("manage.save");
+  save.onclick = async () => {
+    if (!name.value.trim()) { name.setAttribute("aria-invalid", "true"); return; }
+    const res = await api("api/loans/" + encodeURIComponent(loan.id), {
+      method: "PATCH",
+      body: JSON.stringify({ name: name.value.trim(), description: desc.value.trim() }),
+    });
+    if (!res.ok) { tg?.HapticFeedback?.notificationOccurred("error"); return; }
+    h.textContent = name.value.trim();
+    meta.textContent = fmt(T("manage.balance"), loan.balance)
+      + (desc.value.trim() ? " · " + desc.value.trim() : "");
+    el.classList.remove("editing");
+    tg?.HapticFeedback?.notificationOccurred("success");
+  };
+
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.textContent = T("manage.cancel");
+  cancel.onclick = () => {
+    name.value = loan.name; desc.value = loan.description || "";
+    el.classList.remove("editing");
+  };
+
+  row.append(save, cancel);
+  form.append(name, desc, row);
+  el.append(view, form);
+  return el;
+}
+
+function refreshEmpty() {
+  const any = $("manage-list").children.length > 0;
+  $("manage-empty").hidden = any;
+}
+
+async function loadLoans() {
+  const res = await api("api/loans");
+  if (!res.ok) { $("manage-empty").hidden = false; return; }
+  const { loans } = await res.json();
+  const list = $("manage-list");
+  list.textContent = "";
+  for (const l of loans) list.append(loanCard(l));
+  refreshEmpty();
+}
+
+if (SCREEN === "manage") {
+  $("f").hidden = true;
+  $("manage").hidden = false;
+  document.querySelector("h1").textContent = T("manage.title");
+  document.querySelector("p.lede").textContent = T("manage.lede");
+  tg?.MainButton.hide();
+  loadLoans();
+} else if (SCREEN === "budget") {
   $("f").hidden = true;
   $("budget-form").hidden = false;
   document.querySelector("h1").textContent = T("budget.title");

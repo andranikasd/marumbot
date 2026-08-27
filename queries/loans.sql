@@ -83,3 +83,36 @@ RETURNING monthly_amount_minor;
 -- name: GetBudget
 SELECT currency, monthly_amount_minor FROM budgets
  WHERE user_id = $1 ORDER BY monthly_amount_minor DESC LIMIT 1;
+
+-- name: UpdateLoanForUser
+-- The borrower's own edit. Scoped by user_id in the predicate rather than
+-- checked beforehand: an ownership test that lives in a WHERE clause cannot be
+-- forgotten by a caller, and a mismatched id updates nothing rather than
+-- someone else's loan.
+UPDATE loans SET name = $3, description = $4
+ WHERE id = $1 AND user_id = $2 AND archived_at IS NULL
+RETURNING id;
+
+-- name: ArchiveLoanForUser
+-- Removing a loan hides it; it does not destroy the ledger behind it. A balance
+-- is only checkable because its events can be replayed, and a borrower who
+-- deletes a loan by mistake would otherwise lose that permanently.
+UPDATE loans SET archived_at = now()
+ WHERE id = $1 AND user_id = $2 AND archived_at IS NULL
+RETURNING id;
+
+-- name: GetLoanForUser
+SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
+       c.nominal_rate::text, c.repayment_type,
+       c.start_date::text, c.maturity_date::text, c.payment_day,
+       s.principal_minor
+  FROM loans l
+  JOIN LATERAL (
+        SELECT * FROM loan_contract_versions v
+         WHERE v.loan_id = l.id ORDER BY v.version DESC LIMIT 1
+       ) c ON true
+  LEFT JOIN LATERAL (
+        SELECT * FROM loan_snapshots sn
+         WHERE sn.loan_id = l.id ORDER BY sn.as_of DESC, sn.captured_at DESC LIMIT 1
+       ) s ON true
+ WHERE l.id = $1 AND l.user_id = $2 AND l.archived_at IS NULL;

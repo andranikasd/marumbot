@@ -6,7 +6,8 @@
   {{if .Rows}}
   <table>
     <thead><tr><th>ID</th><th>Access</th><th>Locale</th><th>Timezone</th>
-      <th class="num">Loans</th><th>Trial ends</th><th>Created</th><th>Deleted</th></tr></thead>
+      <th class="num">Loans</th><th>Trial ends</th><th>Created</th><th>Deleted</th>
+      <th>Actions</th></tr></thead>
     <tbody>{{range .Rows}}
       <tr>
         <td class="mono">{{short .ID}}</td>
@@ -14,6 +15,21 @@
         <td>{{.Locale}}</td>
         <td>{{.Timezone}}</td>
         <td class="num">{{.LoanCount}}</td>
+        <td class="actions">
+          {{if eq .AccessState "paused"}}
+          <form method="post" action="/users/{{.ID}}/restore"><button class="link">restore</button></form>
+          {{else}}
+          <form method="post" action="/users/{{.ID}}/pause"><button class="link">pause</button></form>
+          {{end}}
+          {{if .DeletionRequested}}
+          <form method="post" action="/users/{{.ID}}/erase">
+            <input type="hidden" name="confirm" value="erase">
+            <button class="link danger">erase permanently</button>
+          </form>
+          {{else}}
+          <form method="post" action="/users/{{.ID}}/erase"><button class="link">request deletion</button></form>
+          {{end}}
+        </td>
         <td>{{date .TrialEndsAt}}</td>
         <td>{{date .CreatedAt}}</td>
         <td>{{if .DeletedAt}}<span class="tag t-stop">{{date .DeletedAt}}</span>{{else}}<span class="t-mute">—</span>{{end}}</td>

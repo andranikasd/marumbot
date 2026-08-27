@@ -109,15 +109,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /style.css", s.stylesheet)
 
 	guarded := map[string]http.HandlerFunc{
-		"GET /{$}":            s.dashboard,
-		"GET /loans":          s.loans,
-		"GET /loans/{id}":     s.loan,
-		"GET /users":          s.users,
-		"GET /policies":       s.policies,
-		"POST /policies":      s.addPolicy,
-		"GET /commands":       s.commands,
-		"GET /deliveries":     s.deliveries,
-		"GET /reconciliation": s.reconciliation,
+		"GET /{$}":                  s.dashboard,
+		"GET /loans":                s.loans,
+		"GET /loans/{id}":           s.loan,
+		"GET /users":                s.users,
+		"GET /policies":             s.policies,
+		"POST /policies":            s.addPolicy,
+		"GET /commands":             s.commands,
+		"POST /commands/{id}/retry": s.retryCommand,
+		"POST /users/{id}/pause":    s.pauseUser,
+		"POST /users/{id}/restore":  s.restoreUser,
+		"POST /users/{id}/erase":    s.eraseUser,
+		"POST /loans/{id}/archive":  s.archiveLoan,
+		"POST /loans/{id}/restore":  s.restoreLoan,
+		"GET /deliveries":           s.deliveries,
+		"GET /reconciliation":       s.reconciliation,
 	}
 	for pattern, h := range guarded {
 		mux.Handle(pattern, s.requireSession(h))
@@ -198,6 +204,52 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true})
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+// The moderation actions.
+//
+// All POST, never GET: a link that suspends an account is a link a crawler can
+// follow, and a preview fetch must never change anything. Each redirects back
+// to the list it came from, so the operator sees the result rather than a
+// success page telling them about it.
+func (s *Server) act(w http.ResponseWriter, r *http.Request, back string, fn func(string) error) {
+	if err := fn(r.PathValue("id")); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, back, http.StatusSeeOther)
+}
+
+func (s *Server) pauseUser(w http.ResponseWriter, r *http.Request) {
+	s.act(w, r, "/users", func(id string) error { return s.admin.PauseUser(r.Context(), id) })
+}
+
+func (s *Server) restoreUser(w http.ResponseWriter, r *http.Request) {
+	s.act(w, r, "/users", func(id string) error { return s.admin.RestoreUser(r.Context(), id) })
+}
+
+// eraseUser is the only irreversible action here, so it takes two steps: the
+// first records a request, the second honours it. One click that destroys an
+// account and the evidence for destroying it is a click somebody makes by
+// accident exactly once.
+func (s *Server) eraseUser(w http.ResponseWriter, r *http.Request) {
+	if r.FormValue("confirm") != "erase" {
+		s.act(w, r, "/users", func(id string) error { return s.admin.RequestDeletion(r.Context(), id) })
+		return
+	}
+	s.act(w, r, "/users", func(id string) error { return s.admin.EraseUser(r.Context(), id) })
+}
+
+func (s *Server) archiveLoan(w http.ResponseWriter, r *http.Request) {
+	s.act(w, r, "/loans", func(id string) error { return s.admin.ArchiveLoan(r.Context(), id) })
+}
+
+func (s *Server) restoreLoan(w http.ResponseWriter, r *http.Request) {
+	s.act(w, r, "/loans", func(id string) error { return s.admin.RestoreLoan(r.Context(), id) })
+}
+
+func (s *Server) retryCommand(w http.ResponseWriter, r *http.Request) {
+	s.act(w, r, "/commands", func(id string) error { return s.admin.Retry(r.Context(), id) })
 }
 
 func (s *Server) stylesheet(w http.ResponseWriter, _ *http.Request) {
@@ -301,12 +353,16 @@ func (s *Server) addPolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) commands(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.admin.Commands(r.Context())
+	status := r.URL.Query().Get("status")
+	rows, err := s.admin.Queue(r.Context(), status)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	s.render(w, r, "commands.html", map[string]any{keyTitle: "Command inbox", keyNav: "commands", keyRows: rows})
+	s.render(w, r, "commands.html", map[string]any{
+		keyTitle: "Command inbox", keyNav: "commands", keyRows: rows,
+		"Status": status, "Statuses": []string{"", "pending", "leased", "completed", "dead"},
+	})
 }
 
 func (s *Server) deliveries(w http.ResponseWriter, r *http.Request) {

@@ -26,7 +26,11 @@ type UserRow struct {
 	TrialEndsAt time.Time
 	CreatedAt   time.Time
 	DeletedAt   *time.Time
-	LoanCount   int64
+	// DeletionRequested is what makes erasure two steps. The button only offers
+	// permanent erasure once a request is on file, so the irreversible action
+	// is never one click away from a list.
+	DeletionRequested bool
+	LoanCount         int64
 }
 
 // LoanRow is a loan in a list, with the reliability its state carries.
