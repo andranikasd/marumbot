@@ -46,11 +46,22 @@ engine does not yet know.
 
 ## Coverage
 
-| Fixture | Rows | Exact | Convention |
-| --- | --- | --- | --- |
-| Inecobank M26/029210, loan agreement | 60 | **59 / 59** | ACT/365, 0.10 AMD, half-up |
-| Inecobank M26/029210, re-issued schedule | 55 | 52 / 54 | as above |
-| CBA Reg 8/01, worked example | 12 | — | ACT/365, 0.01 AMD, half-up |
+| Fixture | Rows | Exact | Instalment | Accrual |
+| --- | --- | --- | --- | --- |
+| Inecobank M26/029210, loan agreement | 60 | **59 / 59** | dated solve | ACT/365, 0.10 AMD |
+| Inecobank M26/029210, re-issued schedule | 55 | 52 / 54 | dated solve | ACT/365, 0.10 AMD |
+| Unibank, published annuity example | 12 | 8 / 11 | **rate / 12** | ACT/365, 0.01 AMD |
+| CBA Reg 8/01, worked example | 12 | — | — | ACT/365, 0.01 AMD |
+
+Two lenders, and already two conventions for the instalment. Both accrue
+interest daily on the declining balance over a 365-day year — as does every
+one of the ten Armenian banks whose terms state a rule. They differ in how the
+level payment is set: Inecobank solves it over the actual dated schedule, and
+Unibank uses the textbook formula with r = annual/12 (90,258.31 reproduces
+exactly that way; the dated solve gives 90,269.17).
+
+That is why a contract carries the lender's stated instalment rather than
+always deriving one. The accrual is the engine's; the instalment is the bank's.
 
 The first two are the same loan, and they disagree with each other. The
 agreement prints 69,045.40 for 24/09/2026; the schedule the bank re-issued five
