@@ -12,97 +12,158 @@ import (
 	"github.com/andranikasd/marumbot/pkg/core/plan"
 )
 
-// advise answers "what should I do about this".
+// advise produces the report a borrower actually wants: what to do, why, what
+// it costs, and what is left afterwards.
 //
-// It is the only place the whole engine is used at once: each loan is projected
-// to find what it contractually requires this month, and the planner decides
-// where any surplus should go. Everything it says is derived here and now from
-// the contracts and the anchors -- nothing is stored, so nothing can be stale
-// in a way the user cannot see.
-func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.Locale) error {
+// Everything is derived here and now from the contracts and the anchors.
+// Nothing is stored, so nothing can be stale in a way the reader cannot see.
+func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.Locale, goal plan.Goal, compare bool) error {
 	loans, err := w.Loans.LoansForUser(ctx, userID, 25)
 	if err != nil {
 		return fmt.Errorf("listing loans: %w", err)
 	}
-	if len(loans) == 0 {
+
+	positions, owed, required, cur, err := w.positions(ctx, loans)
+	if err != nil {
+		return err
+	}
+	if len(positions) == 0 {
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "loans.none"), w.mainMenu(l))
 	}
 
-	// Group by currency. A budget in dram cannot be allocated across a loan in
-	// dollars without an exchange rate, and there is no validated source for
-	// one, so each currency is planned on its own.
-	byCurrency := map[string][]plan.Loan{}
-	totals := map[string]money.Amount{}
-	required := map[string]money.Amount{}
-	names := map[string]string{}
-
-	for _, ln := range loans {
-		if ln.Balance.Sign() <= 0 {
-			continue
-		}
-		code := ln.Contract.Currency.Code
-		names[ln.ID] = ln.Name
-
-		s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
-		if err != nil || len(s.Rows) == 0 {
-			w.Log.WarnContext(ctx, "cannot project a loan for advice", "loan", ln.ID, "error", err)
-			continue
-		}
-		if _, ok := totals[code]; !ok {
-			totals[code] = money.Zero(ln.Contract.Currency)
-			required[code] = money.Zero(ln.Contract.Currency)
-		}
-		if totals[code], err = totals[code].Add(ln.Balance); err != nil {
-			return err
-		}
-		if required[code], err = required[code].Add(s.Rows[0].Payment); err != nil {
-			return err
-		}
-		byCurrency[code] = append(byCurrency[code], plan.Loan{
-			ID: ln.ID, Balance: ln.Balance,
-			Rate: ln.Contract.NominalRate, Required: s.Rows[0].Payment,
-		})
-	}
-	if len(byCurrency) == 0 {
-		return w.Send.SendMessage(ctx, chat, i18n.T(l, "advice.nothing"), w.mainMenu(l))
-	}
+	var b strings.Builder
+	b.WriteString("<b>" + i18n.T(l, "advice.title") + "</b>\n")
+	b.WriteString(i18n.T(l, "advice.owed", owed.String()) + "\n")
+	b.WriteString(i18n.T(l, "advice.required", required.String()) + "\n")
 
 	budget, err := w.Budgets.Budget(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("reading the budget: %w", err)
 	}
+	if !budget.Set || budget.Currency != cur.Code {
+		b.WriteString("\n" + i18n.T(l, "advice.set_budget"))
+		return w.Send.SendMessage(ctx, chat, b.String(), w.mainMenu(l))
+	}
+	b.WriteString(i18n.T(l, "advice.budget", budget.Monthly.String()) + "\n")
 
-	var b strings.Builder
-	b.WriteString("<b>" + i18n.T(l, "advice.title") + "</b>\n")
-
-	for code, ls := range byCurrency {
-		b.WriteString("\n" + i18n.T(l, "advice.owed", totals[code].String()) + "\n")
-		b.WriteString(i18n.T(l, "advice.required", required[code].String()) + "\n")
-
-		if !budget.Set || budget.Currency != code {
-			// Without a budget there is nothing to allocate, and inventing one
-			// would be advice about a number the user never gave.
-			b.WriteString("\n" + i18n.T(l, "advice.set_budget") + "\n")
-			continue
-		}
-
-		p, err := plan.Allocate(ls, budget.Monthly, plan.PayLeastInterest)
-		if err != nil {
-			// The common case is a budget below the contractual minimums, which
-			// is a real answer rather than a failure: it says the plan cannot
-			// be met without arrears.
-			b.WriteString("\n" + i18n.T(l, "budget.too_low", required[code].String()) + "\n")
-			continue
-		}
-		b.WriteString("\n" + i18n.T(l, "advice.budget", budget.Monthly.String()) + "\n")
-		if p.Target == "" {
-			b.WriteString(i18n.T(l, "advice.no_surplus") + "\n")
-			continue
-		}
-		b.WriteString(i18n.T(l, "advice.target",
-			html.EscapeString(names[p.Target]), p.Surplus.String()) + "\n")
-		b.WriteString("<i>" + i18n.T(l, "advice.why") + "</i>\n")
+	if budget.Monthly.Cmp(required) < 0 {
+		b.WriteString("\n" + i18n.T(l, "budget.too_low", required.String()))
+		return w.Send.SendMessage(ctx, chat, b.String(), w.mainMenu(l))
 	}
 
-	return w.Send.SendMessage(ctx, chat, b.String(), w.mainMenu(l))
+	if compare {
+		outs, err := plan.CompareAll(positions, budget.Monthly)
+		if err != nil {
+			return fmt.Errorf("comparing plans: %w", err)
+		}
+		b.WriteString("\n<b>" + i18n.T(l, "advice.compare") + "</b>\n")
+		for _, o := range outs {
+			b.WriteString("\n" + i18n.T(l, goalKey(o.Goal)) + "\n")
+			b.WriteString(i18n.T(l, "advice.months", o.Months) + "\n")
+			b.WriteString(i18n.T(l, "advice.interest", o.TotalInterest.String()) + "\n")
+			if o.ClearedFirst != "" {
+				b.WriteString(i18n.T(l, "advice.first_clear",
+					html.EscapeString(o.ClearedFirst), o.ClearedMonth) + "\n")
+			}
+		}
+		b.WriteString("\n<i>" + i18n.T(l, "advice.why") + "</i>")
+		return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l))
+	}
+
+	o, err := plan.Simulate(positions, budget.Monthly, goal)
+	if err != nil {
+		return fmt.Errorf("simulating %s: %w", goal, err)
+	}
+
+	b.WriteString("\n<b>" + i18n.T(l, goalKey(goal)) + "</b>\n")
+	if o.FirstTarget != "" && o.FirstExtra.Sign() > 0 {
+		b.WriteString(i18n.T(l, "advice.do",
+			o.FirstExtra.String(), html.EscapeString(o.FirstTarget)) + "\n")
+	} else {
+		b.WriteString(i18n.T(l, "advice.no_surplus") + "\n")
+	}
+	b.WriteString(i18n.T(l, "advice.remaining", o.NextMonthOwed.String()) + "\n")
+	b.WriteString(i18n.T(l, "advice.months", o.Months) + "\n")
+	b.WriteString(i18n.T(l, "advice.interest", o.TotalInterest.String()) + "\n")
+	if o.ClearedFirst != "" {
+		b.WriteString(i18n.T(l, "advice.first_clear",
+			html.EscapeString(o.ClearedFirst), o.ClearedMonth) + "\n")
+		if o.MonthlyFreed.Sign() > 0 {
+			b.WriteString(i18n.T(l, "advice.frees", o.MonthlyFreed.String()) + "\n")
+		}
+	}
+	b.WriteString("\n<i>" + i18n.T(l, "advice.why") + "</i>")
+	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l))
+}
+
+// positions turns stored loans into what the simulator needs, and totals what
+// is owed and what this month contractually requires.
+//
+// Loans are grouped by currency only in the sense that a mismatch is refused: a
+// dram budget cannot be allocated across a dollar loan without an exchange
+// rate, and there is no validated source for one.
+func (w *Worker) positions(ctx context.Context, loans []UserLoan) ([]plan.Position, money.Amount, money.Amount, money.Currency, error) {
+	var (
+		out      []plan.Position
+		cur      money.Currency
+		owed     money.Amount
+		required money.Amount
+		started  bool
+	)
+	for _, ln := range loans {
+		if ln.Balance.Sign() <= 0 {
+			continue
+		}
+		if !started {
+			cur = ln.Contract.Currency
+			owed, required = money.Zero(cur), money.Zero(cur)
+			started = true
+		}
+		if ln.Contract.Currency.Code != cur.Code {
+			w.Log.WarnContext(ctx, "skipping a loan in another currency",
+				"loan", ln.ID, "currency", ln.Contract.Currency.Code)
+			continue
+		}
+		s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
+		if err != nil || len(s.Rows) == 0 {
+			w.Log.WarnContext(ctx, "cannot project a loan", "loan", ln.ID, "error", err)
+			continue
+		}
+		if owed, err = owed.Add(ln.Balance); err != nil {
+			return nil, owed, required, cur, err
+		}
+		if required, err = required.Add(s.Rows[0].Payment); err != nil {
+			return nil, owed, required, cur, err
+		}
+		out = append(out, plan.Position{
+			ID: ln.ID, Name: ln.Name, Contract: ln.Contract,
+			Balance: ln.Balance, From: ln.AsOf,
+		})
+	}
+	return out, owed, required, cur, nil
+}
+
+func goalKey(g plan.Goal) string {
+	switch g {
+	case plan.FinishSoonest:
+		return "goal.soonest"
+	case plan.FreeUpMonthly:
+		return "goal.relief"
+	default:
+		return "goal.cheapest"
+	}
+}
+
+// goalMenu lets the reader change the question rather than accept the answer.
+func goalMenu(l i18n.Locale) any {
+	return map[string]any{"inline_keyboard": [][]map[string]any{
+		{
+			{keyText: i18n.T(l, "goal.cheapest"), "callback_data": "goal:cheapest"},
+			{keyText: i18n.T(l, "goal.soonest"), "callback_data": "goal:soonest"},
+		},
+		{
+			{keyText: i18n.T(l, "goal.relief"), "callback_data": "goal:relief"},
+			{keyText: i18n.T(l, "advice.compare"), "callback_data": "goal:compare"},
+		},
+	}}
 }

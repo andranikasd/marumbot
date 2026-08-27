@@ -18,6 +18,7 @@ import (
 	"github.com/andranikasd/marumbot/internal/obs"
 	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 	"github.com/andranikasd/marumbot/pkg/core/money"
+	"github.com/andranikasd/marumbot/pkg/core/plan"
 )
 
 // Command kinds, mirrored from the inbound adapter so this package does not
@@ -55,11 +56,12 @@ type Clock interface{ Now() time.Time }
 
 // Worker drains the command inbox.
 type Worker struct {
-	Inbox   InboxStore
-	Users   UserStore
-	Loans   LoanReader
-	Budgets BudgetStore
-	Convos  ConversationStore
+	Inbox     InboxStore
+	Users     UserStore
+	Loans     LoanReader
+	Budgets   BudgetStore
+	Convos    ConversationStore
+	Reminders ReminderStore
 
 	// DefaultCurrency is what a bare number means. AMD here; a user with a
 	// dollar loan writes the code and it is honoured.
@@ -217,7 +219,7 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 		return w.listLoans(ctx, c.UserID, chat, l)
 
 	case KindAdvice:
-		return w.advise(ctx, c.UserID, chat, l)
+		return w.advise(ctx, c.UserID, chat, l, plan.PayLeastInterest, false)
 
 	case KindBudget:
 		return w.askBudget(ctx, c.UserID, chat, l)
@@ -323,6 +325,24 @@ func percent(r money.Rate) string {
 }
 
 func (w *Worker) callback(ctx context.Context, userID string, chat int64, data string) error {
+	// The reader changing the question rather than accepting the answer.
+	if strings.HasPrefix(data, "goal:") {
+		locale, _, err := w.Users.Locale(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("reading locale: %w", err)
+		}
+		l := i18n.Locale(locale)
+		switch data[5:] {
+		case "soonest":
+			return w.advise(ctx, userID, chat, l, plan.FinishSoonest, false)
+		case "relief":
+			return w.advise(ctx, userID, chat, l, plan.FreeUpMonthly, false)
+		case "compare":
+			return w.advise(ctx, userID, chat, l, plan.PayLeastInterest, true)
+		default:
+			return w.advise(ctx, userID, chat, l, plan.PayLeastInterest, false)
+		}
+	}
 	if len(data) > 5 && data[:5] == "lang:" {
 		want := i18n.Locale(data[5:])
 		if !want.Valid() {
