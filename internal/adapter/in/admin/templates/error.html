@@ -1,5 +1,6 @@
+{{define "crumbs"}}<div class="crumbs"><a href="/">Overview</a><span class="sep">›</span>Error</div>{{end}}
 {{define "content"}}
-<div class="note bad mono">{{.Err}}</div>
-<p><a href="/">Back to the overview</a></p>
+<div class="note bad mono" role="alert">{{.Err}}</div>
+<p class="actions-row"><a href="/">Back to the overview</a> · <a href="/loans">Loans</a> · <a href="/users">Users</a></p>
 {{end}}
 {{template "layout" .}}

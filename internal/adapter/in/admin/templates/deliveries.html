@@ -3,9 +3,9 @@
   Reminders and replies waiting to reach Telegram. Delivery is at-least-once: a message accepted by
   Telegram but not marked locally will be sent again, which is why reminder text reads correctly twice.
 </p>
-<div class="pills">
-  {{range .Statuses}}<a class="pill{{if eq .Status $.Status}} on{{end}}" href="/deliveries{{if .Status}}?status={{.Status}}{{end}}">{{if .Status}}{{.Status}}{{else}}all{{end}}<span class="n">{{.N}}</span></a>{{end}}
-</div>
+<nav class="pills" aria-label="Filter by status">
+  {{range .Statuses}}<a class="pill" {{if eq .Status $.Status}}aria-current="page"{{end}} href="/deliveries{{if .Status}}?status={{.Status}}{{end}}">{{if .Status}}{{.Status}}{{else}}all{{end}}<span class="n">{{.N}}</span></a>{{end}}
+</nav>
 <div class="panel">
   <div class="hd">{{len .Rows}} shown{{if .Status}}, status {{.Status}}{{end}}</div>
   {{if .Rows}}
@@ -15,19 +15,22 @@
     <tbody>{{range .Rows}}
       <tr>
         <td>{{.Kind}}</td>
-        <td class="mono"><a href="/users/{{.UserID}}">{{short .UserID}}</a></td>
+        <td class="mono"><a href="/users/{{.UserID}}" title="{{.UserID}}">{{short .UserID}}</a></td>
         <td><span class="tag {{status .Status}}">{{.Status}}</span></td>
         <td class="num">{{.Priority}}</td>
-        <td class="nowrap">{{stamp .ScheduledAt}}</td>
-        <td class="nowrap">{{stamp .NextAttempt}}</td>
+        <td class="nowrap">{{stamp .ScheduledAt}}<span class="ago">{{ago $.Now .ScheduledAt}}</span></td>
+        <td class="nowrap">{{stamp .NextAttempt}}<span class="ago">{{ago $.Now .NextAttempt}}</span></td>
         <td class="num">{{.Attempts}}</td>
         <td class="num mono">{{if .MessageID}}{{.MessageID}}{{else}}—{{end}}</td>
-        <td class="nowrap">{{if .SentAt}}{{stamp .SentAt}}{{else}}<span class="muted">—</span>{{end}}</td>
-        <td class="mono">{{if .LastError}}{{.LastError}}{{else}}—{{end}}</td>
+        <td class="nowrap">{{if .SentAt}}{{stamp .SentAt}}<span class="ago">{{ago $.Now .SentAt}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+        <td class="mono err" title="{{.LastError}}">{{if .LastError}}{{.LastError}}{{else}}—{{end}}</td>
       </tr>
     {{end}}</tbody>
   </table></div>
-  {{else}}<div class="empty">Nothing queued.</div>{{end}}
+  {{else}}<div class="empty">
+    {{if .Status}}Nothing is {{.Status}}.<a class="next" href="/deliveries">Show every delivery →</a>
+    {{else}}Nothing queued. Reminders land here when a scheduled occurrence comes due.{{end}}
+  </div>{{end}}
 </div>
 {{end}}
 {{template "layout" .}}

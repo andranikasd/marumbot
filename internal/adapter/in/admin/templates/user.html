@@ -1,5 +1,19 @@
+{{define "crumbs"}}<div class="crumbs"><a href="/">Overview</a><span class="sep">›</span><a href="/users">Users</a><span class="sep">›</span><span class="mono">{{short .V.User.ID}}</span></div>{{end}}
+{{define "actions"}}
+<div class="actions">
+  {{if eq .V.User.AccessState "paused"}}
+  <form method="post" action="/users/{{.V.User.ID}}/restore?back=/users/{{.V.User.ID}}"><button class="quiet">Restore access</button></form>
+  {{else}}
+  <form method="post" action="/users/{{.V.User.ID}}/pause?back=/users/{{.V.User.ID}}"><button class="quiet">Pause access</button></form>
+  {{end}}
+</div>
+{{end}}
 {{define "content"}}
-<div class="crumbs"><a href="/users">Users</a> › <span class="mono">{{.V.User.ID}}</span></div>
+<p class="subtitle">
+  <span class="mono" title="{{.V.User.ID}}">{{.V.User.ID}}</span> ·
+  <span class="tag {{access .V.User.AccessState}}">{{.V.User.AccessState}}</span> ·
+  <span>joined {{date .V.User.CreatedAt}}<span class="ago">{{ago .Now .V.User.CreatedAt}}</span></span>
+</p>
 {{if .Notice}}<div class="note ok">{{.Notice}}</div>{{end}}
 <div class="grid2">
   <div class="panel">
@@ -9,10 +23,10 @@
         <dt>Access</dt><dd><span class="tag {{access .V.User.AccessState}}">{{.V.User.AccessState}}</span></dd>
         <dt>Locale</dt><dd>{{.V.User.Locale}}</dd>
         <dt>Timezone</dt><dd>{{.V.User.Timezone}}</dd>
-        <dt>Trial ends</dt><dd>{{date .V.User.TrialEndsAt}}</dd>
-        <dt>Joined</dt><dd>{{stamp .V.User.CreatedAt}}</dd>
+        <dt>Trial ends</dt><dd>{{date .V.User.TrialEndsAt}}<span class="ago">{{ago .Now .V.User.TrialEndsAt}}</span></dd>
+        <dt>Joined</dt><dd>{{stamp .V.User.CreatedAt}}<span class="ago">{{ago .Now .V.User.CreatedAt}}</span></dd>
         <dt>Deletion</dt><dd>{{if .V.User.DeletionRequested}}<span class="tag t-warn">requested</span>{{else}}<span class="muted">not requested</span>{{end}}</dd>
-        <dt>Pending question</dt><dd>{{if .V.Convo}}<span class="mono">{{.V.Convo.State}}</span> <span class="muted">since {{stamp .V.Convo.UpdatedAt}}</span>{{else}}<span class="muted">none</span>{{end}}</dd>
+        <dt>Pending question</dt><dd>{{if .V.Convo}}<span class="mono">{{.V.Convo.State}}</span> <span class="muted">since {{stamp .V.Convo.UpdatedAt}}</span><span class="ago">{{ago .Now .V.Convo.UpdatedAt}}</span>{{else}}<span class="muted">none</span>{{end}}</dd>
       </dl>
     </div>
   </div>
@@ -23,7 +37,7 @@
       <thead><tr><th>Currency</th><th class="num">Monthly</th><th class="num">Payday</th><th>Updated</th></tr></thead>
       <tbody>{{range .V.Budgets}}
         <tr><td class="mono">{{.Currency}}</td><td class="num">{{minorv .MonthlyMinor .Currency}}</td>
-          <td class="num">{{if .PayDay}}{{.PayDay}}{{else}}<span class="muted">not set</span>{{end}}</td><td class="nowrap">{{stamp .UpdatedAt}}</td></tr>
+          <td class="num">{{if .PayDay}}{{.PayDay}}{{else}}<span class="muted">not set</span>{{end}}</td><td class="nowrap">{{stamp .UpdatedAt}}<span class="ago">{{ago $.Now .UpdatedAt}}</span></td></tr>
       {{end}}</tbody>
     </table></div>
     {{else}}<div class="empty">No budget set. The borrower gets no plan until there is one.</div>{{end}}
@@ -34,7 +48,7 @@
   <div class="hd">Loans <span class="tools muted">{{len .V.Loans}}</span></div>
   {{if .V.Loans}}
   <div class="scroll"><table>
-    <thead><tr><th>Name</th><th>Lender</th><th>Cur</th><th class="num">Balance</th><th>As of</th><th>Reliability</th><th>Created</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Lender</th><th>Cur</th><th class="num">Balance</th><th>As of</th><th>Reliability</th><th>Created</th><th class="actions"></th></tr></thead>
     <tbody>{{range .V.Loans}}
       <tr {{if .ArchivedAt}}class="dim"{{end}}>
         <td><a href="/loans/{{.ID}}">{{.Name}}</a>{{if .ArchivedAt}} <span class="tag t-mute">archived</span>{{end}}</td>
@@ -51,7 +65,7 @@
       </tr>
     {{end}}</tbody>
   </table></div>
-  {{else}}<div class="empty">No loans.</div>{{end}}
+  {{else}}<div class="empty">No loans. The borrower registers one from the bot.<a class="next" href="/loans">All loans →</a></div>{{end}}
 </div>
 
 <div class="panel">
@@ -59,8 +73,42 @@
   {{if .V.Plan}}{{template "plan" .V.Plan}}{{else}}<div class="empty">{{.V.PlanNote}}</div>{{end}}
 </div>
 
+<h2>Activity</h2>
+<div class="grid2">
+  <div class="panel">
+    <div class="hd">Sent to the bot <span class="tools muted">latest {{len .V.Commands}}</span></div>
+    {{if .V.Commands}}
+    <ul class="timeline">{{range .V.Commands}}
+      <li>
+        <span class="dot in{{if eq .Status "dead"}} dead{{else if eq .Status "completed"}} ok{{end}}" aria-hidden="true"></span>
+        <span>
+          <span>{{.Kind}}</span> <span class="tag {{status .Status}}">{{.Status}}</span>
+          {{if .LastError}}<span class="mono err" title="{{.LastError}}">{{.LastError}}</span>{{end}}
+          <span class="when">{{stamp .ReceivedAt}}<span class="ago">{{ago $.Now .ReceivedAt}}</span> · update <span class="mono">{{.UpdateID}}</span>{{if gt .Attempts 1}} · {{.Attempts}} tries{{end}}</span>
+        </span>
+      </li>
+    {{end}}</ul>
+    {{else}}<div class="empty">Nothing received from this account.<a class="next" href="/commands">Open the inbox →</a></div>{{end}}
+  </div>
+  <div class="panel">
+    <div class="hd">Sent by the bot <span class="tools muted">latest {{len .V.Deliveries}}</span></div>
+    {{if .V.Deliveries}}
+    <ul class="timeline">{{range .V.Deliveries}}
+      <li>
+        <span class="dot{{if eq .Status "dead"}} dead{{else if eq .Status "sent"}} ok{{end}}" aria-hidden="true"></span>
+        <span>
+          <span>{{.Kind}}</span> <span class="tag {{status .Status}}">{{.Status}}</span>
+          {{if .LastError}}<span class="mono err" title="{{.LastError}}">{{.LastError}}</span>{{end}}
+          <span class="when">{{if .SentAt}}sent {{stamp .SentAt}}<span class="ago">{{ago $.Now .SentAt}}</span>{{else}}scheduled {{stamp .ScheduledAt}}<span class="ago">{{ago $.Now .ScheduledAt}}</span>{{end}}{{if gt .Attempts 1}} · {{.Attempts}} tries{{end}}</span>
+        </span>
+      </li>
+    {{end}}</ul>
+    {{else}}<div class="empty">Nothing sent to this account yet.<a class="next" href="/deliveries">Open the outbox →</a></div>{{end}}
+  </div>
+</div>
+
+<h2>Moderation</h2>
 <div class="panel">
-  <div class="hd">Moderation</div>
   <div class="bd">
     <div class="grid2">
       <div>
