@@ -117,7 +117,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 
 	bot := telegramclient.New(cfg.BotToken)
 	worker := &app.Worker{
-		Inbox: store, Users: store, Loans: store, Budgets: store, Convos: store,
+		Inbox: store, Users: store, Loans: store, Editor: store, Budgets: store, Convos: store,
 		Chats:           postgres.ChatLookup{Store: store, Cipher: cipher},
 		Send:            bot,
 		Clock:           sysclock.New(),
