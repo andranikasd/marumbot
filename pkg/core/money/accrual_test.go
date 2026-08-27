@@ -5,6 +5,14 @@ import (
 	"testing"
 )
 
+// wholeDram fixes the quantum these expectations were derived at.
+//
+// They must not read a default: the registry's AMD settlement unit is a fact
+// about what lenders do, and it changed from 100 to 10 when a real agreement
+// refuted it. A test that reads that default measures the default, and its
+// meaning changes silently underneath it.
+var wholeDram = Policy{Mode: HalfUp, Unit: 100}
+
 func amd(major int64) Amount {
 	a, err := FromMajor(major, AMD)
 	if err != nil {
@@ -18,7 +26,7 @@ func amd(major int64) Amount {
 func TestAccrue_LargePrincipalDoesNotOverflow(t *testing.T) {
 	rate := RateFromPercent(18, 0)
 	for _, principal := range []int64{4_000_000, 16_529_340, 30_000_000, 80_000_000, 1_000_000_000} {
-		got, err := Accrue(amd(principal), rate, 31, Actual365, DefaultAMDPolicy)
+		got, err := Accrue(amd(principal), rate, 31, Actual365, wholeDram)
 		if err != nil {
 			t.Fatalf("principal %d AMD: unexpected error %v", principal, err)
 		}
@@ -59,7 +67,7 @@ func TestAccrue_KnownValues(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := Accrue(amd(tc.principal), RateFromPercent(tc.percent, 0), tc.days, tc.dc, DefaultAMDPolicy)
+			got, err := Accrue(amd(tc.principal), RateFromPercent(tc.percent, 0), tc.days, tc.dc, wholeDram)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -74,7 +82,7 @@ func TestAccrue_KnownValues(t *testing.T) {
 func TestAccrue_AlwaysQuantisedToWholeDram(t *testing.T) {
 	rate := RateFromPercent(23, 750000) // 23.75%
 	for principal := int64(1); principal <= 5_000_000; principal += 137_137 {
-		got, err := Accrue(amd(principal), rate, 29, Actual365, DefaultAMDPolicy)
+		got, err := Accrue(amd(principal), rate, 29, Actual365, wholeDram)
 		if err != nil {
 			t.Fatalf("principal %d: %v", principal, err)
 		}
@@ -90,7 +98,7 @@ func TestAccrue_Monotonicity(t *testing.T) {
 	rate := RateFromPercent(18, 0)
 	prev := int64(-1)
 	for principal := int64(100_000); principal <= 3_000_000; principal += 100_000 {
-		got, err := Accrue(amd(principal), rate, 30, Actual365, DefaultAMDPolicy)
+		got, err := Accrue(amd(principal), rate, 30, Actual365, wholeDram)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -102,13 +110,13 @@ func TestAccrue_Monotonicity(t *testing.T) {
 }
 
 func TestAccrue_RejectsBadInput(t *testing.T) {
-	if _, err := Accrue(amd(1000), RateFromPercent(18, 0), -1, Actual365, DefaultAMDPolicy); err == nil {
+	if _, err := Accrue(amd(1000), RateFromPercent(18, 0), -1, Actual365, wholeDram); err == nil {
 		t.Error("negative days should be rejected")
 	}
-	if _, err := Accrue(FromMinor(-100, AMD), RateFromPercent(18, 0), 30, Actual365, DefaultAMDPolicy); err == nil {
+	if _, err := Accrue(FromMinor(-100, AMD), RateFromPercent(18, 0), 30, Actual365, wholeDram); err == nil {
 		t.Error("negative principal should be rejected")
 	}
-	if _, err := Accrue(FromMinor(math.MaxInt64, AMD), RateFromPercent(40, 0), 366, Actual365, DefaultAMDPolicy); err == nil {
+	if _, err := Accrue(FromMinor(math.MaxInt64, AMD), RateFromPercent(40, 0), 366, Actual365, wholeDram); err == nil {
 		t.Error("absurd principal should return an error rather than wrap")
 	}
 }

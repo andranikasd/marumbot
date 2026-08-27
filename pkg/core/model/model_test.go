@@ -186,7 +186,7 @@ func TestContract_Validate(t *testing.T) {
 		EffectiveFrom: d("2026-01-01"), NominalRate: money.RateFromPercent(18, 0),
 		DayCount: money.Actual365, Type: Annuity,
 		StartDate: d("2026-01-01"), MaturityDate: d("2029-01-01"),
-		PaymentDay: 5, Rounding: money.DefaultAMDPolicy,
+		PaymentDay: 5, Rounding: money.Policy{Mode: money.HalfUp, Unit: 100},
 	}
 	if err := base.Validate(); err != nil {
 		t.Fatalf("valid contract rejected: %v", err)

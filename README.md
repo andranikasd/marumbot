@@ -37,15 +37,21 @@ observability stack all run locally.
 
 | Phase | Scope | State |
 | --- | --- | --- |
-| 0 | Collect real Armenian schedules and lender policies | Not started |
-| **1** | **Money, dates, dated accrual, ledger replay** | **Engine done; solver and golden corpus next** |
+| 0 | Collect real Armenian schedules and lender policies | One lender, two documents |
+| **1** | **Money, dates, dated accrual, ledger replay** | **Engine done; a real loan agreement reproduces exactly; the corpus needs more lenders** |
 | 2 | Durable Telegram inbox, one loan, reminders, payment recording | Not started |
 | 3 | Multiple loans, repayment strategies | Not started |
 | 4 | Test environment, Telegram Stars, entitlements | Not started |
 | 5 | Fee-aware optimiser, further repayment types | Not started |
 
 Phase 1 cannot close until **ten real repayment schedules from four lenders
-reproduce to the dram**. That gate sits in front of every user-facing number.
+reproduce to the minor unit**. That gate sits in front of every user-facing
+number, and two of the ten are in place — both of them the same Inecobank
+consumer loan, contract M26/029210. The engine reproduces 59 of the 59
+non-final rows of the loan agreement exactly — to the luma, the hundredth of a
+dram, on interest and on principal; the shorter schedule the bank re-issued
+five months later reproduces 52 of its 54. What each fixture proves, and what
+it does not, is recorded in [the corpus](testdata/golden/README.md).
 
 ---
 
@@ -110,10 +116,13 @@ Two invariants matter more than the rest:
   read correctly if one arrives twice.
 
 Currencies are supported from the start. A currency's ISO exponent and its
-settlement unit are separate facts: AMD has two decimal places on paper but
-settles in whole drams, the yen has none, the dinar has three. Budgets and
-plans are **per currency** — allocating a dram budget across a dollar loan
-needs an exchange rate, and Marum has no validated source for one.
+settlement unit are separate facts: AMD has two decimal places on paper and
+settles to a tenth of a dram, the yen has none, the dinar has three. AMD
+settled in whole drams here until the loan agreement in the corpus refuted it:
+it prints an instalment of 125,079.60, and not one of its 60 rows is a whole
+dram. Budgets and plans are **per currency** — allocating a dram budget across
+a dollar loan needs an exchange rate, and Marum has no validated source for
+one.
 
 More: [docs/architecture/01-overview.md](docs/architecture/01-overview.md)
 
@@ -135,8 +144,10 @@ internal/
   adapter/out/        postgres, telegramclient, sysclock
   obs/                OpenTelemetry, redaction, components, metrics
   config/             environment parsing and validation
+  corpus/             replays the golden schedules; here, not in pkg/core, since it reads files
 queries/              every SQL statement, embedded and named
 migrations/           goose SQL, expand-only
+testdata/golden/      the correctness corpus: schedules real lenders issued
 deploy/               Dockerfile, Cloudflare, Terraform, observability configs
 docs/                 architecture, operations, design
 ```
@@ -156,7 +167,7 @@ Everything lives in [`docs/`](docs/README.md).
 | --- | --- |
 | **Architecture** | [Overview](docs/architecture/01-overview.md) · [Domain model](docs/architecture/02-domain-model.md) · [Ledger and replay](docs/architecture/03-ledger-replay.md) · [Money and dates](docs/architecture/04-money-and-dates.md) · [Database](docs/architecture/05-database.md) · [Admin UI](docs/architecture/06-admin-ui.md) · [Messaging](docs/architecture/07-messaging.md) · [Observability](docs/architecture/08-observability.md) |
 | **Operations** | [Local development](docs/operations/local-development.md) · [Environments](docs/operations/environments.md) · [Releasing](docs/operations/releases.md) · [Deployment](docs/operations/deployment.md) · [Infrastructure](deploy/terraform/README.md) · [Grafana Cloud](docs/operations/grafana-cloud.md) · [Runbooks](docs/operations/runbooks.md) |
-| **Reference** | [Engineering guide](docs/engineering-guide.md) · [Design document (PDF)](docs/design/Marum-MVP-System-and-Architecture-Design.pdf) · [Long-form design](docs/design/reliable-mvp-design.md) · [AGENTS.md](AGENTS.md) |
+| **Reference** | [Correctness corpus](testdata/golden/README.md) · [Engineering guide](docs/engineering-guide.md) · [Design document (PDF)](docs/design/Marum-MVP-System-and-Architecture-Design.pdf) · [Long-form design](docs/design/reliable-mvp-design.md) · [AGENTS.md](AGENTS.md) |
 
 ---
 
@@ -177,14 +188,18 @@ All targets run inside containers.
 
 | Layer | Proves |
 | --- | --- |
-| Golden schedules | Marum reproduces a real lender's schedule to the dram |
+| Correctness corpus | Marum reproduces a real lender's schedule to the minor unit — today, 59 of the 59 non-final rows of an Inecobank loan agreement |
 | Property tests | Money never appears or disappears across allocation buckets |
 | Ledger replay | `replay(events) == loan_state`, including under concurrency |
 | Integration | Real Postgres: leases, idempotency, migration reversibility |
 | Journeys | Whole conversations against a fake Telegram transport |
 
 Every user-reported calculation discrepancy becomes a golden fixture **before**
-the fix is written. The corpus is the asset.
+the fix is written. The corpus is the asset: the engine is replaceable, the
+evidence that it matches real paperwork is not. A fixture that fails is worth
+more than one that passes, because it names a convention the engine does not
+yet know — that is how AMD came to settle to a tenth of a dram rather than to
+the whole one. See [testdata/golden](testdata/golden/README.md).
 
 ---
 

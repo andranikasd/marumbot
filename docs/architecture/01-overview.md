@@ -9,6 +9,15 @@ That is a deliberate reversal of an earlier design. Splitting into services
 multiplied cold starts, idle cost and failure modes without solving the risk
 that actually threatens this product, which is arithmetic being wrong.
 
+That risk is measured rather than asserted. `internal/corpus` replays the
+repayment schedules real lenders issued, row by row, and fails on a single
+minor unit of disagreement; the loan agreement in it reproduces 59 of its 59
+non-final rows exactly, to the luma, on interest and on principal.
+That is one lender and two documents. Phase 1 does not close until ten
+schedules from four lenders reproduce, and the corpus is a long way from it —
+[money and dates](04-money-and-dates.md) records what it does and does not
+show.
+
 ```mermaid
 flowchart TB
   user["Borrower<br/>Telegram client"]
@@ -47,14 +56,16 @@ flowchart TB
 | scheduler | `internal/adapter/in/tick` | 60-second tick under an advisory lock. Generates reminders, groups deliveries, reconciles. |
 | sender | `internal/adapter/out/telegramclient` | Exactly one active instance. 28 msg/s globally, 1 msg/s per chat. |
 | admin | `internal/adapter/in/admin` | Private interface for the operator. See [admin UI](06-admin-ui.md). |
-| engine | `pkg/core` | Pure, deterministic, no I/O. See [money and dates](04-money-and-dates.md). |
+| engine | `pkg/core` | Pure, deterministic, no I/O. Replayed against real lender schedules by `internal/corpus`. See [money and dates](04-money-and-dates.md). |
 | store | `internal/adapter/out/postgres` | The only package that talks to the database. |
 
 ## Rules that shape everything else
 
 1. **Dependencies point inward.** Adapters depend on `internal/app`, which
    depends on `pkg/core`. The engine imports nothing from `internal/`, enforced
-   by `depguard` and by a CI job that builds the engine on its own.
+   by `depguard` and by a CI job that builds the engine on its own. This is also
+   why the corpus that proves the engine correct sits in `internal/corpus`: it
+   reads files, and the engine performs no I/O.
 2. **Acknowledgement means durable acceptance.** Telegram gets its 200 only
    after the command has committed. A crash after the answer cannot lose the
    action.

@@ -47,12 +47,13 @@ marumbot/
 │   │       ├── blob/           object storage for dumps and exports
 │   │       └── sysclock/       the only place time.Now() is allowed
 │   ├── obs/                    OTel setup, slog handler, redaction, metrics
-│   └── config/                 env parsing and validation
+│   ├── config/                 env parsing and validation
+│   └── corpus/                 replays testdata/golden; here because it reads files
 ├── migrations/                 goose SQL, expand-only, embedded in the binary
 ├── queries/                    .sql consumed by sqlc; never hand-written Go SQL
 ├── locales/                    en.toml, hy.toml, ru.toml
 ├── testdata/
-│   └── golden/                 real lender schedules and expected engine output
+│   └── golden/                 the correctness corpus: schedules real lenders issued
 ├── deploy/                     Dockerfile, docker-compose.yml, self-hosting docs
 ├── docs/                       design documents, diagrams, this file
 ├── .golangci.yml               the enforcement backbone
@@ -285,7 +286,7 @@ slog.Info("plan computed", "balance", state.Principal, "chat", chatID)
 
 | Layer | Tool | Proves |
 | --- | --- | --- |
-| Golden schedules | table tests over `testdata/golden` | The engine matches a real lender to the dram. The only test that proves correctness rather than self-consistency. |
+| Correctness corpus | `internal/corpus` replays `testdata/golden` | The engine matches a real lender to the minor unit — currently 59 of the 59 non-final rows of an Inecobank loan agreement. The only test that proves correctness rather than self-consistency. |
 | Property tests | `testing/quick` | Principal components sum to the original; closing balance is exactly zero; a prepayment never increases total interest. |
 | Ledger replay | table + property | `replay(contract, snapshot, events) == loan_state`, including under concurrent writes. |
 | Unit | stdlib | Everything in `pkg/core`, with no fakes needed because there is no I/O. |

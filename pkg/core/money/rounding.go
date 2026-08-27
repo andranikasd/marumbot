@@ -31,16 +31,24 @@ func (m Mode) String() string {
 // wrong" into a support ticket.
 type Policy struct {
 	Mode Mode
-	// Unit is the settlement granularity in minor units. AMD defaults to 100:
-	// two decimal places exist in ISO 4217, but banks settle in whole drams.
+	// Unit is the settlement granularity in minor units, taken from the
+	// currency unless a contract states otherwise. It is a per-lender fact: no
+	// Armenian regulation prescribes one, and the corpus records what each
+	// lender's paperwork actually does.
 	Unit int64
 }
 
-// DefaultAMDPolicy is half-up to the whole dram. Any lender-specific
-// difference must be confirmed against a real repayment schedule first.
-// For other currencies use DefaultPolicy, which reads the settlement unit
-// from the currency registry.
-var DefaultAMDPolicy = Policy{Mode: HalfUp, Unit: 100}
+// DefaultAMDPolicy is the home-market default, derived from the registry rather
+// than restated.
+//
+// It used to carry its own literal, and when the registry's AMD settlement unit
+// was corrected from 100 to 10 against a real loan agreement, this disagreed
+// with it silently. Two constants for one fact is one too many: deriving it
+// makes that impossible rather than merely unlikely.
+//
+// Any lender-specific difference must still be confirmed against a real
+// repayment schedule before it is encoded.
+var DefaultAMDPolicy = DefaultPolicy(AMD)
 
 func (p Policy) unit() int64 {
 	if p.Unit < 1 {
