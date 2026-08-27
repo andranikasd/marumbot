@@ -18,13 +18,17 @@
 # CNAME -- so a record made here would break the deploy it was meant to enable.
 
 locals {
-  name = var.environment == "production" ? "marum" : "marum-${var.environment}"
+  name = "marum-${var.environment}"
 
-  # Production must never serve a cached balance. See query_cache_max_age.
-  cache_disabled = var.environment == "production" || var.query_cache_max_age == 0
+  # A stale balance is a correctness bug; the cache is off unless a tfvars
+  # file asks for it. See query_cache_max_age.
+  cache_disabled = var.query_cache_max_age == 0
 
-  # One zone, two environments: only production may write zone-wide settings.
-  manages_zone = var.environment == "production"
+  # Zone-wide settings (TLS, HSTS) need exactly one owner. With production
+  # removed for now, that is dev; when production returns it takes this over
+  # and dev's copy is dropped, or the two would revert each other on every
+  # apply.
+  manages_zone = var.environment == "dev"
 }
 
 # ---------------------------------------------------------------------------

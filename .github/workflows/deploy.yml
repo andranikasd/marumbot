@@ -1,13 +1,13 @@
 name: Deploy
 
-# A reusable deployment, called by the dev and production pipelines rather than
-# triggered directly. One definition means dev genuinely rehearses production:
-# the same steps, the same order, the same smoke test.
+# A reusable deployment, called by the environment pipelines rather than
+# triggered directly. One definition means every environment runs the same
+# steps, in the same order, with the same smoke test.
 on:
   workflow_call:
     inputs:
       environment:
-        description: "GitHub environment: dev or production"
+        description: "GitHub environment, e.g. dev"
         required: true
         type: string
       wrangler_env:
@@ -60,7 +60,7 @@ jobs:
           TF_VAR_cloudflare_api_token: ${{ secrets.TF_CLOUDFLARE_API_TOKEN }}
           TF_VAR_cloudflare_account_id: ${{ secrets.TF_CLOUDFLARE_ACCOUNT_ID }}
           TF_VAR_cloudflare_zone_id: ${{ secrets.TF_CLOUDFLARE_ZONE_ID }}
-          TF_VAR_database: ${{ inputs.environment == 'production' && secrets.TF_DATABASE_PRODUCTION || secrets.TF_DATABASE_DEV }}
+          TF_VAR_database: ${{ secrets.TF_DATABASE_DEV }}
           TF_IN_AUTOMATION: "true"
         run: |
           terraform init \

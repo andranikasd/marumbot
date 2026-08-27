@@ -70,41 +70,6 @@ binding = "HYPERDRIVE"
 id = "set-after-creating-the-dev-hyperdrive-config"
 
 # ---------------------------------------------------------------------------
-# production - deployed only from a published release
-# ---------------------------------------------------------------------------
-[env.production]
-name = "marum"
-
-[env.production.vars]
-ENVIRONMENT = "production"
-
-[env.production.triggers]
-crons = ["*/5 * * * *"]
-
-[[env.production.routes]]
-pattern = "marum.loan"
-custom_domain = true
-
-[[env.production.containers]]
-class_name = "MarumApp"
-image = "../Dockerfile"
-image_build_context = "../.."
-max_instances = 2
-instance_type = "basic"
-
-[[env.production.durable_objects.bindings]]
-name = "MARUM_APP"
-class_name = "MarumApp"
-
-[[env.production.migrations]]
-tag = "v1"
-new_sqlite_classes = ["MarumApp"]
-
-[[env.production.hyperdrive]]
-binding = "HYPERDRIVE"
-id = "set-after-creating-the-production-hyperdrive-config"
-
-# ---------------------------------------------------------------------------
 # Secrets are set per environment with:
 #     wrangler secret put NAME --env dev
 #     wrangler secret put NAME --env production
