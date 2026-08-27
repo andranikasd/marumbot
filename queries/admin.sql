@@ -39,7 +39,7 @@ ORDER BY l.created_at DESC
 LIMIT $1;
 
 -- name: GetLoan
-SELECT l.id, l.user_id, l.name, l.lender, l.currency, l.next_event_seq, l.created_at, l.archived_at
+SELECT l.id, l.user_id, l.name, coalesce(l.description, ''), l.lender, l.currency, l.next_event_seq, l.created_at, l.archived_at
 FROM loans l WHERE l.id = $1;
 
 -- name: ListContractsForLoan
@@ -176,3 +176,47 @@ RETURNING id;
 -- job. Only 'dead' rows are touched; a pending or leased command is live work.
 DELETE FROM telegram_commands WHERE status = 'dead'
 RETURNING id;
+
+-- name: UsersByDay
+-- Sign-ups per day over the last two weeks, for the dashboard trend. Days
+-- with no sign-up are absent; the read model fills them so the chart has a
+-- bar per day rather than a gap that reads as missing data.
+SELECT created_at::date AS day, count(*)
+  FROM users
+ WHERE created_at >= (now()::date - 13)
+ GROUP BY 1 ORDER BY 1;
+
+-- name: LoansByDay
+SELECT created_at::date AS day, count(*)
+  FROM loans
+ WHERE created_at >= (now()::date - 13)
+ GROUP BY 1 ORDER BY 1;
+
+-- name: GetUserAdmin
+SELECT u.id, u.locale, u.timezone, u.access_state, u.trial_ends_at, u.created_at, u.deleted_at,
+       (u.deletion_requested_at IS NOT NULL) AS deletion_requested,
+       (SELECT count(*) FROM loans l WHERE l.user_id = u.id AND l.archived_at IS NULL) AS loan_count
+  FROM users u WHERE u.id = $1;
+
+-- name: ListLoansByUser
+SELECT l.id, l.user_id, l.name, l.lender, l.currency, l.created_at, l.archived_at,
+       (SELECT count(*) FROM loan_events e WHERE e.loan_id = l.id)    AS event_count,
+       (SELECT count(*) FROM loan_snapshots s WHERE s.loan_id = l.id) AS snapshot_count,
+       st.reliability_state, st.principal_minor, st.balance_as_of
+  FROM loans l
+  LEFT JOIN loan_state st ON st.loan_id = l.id
+ WHERE l.user_id = $1
+ ORDER BY l.archived_at NULLS FIRST, l.created_at DESC;
+
+-- name: ListBudgetsForUser
+SELECT currency, monthly_amount_minor, pay_day, updated_at
+  FROM budgets WHERE user_id = $1 ORDER BY monthly_amount_minor DESC;
+
+-- name: GetConversationState
+SELECT state_name, updated_at FROM conversation_states WHERE user_id = $1;
+
+-- name: CountCommandsByStatus
+SELECT status, count(*) FROM telegram_commands GROUP BY status ORDER BY status;
+
+-- name: CountDeliveriesByStatus
+SELECT status, count(*) FROM notification_deliveries GROUP BY status ORDER BY status;

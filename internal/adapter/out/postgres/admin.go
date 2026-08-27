@@ -209,3 +209,87 @@ func (s *Store) PurgeDeadCommands(ctx context.Context) (int64, error) {
 	}
 	return tag.RowsAffected(), nil
 }
+
+// UsersByDay returns sign-ups per day for the dashboard trend.
+func (s *Store) UsersByDay(ctx context.Context) ([]app.DayCount, error) {
+	rows, err := s.pool.Query(ctx, q("UsersByDay"))
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[app.DayCount])
+}
+
+// LoansByDay returns loans filed per day for the dashboard trend.
+func (s *Store) LoansByDay(ctx context.Context) ([]app.DayCount, error) {
+	rows, err := s.pool.Query(ctx, q("LoansByDay"))
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[app.DayCount])
+}
+
+// GetUser returns one account, or ErrNotFound.
+func (s *Store) GetUser(ctx context.Context, id string) (app.UserRow, error) {
+	rows, err := s.pool.Query(ctx, q("GetUserAdmin"), id)
+	if err != nil {
+		return app.UserRow{}, err
+	}
+	u, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByPos[app.UserRow])
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.UserRow{}, app.ErrNotFound
+	}
+	return u, err
+}
+
+// LoansByUser returns every loan an account holds, archived ones last.
+func (s *Store) LoansByUser(ctx context.Context, userID string) ([]app.LoanRow, error) {
+	rows, err := s.pool.Query(ctx, q("ListLoansByUser"), userID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[app.LoanRow])
+}
+
+// BudgetsForUser returns every budget an account has set, one per currency.
+func (s *Store) BudgetsForUser(ctx context.Context, userID string) ([]app.BudgetRow, error) {
+	rows, err := s.pool.Query(ctx, q("ListBudgetsForUser"), userID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[app.BudgetRow])
+}
+
+// ConversationState returns where the bot's dialogue with an account stands,
+// or nil when no question is pending.
+func (s *Store) ConversationState(ctx context.Context, userID string) (*app.ConvoRow, error) {
+	rows, err := s.pool.Query(ctx, q("GetConversationState"), userID)
+	if err != nil {
+		return nil, err
+	}
+	c, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByPos[app.ConvoRow])
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// CommandCounts returns the inbox split by status.
+func (s *Store) CommandCounts(ctx context.Context) ([]app.StatusCount, error) {
+	rows, err := s.pool.Query(ctx, q("CountCommandsByStatus"))
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[app.StatusCount])
+}
+
+// DeliveryCounts returns the outbox split by status.
+func (s *Store) DeliveryCounts(ctx context.Context) ([]app.StatusCount, error) {
+	rows, err := s.pool.Query(ctx, q("CountDeliveriesByStatus"))
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[app.StatusCount])
+}

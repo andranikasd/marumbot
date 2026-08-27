@@ -1,47 +1,40 @@
 {{define "content"}}
-<h1>Command inbox</h1>
 <p class="lead">Every Telegram update becomes a durable command before Telegram is answered. Nothing here should stay pending for long.</p>
-<p class="lead">
-  {{range .Statuses}}<a class="filter{{if eq . $.Status}} on{{end}}"
-     href="/commands{{if .}}?status={{.}}{{end}}">{{if .}}{{.}}{{else}}all{{end}}</a> {{end}}
-</p>
-{{if .Purged}}<p class="lead">Removed {{.Purged}} dead command{{if ne .Purged "1"}}s{{end}}.</p>{{end}}
+<div class="pills">
+  {{range .Statuses}}<a class="pill{{if eq .Status $.Status}} on{{end}}" href="/commands{{if .Status}}?status={{.Status}}{{end}}">{{if .Status}}{{.Status}}{{else}}all{{end}}<span class="n">{{.N}}</span></a>{{end}}
+</div>
+{{if .Purged}}<div class="note ok">Removed {{.Purged}} dead command{{if ne .Purged "1"}}s{{end}}.</div>{{end}}
 <div class="panel">
   <div class="hd">{{len .Rows}} shown{{if .Status}}, status {{.Status}}{{end}}
     {{if eq .Status "dead"}}{{if .Rows}}
-    <form method="post" action="/commands/purge-dead" style="display:inline;margin-left:12px"
-          onsubmit="return confirm('Delete every dead command? This removes the record of what those users sent.')">
+    <form method="post" action="/commands/purge-dead" class="tools">
+      <label class="confirm"><input type="checkbox" name="sure" value="yes" required> I have read them</label>
       <button class="link danger">purge all dead</button>
     </form>
     {{end}}{{end}}
   </div>
   {{if .Rows}}
-  <table>
-    <thead><tr><th class="num">Update</th><th>Kind</th><th>Status</th><th class="num">Attempts</th>
+  <div class="scroll"><table>
+    <thead><tr><th class="num">Update</th><th>Kind</th><th>User</th><th>Status</th><th class="num">Tries</th>
       <th>Next attempt</th><th class="num">Overdue</th><th>Lease</th><th>Received</th>
       <th>Error</th><th></th></tr></thead>
     <tbody>{{range .Rows}}
       <tr>
         <td class="num mono">{{.UpdateID}}</td>
         <td>{{.Kind}}</td>
+        <td class="mono">{{if .UserID}}<a href="/users/{{.UserID}}">{{short .UserID}}</a>{{else}}—{{end}}</td>
         <td><span class="tag {{status .Status}}">{{.Status}}</span></td>
         <td class="num">{{.Attempts}}</td>
-        <td>{{stamp .NextAttemptAt}}</td>
-        <td class="num">{{if gt .DueAgeS 0}}{{.DueAgeS}}s{{else}}—{{end}}</td>
+        <td class="nowrap">{{stamp .NextAttemptAt}}</td>
+        <td class="num">{{if gt .DueAgeS 0}}{{duration .DueAgeS}}{{else}}—{{end}}</td>
         <td class="mono">{{if .LeaseOwner}}{{.LeaseOwner}}{{else}}—{{end}}</td>
-        <td>{{stamp .ReceivedAt}}</td>
+        <td class="nowrap">{{stamp .ReceivedAt}}</td>
         <td class="mono">{{if .LastError}}{{.LastError}}{{else}}—{{end}}</td>
-        <td>
-          {{if ne .Status "completed"}}
-          <form method="post" action="/commands/{{.ID}}/retry">
-            <button class="link">retry</button>
-          </form>
-          {{end}}
-        </td>
+        <td class="actions">{{if ne .Status "completed"}}<form method="post" action="/commands/{{.ID}}/retry"><button class="link">retry</button></form>{{end}}</td>
       </tr>
     {{end}}</tbody>
-  </table>
-  {{else}}<div class="empty">The inbox is empty.</div>{{end}}
+  </table></div>
+  {{else}}<div class="empty">Nothing here.</div>{{end}}
 </div>
 {{end}}
 {{template "layout" .}}

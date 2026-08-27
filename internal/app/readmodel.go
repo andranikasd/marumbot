@@ -54,6 +54,7 @@ type LoanDetail struct {
 	ID           string
 	UserID       string
 	Name         string
+	Description  string
 	Lender       *string
 	Currency     string
 	NextEventSeq int64
@@ -166,4 +167,30 @@ type ReconRow struct {
 	PenaltyMinor   int64
 	EngineVersion  string
 	CreatedAt      time.Time
+}
+
+// DayCount is one bar in a per-day trend.
+type DayCount struct {
+	Day time.Time
+	N   int64
+}
+
+// BudgetRow is a borrower's budget as the operator sees it.
+type BudgetRow struct {
+	Currency     string
+	MonthlyMinor int64
+	PayDay       int16
+	UpdatedAt    time.Time
+}
+
+// ConvoRow is where a borrower is in a multi-step conversation with the bot.
+type ConvoRow struct {
+	State     string
+	UpdatedAt time.Time
+}
+
+// StatusCount is how many queue entries sit in one status.
+type StatusCount struct {
+	Status string
+	N      int64
 }

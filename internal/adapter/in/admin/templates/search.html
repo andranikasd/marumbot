@@ -1,0 +1,31 @@
+{{define "content"}}
+{{if not .R.Query}}<p class="lead">Type a loan name, or the first characters of a loan or user id.</p>{{end}}
+<div class="grid2">
+  <div class="panel">
+    <div class="hd">Loans <span class="tools muted">{{len .R.Loans}}</span></div>
+    {{if .R.Loans}}
+    <div class="scroll"><table>
+      <thead><tr><th>Name</th><th>User</th><th>Cur</th><th class="num">Balance</th><th>Created</th></tr></thead>
+      <tbody>{{range .R.Loans}}
+        <tr><td><a href="/loans/{{.ID}}">{{.Name}}</a>{{if .ArchivedAt}} <span class="tag t-mute">archived</span>{{end}}</td>
+          <td class="mono"><a href="/users/{{.UserID}}">{{short .UserID}}</a></td><td class="mono">{{.Currency}}</td>
+          <td class="num">{{if .PrincipalMinor}}{{minor .PrincipalMinor .Currency}}{{else}}—{{end}}</td><td class="nowrap">{{date .CreatedAt}}</td></tr>
+      {{end}}</tbody>
+    </table></div>
+    {{else}}<div class="empty">No loan matches.</div>{{end}}
+  </div>
+  <div class="panel">
+    <div class="hd">Users <span class="tools muted">{{len .R.Users}}</span></div>
+    {{if .R.Users}}
+    <div class="scroll"><table>
+      <thead><tr><th>ID</th><th>Access</th><th class="num">Loans</th><th>Joined</th></tr></thead>
+      <tbody>{{range .R.Users}}
+        <tr><td class="mono"><a href="/users/{{.ID}}">{{.ID}}</a></td><td><span class="tag {{access .AccessState}}">{{.AccessState}}</span></td>
+          <td class="num">{{.LoanCount}}</td><td class="nowrap">{{date .CreatedAt}}</td></tr>
+      {{end}}</tbody>
+    </table></div>
+    {{else}}<div class="empty">No user matches.</div>{{end}}
+  </div>
+</div>
+{{end}}
+{{template "layout" .}}

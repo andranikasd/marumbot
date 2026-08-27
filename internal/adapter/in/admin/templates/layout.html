@@ -6,20 +6,38 @@
 <link rel="stylesheet" href="/style.css">
 </head><body>
 {{if .SignedIn}}
-<header class="top">
-  <div class="brand">Marum <span>admin</span></div>
-  <nav class="main">
-    <a href="/" {{if eq .Nav "dashboard"}}class="on"{{end}}>Overview</a>
-    <a href="/loans" {{if eq .Nav "loans"}}class="on"{{end}}>Loans</a>
-    <a href="/users" {{if eq .Nav "users"}}class="on"{{end}}>Users</a>
-    <a href="/policies" {{if eq .Nav "policies"}}class="on"{{end}}>Policies</a>
-    <a href="/commands" {{if eq .Nav "commands"}}class="on"{{end}}>Inbox</a>
-    <a href="/deliveries" {{if eq .Nav "deliveries"}}class="on"{{end}}>Outbox</a>
-    <a href="/reconciliation" {{if eq .Nav "reconciliation"}}class="on"{{end}}>Reconciliation</a>
-  </nav>
-  <form method="post" action="/logout"><button class="quiet">Sign out</button></form>
-</header>
-{{end}}
+<div class="shell">
+<aside class="side">
+  <div class="brand">Marum<span>admin</span></div>
+  <a class="nav{{if eq .Nav "dashboard"}} on{{end}}" href="/"><span class="ic">◈</span>Overview</a>
+  <div class="group">Ledger</div>
+  <a class="nav{{if eq .Nav "loans"}} on{{end}}" href="/loans"><span class="ic">▤</span>Loans</a>
+  <a class="nav{{if eq .Nav "users"}} on{{end}}" href="/users"><span class="ic">◉</span>Users</a>
+  <a class="nav{{if eq .Nav "policies"}} on{{end}}" href="/policies"><span class="ic">§</span>Policies</a>
+  <a class="nav{{if eq .Nav "reconciliation"}} on{{end}}" href="/reconciliation"><span class="ic">⇄</span>Reconciliation</a>
+  <div class="group">Engine</div>
+  <a class="nav{{if eq .Nav "engine"}} on{{end}}" href="/engine"><span class="ic">∑</span>Playground</a>
+  <div class="group">Operations</div>
+  <a class="nav{{if eq .Nav "commands"}} on{{end}}" href="/commands"><span class="ic">⇩</span>Inbox{{if .Badges.CommandsDead}}<span class="count hot">{{.Badges.CommandsDead}}</span>{{else if .Badges.CommandsPending}}<span class="count">{{.Badges.CommandsPending}}</span>{{end}}</a>
+  <a class="nav{{if eq .Nav "deliveries"}} on{{end}}" href="/deliveries"><span class="ic">⇧</span>Outbox{{if .Badges.DeliveriesDead}}<span class="count hot">{{.Badges.DeliveriesDead}}</span>{{else if .Badges.DeliveriesPending}}<span class="count">{{.Badges.DeliveriesPending}}</span>{{end}}</a>
+  <div class="foot">{{.Env}} · <span class="mono">{{.Version}}</span>
+    <form method="post" action="/logout" class="out"><button class="quiet">Sign out</button></form>
+  </div>
+</aside>
+<div class="content">
+  <header class="bar">
+    <h1>{{.Title}}</h1>
+    <span class="env">{{.Env}}</span>
+    <form class="search" method="get" action="/search">
+      <input type="search" name="q" placeholder="Loan name, loan or user id…" value="{{.Query}}" aria-label="Search">
+      <button class="quiet">Find</button>
+    </form>
+  </header>
+  <main>{{template "content" .}}</main>
+</div>
+</div>
+{{else}}
 <main>{{template "content" .}}</main>
 <footer>{{.Env}} · {{.Version}}</footer>
+{{end}}
 </body></html>{{end}}

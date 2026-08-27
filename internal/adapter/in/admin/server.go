@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ const (
 	keyTitle = "Title"
 	keyNav   = "Nav"
 	keyRows  = "Rows"
+	keyQuery = "Query"
 )
 
 // Config is everything the interface needs to stand up. Without PasswordHash
@@ -110,9 +112,14 @@ func (s *Server) Handler() http.Handler {
 
 	guarded := map[string]http.HandlerFunc{
 		"GET /{$}":                  s.dashboard,
+		"GET /search":               s.search,
 		"GET /loans":                s.loans,
 		"GET /loans/{id}":           s.loan,
+		"POST /loans/{id}/rename":   s.renameLoan,
 		"GET /users":                s.users,
+		"GET /users/{id}":           s.user,
+		"GET /engine":               s.engine,
+		"POST /engine":              s.engine,
 		"GET /policies":             s.policies,
 		"POST /policies":            s.addPolicy,
 		"GET /commands":             s.commands,
@@ -218,6 +225,12 @@ func (s *Server) act(w http.ResponseWriter, r *http.Request, back string, fn fun
 		s.fail(w, r, err)
 		return
 	}
+	// A detail page may ask to be returned to rather than the list. Only a
+	// local path is honoured, so the parameter cannot bounce the operator to
+	// another site.
+	if b := r.URL.Query().Get("back"); strings.HasPrefix(b, "/") && !strings.HasPrefix(b, "//") {
+		back = b
+	}
 	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
@@ -238,6 +251,10 @@ func (s *Server) eraseUser(w http.ResponseWriter, r *http.Request) {
 		s.act(w, r, "/users", func(id string) error { return s.admin.RequestDeletion(r.Context(), id) })
 		return
 	}
+	if r.FormValue("sure") != "yes" {
+		s.fail(w, r, fmt.Errorf("erasure needs the confirmation box ticked"))
+		return
+	}
 	s.act(w, r, "/users", func(id string) error { return s.admin.EraseUser(r.Context(), id) })
 }
 
@@ -253,6 +270,10 @@ func (s *Server) restoreLoan(w http.ResponseWriter, r *http.Request) {
 // marked dead, and the count removed is shown on the redirect so the operator
 // sees what happened rather than a page that merely reloaded.
 func (s *Server) purgeDead(w http.ResponseWriter, r *http.Request) {
+	if r.FormValue("sure") != "yes" {
+		http.Redirect(w, r, "/commands?status=dead", http.StatusSeeOther)
+		return
+	}
 	n, err := s.admin.PurgeDead(r.Context())
 	if err != nil {
 		s.fail(w, r, err)
@@ -277,25 +298,149 @@ func (s *Server) stylesheet(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	overview, err := s.admin.Overview(ctx)
+	d, err := s.admin.Dashboard(r.Context(), s.now())
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	s.render(w, r, "dashboard.html", map[string]any{
-		keyTitle: "Overview", keyNav: "dashboard",
-		"O": overview, "Health": s.admin.Health(ctx),
-	})
+	s.render(w, r, "dashboard.html", map[string]any{keyTitle: "Overview", keyNav: "dashboard", "D": d})
+}
+
+func (s *Server) search(w http.ResponseWriter, r *http.Request) {
+	res, err := s.admin.Search(r.Context(), r.URL.Query().Get("q"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	title := "Search"
+	if res.Query != "" {
+		title = fmt.Sprintf("Search “%s”", res.Query)
+	}
+	s.render(w, r, "search.html", map[string]any{keyTitle: title, keyNav: "", "R": res, keyQuery: res.Query})
+}
+
+// loanFilter is what the loans list can be narrowed by. Filtering happens in
+// memory over the page the store returns: the lists are capped at a few
+// hundred rows, and a filter that reached the database would need an index
+// per column for no operational gain yet.
+type loanFilter struct {
+	Q, Currency, Reliability, Archived string
+}
+
+func (f loanFilter) keep(l app.LoanRow) bool {
+	if f.Q != "" {
+		q := strings.ToLower(f.Q)
+		if !strings.Contains(strings.ToLower(l.Name), q) && !strings.HasPrefix(l.ID, q) && !strings.HasPrefix(l.UserID, q) {
+			return false
+		}
+	}
+	if f.Currency != "" && l.Currency != f.Currency {
+		return false
+	}
+	if f.Reliability != "" && (l.Reliability == nil || *l.Reliability != f.Reliability) {
+		return false
+	}
+	switch f.Archived {
+	case "only":
+		return l.ArchivedAt != nil
+	case "all":
+		return true
+	default:
+		return l.ArchivedAt == nil
+	}
 }
 
 func (s *Server) loans(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.admin.Loans(r.Context())
+	all, err := s.admin.Loans(r.Context())
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	s.render(w, r, "loans.html", map[string]any{keyTitle: "Loans", keyNav: "loans", keyRows: rows})
+	q := r.URL.Query()
+	f := loanFilter{Q: q.Get("q"), Currency: q.Get("currency"), Reliability: q.Get("reliability"), Archived: q.Get("archived")}
+	var rows []app.LoanRow
+	curs, rels := map[string]bool{}, map[string]bool{}
+	for _, l := range all {
+		curs[l.Currency] = true
+		if l.Reliability != nil {
+			rels[*l.Reliability] = true
+		}
+		if f.keep(l) {
+			rows = append(rows, l)
+		}
+	}
+	s.render(w, r, "loans.html", map[string]any{
+		keyTitle: "Loans", keyNav: "loans", keyRows: rows, "Total": len(all), "F": f,
+		"Currencies": keys(curs), "Reliabilities": keys(rels),
+	})
+}
+
+func (s *Server) renameLoan(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	id := r.PathValue("id")
+	name := strings.TrimSpace(r.PostFormValue("name"))
+	if name == "" {
+		s.fail(w, r, fmt.Errorf("a loan needs a name"))
+		return
+	}
+	if err := s.admin.RenameLoan(r.Context(), id, name, strings.TrimSpace(r.PostFormValue("description"))); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/loans/"+id+"?notice="+urlEscape("Renamed."), http.StatusSeeOther)
+}
+
+func (s *Server) user(w http.ResponseWriter, r *http.Request) {
+	v, err := s.admin.User(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, "user.html", map[string]any{
+		keyTitle: "User " + shortID(v.User.ID), keyNav: "users", "V": v, "Notice": r.URL.Query().Get("notice"),
+	})
+}
+
+// engine is the playground. GET shows an example already filled in, so the
+// first thing an operator sees is a working schedule rather than a blank
+// form; POST projects whatever was typed.
+func (s *Server) engine(w http.ResponseWriter, r *http.Request) {
+	in := app.PlaygroundInput{
+		Currency: "AMD", Principal: "3000000", Rate: "18", Method: "annuity", DayCount: "act365",
+		Start: "2026-01-15", Maturity: "2031-01-15", Day: "15", Unit: "10",
+	}
+	var view app.PlaygroundView
+	if r.Method == http.MethodPost {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		f := r.PostFormValue
+		in = app.PlaygroundInput{
+			Currency: f("currency"), Principal: f("principal"), Rate: f("rate"), Method: f("method"),
+			DayCount: f("day_count"), Start: f("start"), Maturity: f("maturity"), Day: f("day"),
+			Unit: f("unit"), Balance: f("balance"), From: f("from"),
+		}
+	}
+	view = app.Playground(in)
+	s.render(w, r, "engine.html", map[string]any{
+		keyTitle: "Engine playground", keyNav: "engine", "P": view,
+		"Currencies": []string{"AMD", "USD", "EUR", "RUB"},
+		"DayCounts":  []string{"act365", "act360", "30_360", "act_act"},
+	})
+}
+
+// keys returns a set's members sorted, for a stable select list.
+func keys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (s *Server) loan(w http.ResponseWriter, r *http.Request) {
@@ -305,17 +450,47 @@ func (s *Server) loan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, r, "loan.html", map[string]any{
-		keyTitle: "Loan " + v.Loan.Name, keyNav: "loans", "V": v,
+		keyTitle: v.Loan.Name, keyNav: "loans", "V": v,
+		"Description": v.Loan.Description, "Notice": r.URL.Query().Get("notice"),
 	})
 }
 
+type userFilter struct{ Q, State, Deletion string }
+
+func (f userFilter) keep(u app.UserRow) bool {
+	if f.Q != "" && !strings.HasPrefix(u.ID, strings.ToLower(f.Q)) {
+		return false
+	}
+	if f.State != "" && u.AccessState != f.State {
+		return false
+	}
+	switch f.Deletion {
+	case "requested":
+		return u.DeletionRequested
+	case "none":
+		return !u.DeletionRequested
+	}
+	return true
+}
+
 func (s *Server) users(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.admin.Users(r.Context())
+	all, err := s.admin.Users(r.Context())
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	s.render(w, r, "users.html", map[string]any{keyTitle: "Users", keyNav: "users", keyRows: rows})
+	q := r.URL.Query()
+	f := userFilter{Q: q.Get("q"), State: q.Get("state"), Deletion: q.Get("deletion")}
+	var rows []app.UserRow
+	for _, u := range all {
+		if f.keep(u) {
+			rows = append(rows, u)
+		}
+	}
+	s.render(w, r, "users.html", map[string]any{
+		keyTitle: "Users", keyNav: "users", keyRows: rows, "Total": len(all), "F": f,
+		"States": []string{"trial", "grace", "active", "paused"},
+	})
 }
 
 func (s *Server) policies(w http.ResponseWriter, r *http.Request) {
@@ -372,20 +547,56 @@ func (s *Server) commands(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	counts, _ := s.admin.CommandCounts(r.Context())
 	s.render(w, r, "commands.html", map[string]any{
 		keyTitle: "Command inbox", keyNav: "commands", keyRows: rows,
-		"Status": status, "Statuses": []string{"", "pending", "leased", "completed", "dead"},
+		"Status": status, "Statuses": withAll(counts, []string{"pending", "leased", "completed", "dead"}),
 		"Purged": r.URL.Query().Get("purged"),
 	})
 }
 
 func (s *Server) deliveries(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.admin.Deliveries(r.Context())
+	all, err := s.admin.Deliveries(r.Context())
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	s.render(w, r, "deliveries.html", map[string]any{keyTitle: "Delivery outbox", keyNav: "deliveries", keyRows: rows})
+	status := r.URL.Query().Get("status")
+	var rows []app.DeliveryRow
+	for _, d := range all {
+		if status == "" || d.Status == status {
+			rows = append(rows, d)
+		}
+	}
+	counts, _ := s.admin.DeliveryCounts(r.Context())
+	s.render(w, r, "deliveries.html", map[string]any{
+		keyTitle: "Delivery outbox", keyNav: "deliveries", keyRows: rows,
+		"Status": status, "Statuses": withAll(counts, []string{"pending", "sent", "dead"}),
+	})
+}
+
+// withAll turns status counts into the pill row: "all" first with the total,
+// then every known status in a fixed order, then anything unexpected the
+// database reports, so a new status shows up rather than being hidden.
+func withAll(counts []app.StatusCount, known []string) []app.StatusCount {
+	by := map[string]int64{}
+	var total int64
+	for _, c := range counts {
+		by[c.Status] = c.N
+		total += c.N
+	}
+	out := []app.StatusCount{{Status: "", N: total}}
+	seen := map[string]bool{}
+	for _, k := range known {
+		out = append(out, app.StatusCount{Status: k, N: by[k]})
+		seen[k] = true
+	}
+	for _, c := range counts {
+		if !seen[c.Status] {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 func (s *Server) reconciliation(w http.ResponseWriter, r *http.Request) {
@@ -403,8 +614,18 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, page string, dat
 	data["Env"] = s.cfg.Env
 	data["Version"] = s.cfg.Version
 	data["SignedIn"] = false
+	data["Badges"] = app.Overview{}
+	if _, ok := data[keyQuery]; !ok {
+		data[keyQuery] = ""
+	}
 	if c, err := r.Cookie(cookieName); err == nil && valid(s.key, c.Value, s.now()) {
 		data["SignedIn"] = true
+		// The sidebar carries live queue counts. One counting query per page
+		// is cheap, and a dead command showing up wherever the operator is
+		// looking is the point of having a sidebar.
+		if o, err := s.admin.Overview(r.Context()); err == nil {
+			data["Badges"] = o
+		}
 	}
 	t, ok := s.pages[page]
 	if !ok {

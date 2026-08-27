@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/andranikasd/marumbot/internal/app"
 	"github.com/andranikasd/marumbot/pkg/core/money"
 )
 
@@ -26,13 +27,39 @@ const (
 // beyond choosing what to show, and so money is formatted in exactly one place.
 func funcs() template.FuncMap {
 	return template.FuncMap{
-		"date":   formatDate,
-		"stamp":  formatStamp,
-		"minor":  formatMinorPtr,
-		"minorv": formatMinor,
-		"drift":  formatDrift,
-		"pct":    formatPercent,
-		"short":  shortID,
+		"date":      formatDate,
+		"stamp":     formatStamp,
+		"minor":     formatMinorPtr,
+		"minorv":    formatMinor,
+		"drift":     formatDrift,
+		"pct":       formatPercent,
+		"short":     shortID,
+		"hasPrefix": strings.HasPrefix,
+		// Chart helpers. Bars are pure CSS, so the height is computed here as
+		// a percentage of the tallest bar in the series.
+		"sum": func(ds []app.DayCount) int64 {
+			var n int64
+			for _, d := range ds {
+				n += d.N
+			}
+			return n
+		},
+		"maxN": func(ds []app.DayCount) int64 {
+			var m int64
+			for _, d := range ds {
+				if d.N > m {
+					m = d.N
+				}
+			}
+			return m
+		},
+		"barh": func(n, max int64) int64 {
+			if max <= 0 || n <= 0 {
+				return 0
+			}
+			return n * 100 / max
+		},
+		"dayShort": func(t time.Time) string { return t.Format("2") },
 		"duration": func(seconds int64) string {
 			switch {
 			case seconds <= 0:

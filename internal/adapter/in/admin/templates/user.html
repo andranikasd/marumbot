@@ -1,0 +1,114 @@
+{{define "content"}}
+<div class="crumbs"><a href="/users">Users</a> › <span class="mono">{{.V.User.ID}}</span></div>
+{{if .Notice}}<div class="note ok">{{.Notice}}</div>{{end}}
+<div class="grid2">
+  <div class="panel">
+    <div class="hd">Account</div>
+    <div class="bd">
+      <dl class="kv">
+        <dt>Access</dt><dd><span class="tag {{access .V.User.AccessState}}">{{.V.User.AccessState}}</span></dd>
+        <dt>Locale</dt><dd>{{.V.User.Locale}}</dd>
+        <dt>Timezone</dt><dd>{{.V.User.Timezone}}</dd>
+        <dt>Trial ends</dt><dd>{{date .V.User.TrialEndsAt}}</dd>
+        <dt>Joined</dt><dd>{{stamp .V.User.CreatedAt}}</dd>
+        <dt>Deletion</dt><dd>{{if .V.User.DeletionRequested}}<span class="tag t-warn">requested</span>{{else}}<span class="muted">not requested</span>{{end}}</dd>
+        <dt>Pending question</dt><dd>{{if .V.Convo}}<span class="mono">{{.V.Convo.State}}</span> <span class="muted">since {{stamp .V.Convo.UpdatedAt}}</span>{{else}}<span class="muted">none</span>{{end}}</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="hd">Budget</div>
+    {{if .V.Budgets}}
+    <div class="scroll"><table>
+      <thead><tr><th>Currency</th><th class="num">Monthly</th><th class="num">Payday</th><th>Updated</th></tr></thead>
+      <tbody>{{range .V.Budgets}}
+        <tr><td class="mono">{{.Currency}}</td><td class="num">{{minorv .MonthlyMinor .Currency}}</td>
+          <td class="num">{{if .PayDay}}{{.PayDay}}{{else}}<span class="muted">not set</span>{{end}}</td><td class="nowrap">{{stamp .UpdatedAt}}</td></tr>
+      {{end}}</tbody>
+    </table></div>
+    {{else}}<div class="empty">No budget set. The borrower gets no plan until there is one.</div>{{end}}
+  </div>
+</div>
+
+<div class="panel">
+  <div class="hd">Loans <span class="tools muted">{{len .V.Loans}}</span></div>
+  {{if .V.Loans}}
+  <div class="scroll"><table>
+    <thead><tr><th>Name</th><th>Lender</th><th>Cur</th><th class="num">Balance</th><th>As of</th><th>Reliability</th><th>Created</th><th></th></tr></thead>
+    <tbody>{{range .V.Loans}}
+      <tr {{if .ArchivedAt}}class="dim"{{end}}>
+        <td><a href="/loans/{{.ID}}">{{.Name}}</a>{{if .ArchivedAt}} <span class="tag t-mute">archived</span>{{end}}</td>
+        <td>{{if .Lender}}{{.Lender}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td class="mono">{{.Currency}}</td>
+        <td class="num">{{if .PrincipalMinor}}{{minor .PrincipalMinor .Currency}}{{else}}—{{end}}</td>
+        <td class="nowrap">{{if .BalanceAsOf}}{{date .BalanceAsOf}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td>{{if .Reliability}}<span class="tag {{reliability .Reliability}}">{{.Reliability}}</span>{{else}}<span class="tag t-mute">no state</span>{{end}}</td>
+        <td class="nowrap">{{date .CreatedAt}}</td>
+        <td class="actions">
+          {{if .ArchivedAt}}<form method="post" action="/loans/{{.ID}}/restore?back=/users/{{$.V.User.ID}}"><button class="link">restore</button></form>
+          {{else}}<form method="post" action="/loans/{{.ID}}/archive?back=/users/{{$.V.User.ID}}"><button class="link danger">archive</button></form>{{end}}
+        </td>
+      </tr>
+    {{end}}</tbody>
+  </table></div>
+  {{else}}<div class="empty">No loans.</div>{{end}}
+</div>
+
+<div class="panel">
+  <div class="hd">Current advice <span class="tools muted">least interest, exactly what the bot computes</span></div>
+  {{if .V.Plan}}{{template "plan" .V.Plan}}{{else}}<div class="empty">{{.V.PlanNote}}</div>{{end}}
+</div>
+
+<div class="panel">
+  <div class="hd">Moderation</div>
+  <div class="bd">
+    <div class="grid2">
+      <div>
+        {{if eq .V.User.AccessState "paused"}}
+        <p class="muted">Paused. The bot ignores this account until restored.</p>
+        <form method="post" action="/users/{{.V.User.ID}}/restore?back=/users/{{.V.User.ID}}"><button>Restore access</button></form>
+        {{else}}
+        <p class="muted">Pausing keeps the ledger and is reversible.</p>
+        <form method="post" action="/users/{{.V.User.ID}}/pause?back=/users/{{.V.User.ID}}"><button class="quiet">Pause access</button></form>
+        {{end}}
+      </div>
+      <div>
+        {{if .V.User.DeletionRequested}}
+        <p class="muted">A deletion request is on file. Erasure removes the account, its loans and every identifier. Irreversible.</p>
+        <form method="post" action="/users/{{.V.User.ID}}/erase" class="stack">
+          <input type="hidden" name="confirm" value="erase">
+          <label class="confirm"><input type="checkbox" name="sure" value="yes" required> I understand this cannot be undone</label>
+          <div><button class="danger">Erase permanently</button></div>
+        </form>
+        {{else}}
+        <p class="muted">Erasure is two steps: record a request first, then honour it.</p>
+        <form method="post" action="/users/{{.V.User.ID}}/erase?back=/users/{{.V.User.ID}}"><button class="quiet">Record deletion request</button></form>
+        {{end}}
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+{{define "plan"}}
+<div class="bd">
+  <dl class="kv">
+    <dt>Best policy</dt><dd class="mono">{{.Policy}}</dd>
+    <dt>Clears in</dt><dd>{{.Months}} months</dd>
+    <dt>Total interest</dt><dd class="num">{{.Interest}}</dd>
+    <dt>Owed after month 1</dt><dd class="num">{{.Owed}}</dd>
+    {{if .ClearedFirst}}<dt>First to clear</dt><dd>{{.ClearedFirst}} in month {{.ClearedMonth}}</dd>{{end}}
+    <dt>Searched</dt><dd>{{.Evaluated}} policies{{if .Exhaustive}}, exhaustive{{else}}, named strategies only{{end}}</dd>
+    {{if gt .VsAvalanche.Sign 0}}<dt>vs highest-rate-first</dt><dd class="num">saves {{.VsAvalanche}}</dd>{{end}}
+    {{if gt .VsSnowball.Sign 0}}<dt>vs smallest-first</dt><dd class="num">saves {{.VsSnowball}}</dd>{{end}}
+    {{if gt .TimingSaving.Sign 0}}<dt>from timing alone</dt><dd class="num">{{.TimingSaving}}</dd>{{end}}
+  </dl>
+  {{if .Actions}}
+  <h2>First month</h2>
+  <ul class="steps">{{range .Actions}}
+    <li {{if .Extra}}class="extra"{{end}}><span class="d">{{.On}}</span>
+      <span>{{.Amount}} {{if .Extra}}extra{{else}}instalment{{end}} → {{.Loan}}{{if gt .Saves.Sign 0}} <span class="muted">saves {{.Saves}} this month</span>{{end}}</span></li>
+  {{end}}</ul>
+  {{end}}
+</div>
+{{end}}
+{{template "layout" .}}
