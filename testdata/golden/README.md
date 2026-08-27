@@ -46,9 +46,18 @@ engine does not yet know.
 
 ## Coverage
 
-| Lender | Product | Rows | Convention |
+| Fixture | Rows | Exact | Convention |
 | --- | --- | --- | --- |
-| Inecobank | Consumer loan, 60 months | 55 | ACT/365, 0.10 AMD, half-up |
-| CBA Reg 8/01 | Regulator's worked example | 12 | ACT/365, 0.01 AMD, half-up |
+| Inecobank M26/029210, loan agreement | 60 | **59 / 59** | ACT/365, 0.10 AMD, half-up |
+| Inecobank M26/029210, re-issued schedule | 55 | 52 / 54 | as above |
+| CBA Reg 8/01, worked example | 12 | — | ACT/365, 0.01 AMD, half-up |
+
+The first two are the same loan, and they disagree with each other. The
+agreement prints 69,045.40 for 24/09/2026; the schedule the bank re-issued five
+months later prints 69,045.30. The engine matches the agreement.
+
+One lender, one loan, two documents, a tenth of a dram apart. That is the whole
+argument for measuring against real paperwork instead of against a formula:
+no amount of reasoning about conventions would have predicted it.
 
 Phase 1 does not close until ten schedules from four lenders reproduce.
