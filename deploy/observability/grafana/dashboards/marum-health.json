@@ -24,7 +24,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "marum-prometheus"
+        "uid": "${ds_prometheus}"
       },
       "targets": [
         {
@@ -65,7 +65,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "marum-prometheus"
+        "uid": "${ds_prometheus}"
       },
       "targets": [
         {
@@ -119,7 +119,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "marum-prometheus"
+        "uid": "${ds_prometheus}"
       },
       "targets": [
         {
@@ -178,7 +178,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "marum-prometheus"
+        "uid": "${ds_prometheus}"
       },
       "targets": [
         {
@@ -232,7 +232,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "marum-prometheus"
+        "uid": "${ds_prometheus}"
       },
       "targets": [
         {
@@ -270,7 +270,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "marum-prometheus"
+        "uid": "${ds_prometheus}"
       },
       "targets": [
         {
@@ -308,7 +308,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "marum-prometheus"
+        "uid": "${ds_prometheus}"
       },
       "targets": [
         {
@@ -346,7 +346,7 @@
       },
       "datasource": {
         "type": "loki",
-        "uid": "marum-loki"
+        "uid": "${ds_loki}"
       },
       "targets": [
         {
@@ -360,5 +360,37 @@
         "sortOrder": "Descending"
       }
     }
-  ]
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 2,
+        "includeAll": false,
+        "label": "Prometheus",
+        "multi": false,
+        "name": "ds_prometheus",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 2,
+        "includeAll": false,
+        "label": "Loki",
+        "multi": false,
+        "name": "ds_loki",
+        "options": [],
+        "query": "loki",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      }
+    ]
+  }
 }
