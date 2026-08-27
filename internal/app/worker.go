@@ -397,7 +397,7 @@ func (w *Worker) mainMenu(l i18n.Locale) any {
 }
 
 func (w *Worker) addButton(l i18n.Locale) any {
-	return map[string]any{"inline_keyboard": [][]map[string]any{{
+	return map[string]any{keyInline: [][]map[string]any{{
 		webAppButton(i18n.T(l, "add.button"), w.MiniApp),
 	}}}
 }
@@ -414,19 +414,24 @@ func webAppButton(label, url string) map[string]any {
 	return map[string]any{keyText: label, "web_app": map[string]any{"url": url}}
 }
 
-// keyText is Telegram's JSON field, not a command kind. Naming it keeps the two
-// apart -- they happen to be the same string and mean entirely different things.
-const keyText = "text"
+// Telegram's JSON field names. Named because keyText in particular collides
+// with a command kind: they are the same string and mean entirely different
+// things, and a bare literal cannot say which one is meant.
+const (
+	keyText     = "text"
+	keyInline   = "inline_keyboard"
+	keyCallback = "callback_data"
+)
 
 func languageMenu() any {
 	row := []map[string]any{}
 	for _, l := range i18n.Supported() {
 		row = append(row, map[string]any{
-			keyText:         l.Name(),
-			"callback_data": "lang:" + string(l),
+			keyText:     l.Name(),
+			keyCallback: "lang:" + string(l),
 		})
 	}
-	return map[string]any{"inline_keyboard": [][]map[string]any{row}}
+	return map[string]any{keyInline: [][]map[string]any{row}}
 }
 
 // code reduces an error to a short stable label for the inbox row. The message

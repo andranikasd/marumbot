@@ -1,0 +1,316 @@
+{
+  "source": "Inecobank consumer loan \u2014 payment schedule (\u057e\u0573\u0561\u0580\u0561\u0575\u056b\u0576 \u0585\u0580\u0561\u0581\u0578\u0582\u0575\u0581)",
+  "contract": "M26/029210",
+  "issued": "2026-08-27",
+  "note": "The lender's own schedule for the remaining term of a 60-month consumer loan, issued five instalments in. Reproducing it row by row is the strongest evidence available that this engine computes what an Armenian bank computes.",
+  "currency": "AMD",
+  "nominal_rate_percent": 17.15,
+  "apr_percent": 18.56,
+  "repayment_type": "annuity",
+  "accrual": {
+    "day_count": "act/365",
+    "quantum_minor": 10,
+    "rounding": "half_up",
+    "note": "Interest is quantised to 0.10 AMD, not to the dram and not to the luma. Every published figure ends in a zero luma, and 0.10 is the only unit that reproduces the rows. Nothing in Armenian law prescribes this: it is a property of this lender's system, which is why it is recorded per fixture."
+  },
+  "anchor": {
+    "as_of": "2026-08-24",
+    "principal_minor": 474025290,
+    "note": "The opening balance is the sum of the schedule's own principal column."
+  },
+  "instalment_minor": 12507960,
+  "payment_day": 24,
+  "maturity": "2031-03-24",
+  "totals": {
+    "principal_minor": 474025290,
+    "interest_minor": 213912710
+  },
+  "published_totals": {
+    "principal_minor": 474025290,
+    "interest_minor": 213912710
+  },
+  "rows": [
+    {
+      "due": "2026-09-24",
+      "principal_minor": 5603410,
+      "interest_minor": 6904530
+    },
+    {
+      "due": "2026-10-24",
+      "principal_minor": 5905140,
+      "interest_minor": 6602820
+    },
+    {
+      "due": "2026-11-24",
+      "principal_minor": 5771060,
+      "interest_minor": 6736900
+    },
+    {
+      "due": "2026-12-24",
+      "principal_minor": 6069720,
+      "interest_minor": 6438240
+    },
+    {
+      "due": "2027-01-24",
+      "principal_minor": 5943530,
+      "interest_minor": 6564430
+    },
+    {
+      "due": "2027-02-24",
+      "principal_minor": 6030100,
+      "interest_minor": 6477860
+    },
+    {
+      "due": "2027-03-24",
+      "principal_minor": 6736320,
+      "interest_minor": 5771640
+    },
+    {
+      "due": "2027-04-24",
+      "principal_minor": 6216050,
+      "interest_minor": 6291910
+    },
+    {
+      "due": "2027-05-24",
+      "principal_minor": 6506640,
+      "interest_minor": 6001320
+    },
+    {
+      "due": "2027-06-24",
+      "principal_minor": 6401370,
+      "interest_minor": 6106590
+    },
+    {
+      "due": "2027-07-24",
+      "principal_minor": 6688590,
+      "interest_minor": 5819370
+    },
+    {
+      "due": "2027-08-24",
+      "principal_minor": 6592030,
+      "interest_minor": 5915930
+    },
+    {
+      "due": "2027-09-24",
+      "principal_minor": 6688050,
+      "interest_minor": 5819910
+    },
+    {
+      "due": "2027-10-24",
+      "principal_minor": 6970060,
+      "interest_minor": 5537900
+    },
+    {
+      "due": "2027-11-24",
+      "principal_minor": 6886990,
+      "interest_minor": 5620970
+    },
+    {
+      "due": "2027-12-24",
+      "principal_minor": 7165390,
+      "interest_minor": 5342570
+    },
+    {
+      "due": "2028-01-24",
+      "principal_minor": 7091670,
+      "interest_minor": 5416290
+    },
+    {
+      "due": "2028-02-24",
+      "principal_minor": 7194970,
+      "interest_minor": 5312990
+    },
+    {
+      "due": "2028-03-24",
+      "principal_minor": 7635780,
+      "interest_minor": 4872180
+    },
+    {
+      "due": "2028-04-24",
+      "principal_minor": 7410990,
+      "interest_minor": 5096970
+    },
+    {
+      "due": "2028-05-24",
+      "principal_minor": 7679870,
+      "interest_minor": 4828090
+    },
+    {
+      "due": "2028-06-24",
+      "principal_minor": 7630800,
+      "interest_minor": 4877160
+    },
+    {
+      "due": "2028-07-24",
+      "principal_minor": 7895690,
+      "interest_minor": 4612270
+    },
+    {
+      "due": "2028-08-24",
+      "principal_minor": 7856950,
+      "interest_minor": 4651010
+    },
+    {
+      "due": "2028-09-24",
+      "principal_minor": 7971400,
+      "interest_minor": 4536560
+    },
+    {
+      "due": "2028-10-24",
+      "principal_minor": 8230100,
+      "interest_minor": 4277860
+    },
+    {
+      "due": "2028-11-24",
+      "principal_minor": 8207380,
+      "interest_minor": 4300580
+    },
+    {
+      "due": "2028-12-24",
+      "principal_minor": 8461800,
+      "interest_minor": 4046160
+    },
+    {
+      "due": "2029-01-24",
+      "principal_minor": 8450180,
+      "interest_minor": 4057780
+    },
+    {
+      "due": "2029-02-24",
+      "principal_minor": 8573270,
+      "interest_minor": 3934690
+    },
+    {
+      "due": "2029-03-24",
+      "principal_minor": 9066830,
+      "interest_minor": 3441130
+    },
+    {
+      "due": "2029-04-24",
+      "principal_minor": 8830210,
+      "interest_minor": 3677750
+    },
+    {
+      "due": "2029-05-24",
+      "principal_minor": 9073310,
+      "interest_minor": 3434650
+    },
+    {
+      "due": "2029-06-24",
+      "principal_minor": 9090990,
+      "interest_minor": 3416970
+    },
+    {
+      "due": "2029-07-24",
+      "principal_minor": 9329360,
+      "interest_minor": 3178600
+    },
+    {
+      "due": "2029-08-24",
+      "principal_minor": 9359290,
+      "interest_minor": 3148670
+    },
+    {
+      "due": "2029-09-24",
+      "principal_minor": 9495620,
+      "interest_minor": 3012340
+    },
+    {
+      "due": "2029-10-24",
+      "principal_minor": 9726640,
+      "interest_minor": 2781320
+    },
+    {
+      "due": "2029-11-24",
+      "principal_minor": 9775600,
+      "interest_minor": 2732360
+    },
+    {
+      "due": "2029-12-24",
+      "principal_minor": 10001540,
+      "interest_minor": 2506420
+    },
+    {
+      "due": "2030-01-24",
+      "principal_minor": 10063670,
+      "interest_minor": 2444290
+    },
+    {
+      "due": "2030-02-24",
+      "principal_minor": 10210260,
+      "interest_minor": 2297700
+    },
+    {
+      "due": "2030-03-24",
+      "principal_minor": 10566940,
+      "interest_minor": 1941020
+    },
+    {
+      "due": "2030-04-24",
+      "principal_minor": 10512890,
+      "interest_minor": 1995070
+    },
+    {
+      "due": "2030-05-24",
+      "principal_minor": 10725440,
+      "interest_minor": 1782520
+    },
+    {
+      "due": "2030-06-24",
+      "principal_minor": 10822240,
+      "interest_minor": 1685720
+    },
+    {
+      "due": "2030-07-24",
+      "principal_minor": 11029170,
+      "interest_minor": 1478790
+    },
+    {
+      "due": "2030-08-24",
+      "principal_minor": 11140530,
+      "interest_minor": 1367430
+    },
+    {
+      "due": "2030-09-24",
+      "principal_minor": 11302800,
+      "interest_minor": 1205160
+    },
+    {
+      "due": "2030-10-24",
+      "principal_minor": 11501000,
+      "interest_minor": 1006960
+    },
+    {
+      "due": "2030-11-24",
+      "principal_minor": 11634950,
+      "interest_minor": 873010
+    },
+    {
+      "due": "2030-12-24",
+      "principal_minor": 11827120,
+      "interest_minor": 680840
+    },
+    {
+      "due": "2031-01-24",
+      "principal_minor": 11976690,
+      "interest_minor": 531270
+    },
+    {
+      "due": "2031-02-24",
+      "principal_minor": 12151140,
+      "interest_minor": 356820
+    },
+    {
+      "due": "2031-03-24",
+      "principal_minor": 12345760,
+      "interest_minor": 162420
+    }
+  ],
+  "fidelity": {
+    "exact_rows": 52,
+    "total_rows": 55,
+    "tolerance_minor": 10,
+    "note": "52 of the 54 non-final rows reproduce to the luma. Rows 1 and 46 land within 0.011 of the half-way point of the 0.10 quantum (remainders 0.5491 and 0.4890) and round the other way, which is a sub-luma difference in the lender's internal precision rather than a different convention: every other row agrees exactly. The final row differs by 2.20 because the lender's last payment absorbs the drift accumulated by rounding 55 rows, so their published principal column sums to 2.20 above the true opening balance. exact_rows is a ratchet, not a target: a change that lowers it has made the engine agree with this lender less often, and the test says so.",
+    "final_row_absorbs_drift": true
+  }
+}
