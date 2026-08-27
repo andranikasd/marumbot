@@ -79,6 +79,10 @@ type UserView struct {
 	// budget, when the engine can produce one.
 	Plan     *PlanSummary
 	PlanNote string
+	// Commands and Deliveries are the account's latest traffic in each
+	// direction: what it sent the bot, and what the bot sent back.
+	Commands   []CommandRow
+	Deliveries []DeliveryRow
 }
 
 // User returns one account with its loans, budgets and pending dialogue.
@@ -93,6 +97,8 @@ func (a *Admin) User(ctx context.Context, id string) (UserView, error) {
 	}
 	v.Budgets, _ = call(ctx, "BudgetsForUser", func(c context.Context) ([]BudgetRow, error) { return a.store.BudgetsForUser(c, id) })
 	v.Convo, _ = call(ctx, "ConversationState", func(c context.Context) (*ConvoRow, error) { return a.store.ConversationState(c, id) })
+	v.Commands, _ = call(ctx, "CommandsForUser", func(c context.Context) ([]CommandRow, error) { return a.store.CommandsForUser(c, id, 20) })
+	v.Deliveries, _ = call(ctx, "DeliveriesForUser", func(c context.Context) ([]DeliveryRow, error) { return a.store.DeliveriesForUser(c, id, 20) })
 	v.Plan, v.PlanNote = a.planFor(ctx, id)
 	return v, nil
 }
@@ -129,6 +135,19 @@ type PlanSummary struct {
 	ClearedFirst string
 	ClearedMonth int
 	Actions      []plan.Action
+	// The floor: paying only what the contracts require.
+	MinimumMonths   int
+	MinimumInterest money.Amount
+	// What more money per month would buy, under the best policy.
+	Ladder []plan.Rung
+	// Why candidates coincide, when they do.
+	Ties []string
+	// Relief, when the goal is to pay less: the month the outflow first
+	// drops and what it drops to.
+	ReliefMonth  int
+	PeakMonthly  money.Amount
+	FinalMonthly money.Amount
+	Effect       string
 }
 
 // enrich adds the engine's reading to a loan view. Nothing here is fatal:
@@ -156,6 +175,37 @@ func (a *Admin) enrich(ctx context.Context, v *LoanView) {
 	}
 	v.Projection, v.ProjectionNote = project(ln.Contract, ln.Balance, ln.AsOf)
 	v.Plan, v.PlanNote = a.planFor(ctx, v.Loan.UserID)
+	v.Support = supportText(v.Loan, ln, v.Projection)
+}
+
+// supportText is the loan in plain words, ready to paste into a chat with
+// the borrower: the terms, the balance the engine works from, and the next
+// three instalments. No markup, so it survives Telegram unchanged.
+func supportText(l LoanDetail, ln *UserLoan, p *Projection) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s", l.Name)
+	if l.Lender != nil && *l.Lender != "" {
+		fmt.Fprintf(&b, " (%s)", *l.Lender)
+	}
+	b.WriteString("\n")
+	c := ln.Contract
+	fmt.Fprintf(&b, "Terms: %s, %s, %s, paid on day %d, %s to %s\n",
+		c.Type, c.NominalRate, c.DayCount, c.PaymentDay, c.StartDate, c.MaturityDate)
+	fmt.Fprintf(&b, "Balance: %s as of %s (%s)\n", ln.Balance, ln.AsOf, ln.Trust)
+	if p == nil {
+		b.WriteString("No schedule can be projected from this balance.\n")
+		return b.String()
+	}
+	fmt.Fprintf(&b, "Instalment: %s; final payment %s; %d instalments left\n", p.Instalment, p.FinalPayment, len(p.Rows))
+	fmt.Fprintf(&b, "Interest to the end: %s; total to pay %s\n", p.TotalInterest, p.TotalPaid)
+	b.WriteString("Next instalments:\n")
+	for i, r := range p.Rows {
+		if i == 3 {
+			break
+		}
+		fmt.Fprintf(&b, "  %s  %s  (interest %s, principal %s)\n", r.Due, r.Payment, r.Interest, r.Principal)
+	}
+	return b.String()
 }
 
 // project builds a schedule and the explanation for each row.
@@ -236,7 +286,11 @@ func summarise(rep plan.Report) *PlanSummary {
 		Interest: b.TotalInterest, Owed: b.NextMonthOwed,
 		Evaluated: rep.Evaluated, Exhaustive: rep.Exhaustive,
 		TimingSaving: rep.TimingSaving, ClearedFirst: b.ClearedFirst, ClearedMonth: b.ClearedMonth,
-		Actions: b.Actions,
+		Actions:       b.Actions,
+		MinimumMonths: rep.Minimum.Months, MinimumInterest: rep.Minimum.TotalInterest,
+		Ladder: rep.Ladder, Ties: rep.Ties,
+		ReliefMonth: b.ReliefMonth, PeakMonthly: b.PeakMonthly, FinalMonthly: b.FinalMonthly,
+		Effect: b.Policy.Effect.String(),
 	}
 	s.VsAvalanche, _ = rep.Avalanche.TotalInterest.Sub(b.TotalInterest)
 	s.VsSnowball, _ = rep.Snowball.TotalInterest.Sub(b.TotalInterest)
@@ -258,6 +312,9 @@ type PlaygroundInput struct {
 	Unit      string // rounding unit in minor units; empty means the currency's
 	Balance   string // optional: project from this balance instead of principal
 	From      string // optional: the date the balance is as of
+	// Bank is the lender's own instalment amounts, one per line, pasted from
+	// the agreement. Empty means no comparison.
+	Bank string
 }
 
 // PlaygroundView is the engine's answer to a typed loan.
@@ -266,6 +323,20 @@ type PlaygroundView struct {
 	Contract   *model.Contract
 	Projection *Projection
 	Error      string
+	// Diffs has one entry per projected row when a bank schedule was
+	// pasted, so the template can index it by row.
+	Diffs     []RowDiff
+	Compared  int
+	Exact     int
+	BankError string
+}
+
+// RowDiff is one bank instalment beside the engine's own.
+type RowDiff struct {
+	Bank  string // the amount as pasted, formatted; empty when the bank list ran out
+	Delta string // signed bank − engine, "0" when exact
+	Exact bool
+	Has   bool // false past the end of the pasted list
 }
 
 // Playground runs the engine over a loan that is not stored anywhere. It is
@@ -286,8 +357,51 @@ func Playground(in PlaygroundInput) PlaygroundView {
 	v.Projection, note = project(c, balance, from)
 	if v.Projection == nil {
 		v.Error = note
+		return v
 	}
+	v.Diffs, v.Compared, v.Exact, v.BankError = diffBank(in.Bank, v.Projection.Rows, c.Currency)
 	return v
+}
+
+// diffBank lines the lender's pasted instalments up against the projection.
+// One amount per line, in row order; blank lines are skipped. A line that is
+// not an amount stops the comparison and is reported, rather than silently
+// shifting every row after it.
+func diffBank(raw string, rows []ProjectionRow, cur money.Currency) ([]RowDiff, int, int, string) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, 0, 0, ""
+	}
+	diffs := make([]RowDiff, len(rows))
+	var compared, exact int
+	i := 0
+	for n, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if i >= len(rows) {
+			return diffs, compared, exact, fmt.Sprintf("line %d: more amounts than the engine has rows (%d)", n+1, len(rows))
+		}
+		bank, err := parseMajor(line, cur)
+		if err != nil {
+			return diffs, compared, exact, fmt.Sprintf("line %d: %v", n+1, err)
+		}
+		delta, err := bank.Sub(rows[i].Payment)
+		if err != nil {
+			return diffs, compared, exact, fmt.Sprintf("line %d: %v", n+1, err)
+		}
+		d := RowDiff{Bank: bank.String(), Has: true, Exact: delta.Sign() == 0, Delta: delta.String()}
+		if delta.Sign() > 0 {
+			d.Delta = "+" + d.Delta
+		}
+		if d.Exact {
+			exact++
+		}
+		compared++
+		diffs[i] = d
+		i++
+	}
+	return diffs, compared, exact, ""
 }
 
 func parsePlayground(in PlaygroundInput) (model.Contract, money.Amount, money.Amount, date.Date, error) {

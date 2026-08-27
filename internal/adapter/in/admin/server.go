@@ -382,11 +382,23 @@ func (s *Server) renameLoan(w http.ResponseWriter, r *http.Request) {
 	}
 	id := r.PathValue("id")
 	name := strings.TrimSpace(r.PostFormValue("name"))
-	if name == "" {
-		s.fail(w, r, fmt.Errorf("a loan needs a name"))
+	description := strings.TrimSpace(r.PostFormValue("description"))
+	var problem string
+	switch {
+	case name == "":
+		problem = "A loan needs a name."
+	case len([]rune(name)) > 60:
+		problem = "Names are at most 60 characters."
+	case len([]rune(description)) > 200:
+		problem = "Descriptions are at most 200 characters."
+	}
+	if problem != "" {
+		// Re-render the page with the typed values and the complaint beside
+		// the field, rather than an error page the operator has to back out of.
+		s.loanPage(w, r, id, map[string]any{"NameError": problem, "TypedName": name, "TypedDescription": description})
 		return
 	}
-	if err := s.admin.RenameLoan(r.Context(), id, name, strings.TrimSpace(r.PostFormValue("description"))); err != nil {
+	if err := s.admin.RenameLoan(r.Context(), id, name, description); err != nil {
 		s.fail(w, r, err)
 		return
 	}
@@ -422,7 +434,7 @@ func (s *Server) engine(w http.ResponseWriter, r *http.Request) {
 		in = app.PlaygroundInput{
 			Currency: f("currency"), Principal: f("principal"), Rate: f("rate"), Method: f("method"),
 			DayCount: f("day_count"), Start: f("start"), Maturity: f("maturity"), Day: f("day"),
-			Unit: f("unit"), Balance: f("balance"), From: f("from"),
+			Unit: f("unit"), Balance: f("balance"), From: f("from"), Bank: f("bank"),
 		}
 	}
 	view = app.Playground(in)
@@ -444,15 +456,28 @@ func keys(m map[string]bool) []string {
 }
 
 func (s *Server) loan(w http.ResponseWriter, r *http.Request) {
-	v, err := s.admin.Loan(r.Context(), r.PathValue("id"))
+	s.loanPage(w, r, r.PathValue("id"), nil)
+}
+
+// loanPage renders one loan, with any extra data a form round-trip carries.
+// The schedule folds when it is long enough that the panels below it would
+// otherwise be a screen's scroll away.
+func (s *Server) loanPage(w http.ResponseWriter, r *http.Request, id string, extra map[string]any) {
+	v, err := s.admin.Loan(r.Context(), id)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	s.render(w, r, "loan.html", map[string]any{
+	data := map[string]any{
 		keyTitle: v.Loan.Name, keyNav: "loans", "V": v,
-		"Description": v.Loan.Description, "Notice": r.URL.Query().Get("notice"),
-	})
+		"TypedName": v.Loan.Name, "TypedDescription": v.Loan.Description,
+		"Notice": r.URL.Query().Get("notice"), "NameError": "",
+		"FoldSchedule": v.Projection != nil && len(v.Projection.Rows) > 24,
+	}
+	for k, val := range extra {
+		data[k] = val
+	}
+	s.render(w, r, "loan.html", data)
 }
 
 type userFilter struct{ Q, State, Deletion string }
@@ -613,10 +638,16 @@ func (s *Server) reconciliation(w http.ResponseWriter, r *http.Request) {
 func (s *Server) render(w http.ResponseWriter, r *http.Request, page string, data map[string]any) {
 	data["Env"] = s.cfg.Env
 	data["Version"] = s.cfg.Version
+	// The clock goes in as data so relative times ("3m ago") are computed
+	// against the injected instant rather than a wall the template reads.
+	data["Now"] = s.now()
 	data["SignedIn"] = false
 	data["Badges"] = app.Overview{}
 	if _, ok := data[keyQuery]; !ok {
 		data[keyQuery] = ""
+	}
+	if _, ok := data[keyNav]; !ok {
+		data[keyNav] = ""
 	}
 	if c, err := r.Cookie(cookieName); err == nil && valid(s.key, c.Value, s.now()) {
 		data["SignedIn"] = true

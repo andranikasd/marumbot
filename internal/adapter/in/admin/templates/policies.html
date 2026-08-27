@@ -5,7 +5,6 @@
   credited by the planner only under <span class="mono">reduce_principal</span>.
 </p>
 {{if .Notice}}<div class="note ok">{{.Notice}}</div>{{end}}
-{{if .Error}}<div class="note bad">{{.Error}}</div>{{end}}
 
 <div class="panel">
   <div class="hd">{{len .Rows}} recorded</div>
@@ -19,17 +18,18 @@
         <td><span class="tag {{excess .ExcessRule}}">{{.ExcessRule}}</span></td>
         <td class="mono">{{order .Definition}}</td>
         <td>{{if hasPrefix .Source "http"}}<a href="{{.Source}}" rel="noreferrer">{{.Source}}</a>{{else}}{{.Source}}{{end}}</td>
-        <td class="nowrap">{{date .CreatedAt}}</td>
-        <td class="mono">{{short .ID}}</td>
+        <td class="nowrap">{{date .CreatedAt}}<span class="ago">{{ago $.Now .CreatedAt}}</span></td>
+        <td class="mono" title="{{.ID}}">{{short .ID}}</td>
       </tr>
     {{end}}</tbody>
   </table></div>
-  {{else}}<div class="empty">No policies yet.</div>{{end}}
+  {{else}}<div class="empty">No policies yet. Every contract needs one before the engine can replay it.<a class="next" href="#record">Record the first one below ↓</a></div>{{end}}
 </div>
 
-<div class="panel">
+<div class="panel" id="record">
   <div class="hd">Record a policy</div>
   <div class="bd">
+    {{if .Error}}<div class="note bad" role="alert">{{.Error}}</div>{{end}}
     <form method="post" action="/policies" class="stack">
       <div>
         <label for="policy_key">Key</label>
@@ -37,8 +37,8 @@
         <div class="hint">Lender and product, lowercase. One key may have several versions.</div>
       </div>
       <div><label for="version">Version</label><input id="version" name="version" type="number" value="1" min="1"></div>
-      <div>
-        <label>Settlement order</label>
+      <fieldset style="border:0;padding:0;margin:0">
+        <legend><label>Settlement order</label></legend>
         <div class="checks">
           <label><input type="checkbox" name="order" value="penalties" checked> penalties</label>
           <label><input type="checkbox" name="order" value="overdue_fees" checked> overdue fees</label>
@@ -49,7 +49,7 @@
           <label><input type="checkbox" name="order" value="principal" checked> principal</label>
         </div>
         <div class="hint">The order buckets are settled in. Ticked boxes are read top to bottom.</div>
-      </div>
+      </fieldset>
       <div>
         <label for="excess_rule">Money beyond what is owed</label>
         <select id="excess_rule" name="excess_rule">

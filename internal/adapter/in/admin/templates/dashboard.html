@@ -1,4 +1,11 @@
 {{define "content"}}
+<div class="health{{if not .D.Health.DatabaseOK}} down{{end}}" role="status">
+  <span class="item"><span class="dot{{if not .D.Health.DatabaseOK}} bad{{end}}" aria-hidden="true"></span>Database <b>{{if .D.Health.DatabaseOK}}reachable{{else}}unreachable{{end}}</b></span>
+  <span class="item">Schema <b class="mono">v{{.D.Health.MigrationVersion}}</b></span>
+  <span class="item">Build <b class="mono">{{.Version}}</b></span>
+  <span class="item">Environment <b>{{.Env}}</b></span>
+  <span class="item">Checked <b>{{stamp .Now}}</b></span>
+</div>
 {{if not .D.Health.DatabaseOK}}<div class="note bad">Database unreachable: {{.D.Health.DatabaseError}}</div>{{end}}
 
 <div class="cards">
@@ -14,17 +21,22 @@
 <div class="cards">
   <a class="card {{if gt .D.Overview.CommandsPending 50}}alert{{end}}" href="/commands?status=pending">
     <div class="n">{{.D.Overview.CommandsPending}}</div><div class="k">commands pending</div>
-    <div class="sub">oldest due {{duration .D.Overview.OldestCommandAgeS}}</div></a>
+    <div class="sub">oldest due {{duration .D.Overview.OldestCommandAgeS}}</div>
+    {{if gt .D.Overview.CommandsPending 50}}<span class="go">open the backlog →</span>{{end}}</a>
   <a class="card {{if gt .D.Overview.CommandsDead 0}}alert{{else}}good{{end}}" href="/commands?status=dead">
-    <div class="n">{{.D.Overview.CommandsDead}}</div><div class="k">commands dead</div></a>
+    <div class="n">{{.D.Overview.CommandsDead}}</div><div class="k">commands dead</div>
+    {{if gt .D.Overview.CommandsDead 0}}<span class="go">read and retry →</span>{{end}}</a>
   <a class="card {{if gt .D.Overview.DeliveriesPending 200}}alert{{end}}" href="/deliveries?status=pending">
     <div class="n">{{.D.Overview.DeliveriesPending}}</div><div class="k">deliveries pending</div>
-    <div class="sub">oldest due {{duration .D.Overview.OldestDeliveryAgeS}}</div></a>
+    <div class="sub">oldest due {{duration .D.Overview.OldestDeliveryAgeS}}</div>
+    {{if gt .D.Overview.DeliveriesPending 200}}<span class="go">open the backlog →</span>{{end}}</a>
   <a class="card {{if gt .D.Overview.DeliveriesDead 0}}alert{{else}}good{{end}}" href="/deliveries?status=dead">
-    <div class="n">{{.D.Overview.DeliveriesDead}}</div><div class="k">deliveries dead</div></a>
+    <div class="n">{{.D.Overview.DeliveriesDead}}</div><div class="k">deliveries dead</div>
+    {{if gt .D.Overview.DeliveriesDead 0}}<span class="go">see what failed →</span>{{end}}</a>
 </div>
 
-<div class="grid2" style="margin-top:22px">
+<h2>Trends</h2>
+<div class="grid2">
   <div class="panel">
     <div class="hd">Sign-ups, last 14 days <span class="tools chart-total">{{sum .D.UsersByDay}} total</span></div>
     <div class="bd">{{template "bars" .D.UsersByDay}}</div>
@@ -35,6 +47,7 @@
   </div>
 </div>
 
+<h2>Recent</h2>
 <div class="grid2">
   <div class="panel">
     <div class="hd">Latest inbox activity <span class="tools"><a href="/commands">all →</a></span></div>
@@ -43,31 +56,30 @@
       <thead><tr><th>Kind</th><th>Status</th><th class="num">Tries</th><th>Received</th><th>Error</th></tr></thead>
       <tbody>{{range .D.Recent}}
         <tr><td>{{.Kind}}</td><td><span class="tag {{status .Status}}">{{.Status}}</span></td>
-          <td class="num">{{.Attempts}}</td><td class="nowrap">{{stamp .ReceivedAt}}</td>
-          <td class="mono">{{if .LastError}}{{.LastError}}{{else}}—{{end}}</td></tr>
+          <td class="num">{{.Attempts}}</td><td class="nowrap">{{stamp .ReceivedAt}}<span class="ago">{{ago $.Now .ReceivedAt}}</span></td>
+          <td class="mono err" title="{{.LastError}}">{{if .LastError}}{{.LastError}}{{else}}—{{end}}</td></tr>
       {{end}}</tbody>
     </table></div>
-    {{else}}<div class="empty">Nothing has arrived yet.</div>{{end}}
+    {{else}}<div class="empty">Nothing has arrived yet.<a class="next" href="/commands">Open the inbox →</a></div>{{end}}
   </div>
   <div class="panel">
-    <div class="hd">System</div>
+    <div class="hd">Queues by status</div>
     <div class="bd">
       <dl class="kv">
-        <dt>Database</dt><dd>{{if .D.Health.DatabaseOK}}<span class="tag t-ok">reachable</span>{{else}}<span class="tag t-stop">unreachable</span>{{end}}</dd>
-        <dt>Schema version</dt><dd class="mono">{{.D.Health.MigrationVersion}}</dd>
-        <dt>Environment</dt><dd>{{.Env}}</dd>
-        <dt>Build</dt><dd class="mono">{{.Version}}</dd>
-        <dt>Inbox by status</dt><dd>{{range .D.CommandCounts}}<span class="tag {{status .Status}}">{{.Status}} {{.N}}</span> {{end}}</dd>
-        <dt>Outbox by status</dt><dd>{{range .D.DeliveryCounts}}<span class="tag {{status .Status}}">{{.Status}} {{.N}}</span> {{end}}</dd>
+        <dt>Inbox</dt><dd>{{range .D.CommandCounts}}<a class="tag {{status .Status}}" href="/commands?status={{.Status}}">{{.Status}} {{.N}}</a> {{else}}<span class="muted">empty</span>{{end}}</dd>
+        <dt>Outbox</dt><dd>{{range .D.DeliveryCounts}}<a class="tag {{status .Status}}" href="/deliveries?status={{.Status}}">{{.Status}} {{.N}}</a> {{else}}<span class="muted">empty</span>{{end}}</dd>
       </dl>
     </div>
   </div>
 </div>
 {{end}}
 {{define "bars"}}
-{{$max := maxN .}}
-<div class="bars">
-  {{range .}}<div class="b" title="{{date .Day}}: {{.N}}"><i style="height:{{barh .N $max}}%"></i><span>{{dayShort .Day}}</span></div>{{end}}
+{{$max := maxN .}}{{$n := len .}}
+<div class="chart">
+  <div class="axis" aria-hidden="true"><span>{{$max}}</span><span>0</span></div>
+  <div class="bars">
+    {{range $i, $d := .}}<div class="b{{if eq (add $i 1) $n}} today{{end}}" title="{{date $d.Day}}: {{$d.N}}{{if eq (add $i 1) $n}} (today){{end}}"><i style="height:{{barh $d.N $max}}%"></i><span>{{dayShort $d.Day}}</span></div>{{end}}
+  </div>
 </div>
 {{end}}
 {{template "layout" .}}

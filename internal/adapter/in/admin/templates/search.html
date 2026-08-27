@@ -1,3 +1,4 @@
+{{define "crumbs"}}<div class="crumbs"><a href="/">Overview</a><span class="sep">›</span>Search</div>{{end}}
 {{define "content"}}
 {{if not .R.Query}}<p class="lead">Type a loan name, or the first characters of a loan or user id.</p>{{end}}
 <div class="grid2">
@@ -7,12 +8,12 @@
     <div class="scroll"><table>
       <thead><tr><th>Name</th><th>User</th><th>Cur</th><th class="num">Balance</th><th>Created</th></tr></thead>
       <tbody>{{range .R.Loans}}
-        <tr><td><a href="/loans/{{.ID}}">{{.Name}}</a>{{if .ArchivedAt}} <span class="tag t-mute">archived</span>{{end}}</td>
-          <td class="mono"><a href="/users/{{.UserID}}">{{short .UserID}}</a></td><td class="mono">{{.Currency}}</td>
+        <tr><td><a href="/loans/{{.ID}}" title="{{.ID}}">{{.Name}}</a>{{if .ArchivedAt}} <span class="tag t-mute">archived</span>{{end}}</td>
+          <td class="mono"><a href="/users/{{.UserID}}" title="{{.UserID}}">{{short .UserID}}</a></td><td class="mono">{{.Currency}}</td>
           <td class="num">{{if .PrincipalMinor}}{{minor .PrincipalMinor .Currency}}{{else}}—{{end}}</td><td class="nowrap">{{date .CreatedAt}}</td></tr>
       {{end}}</tbody>
     </table></div>
-    {{else}}<div class="empty">No loan matches.</div>{{end}}
+    {{else}}<div class="empty">No loan matches.{{if .R.Query}}<a class="next" href="/loans?archived=all&q={{.R.Query}}">Search archived loans too →</a>{{end}}</div>{{end}}
   </div>
   <div class="panel">
     <div class="hd">Users <span class="tools muted">{{len .R.Users}}</span></div>
@@ -24,7 +25,7 @@
           <td class="num">{{.LoanCount}}</td><td class="nowrap">{{date .CreatedAt}}</td></tr>
       {{end}}</tbody>
     </table></div>
-    {{else}}<div class="empty">No user matches.</div>{{end}}
+    {{else}}<div class="empty">No user matches.{{if .R.Query}}<a class="next" href="/users">Browse every user →</a>{{end}}</div>{{end}}
   </div>
 </div>
 {{end}}

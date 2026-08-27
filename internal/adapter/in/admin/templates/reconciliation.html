@@ -11,17 +11,17 @@
       <th class="num">Fee drift</th><th class="num">Penalty drift</th><th>Engine</th><th>When</th></tr></thead>
     <tbody>{{range .Rows}}
       <tr>
-        <td class="mono"><a href="/loans/{{.LoanID}}">{{short .LoanID}}</a></td>
+        <td class="mono"><a href="/loans/{{.LoanID}}" title="{{.LoanID}}">{{short .LoanID}}</a></td>
         <td class="num">{{drift .PrincipalMinor}}</td>
         <td class="num">{{drift .InterestMinor}}</td>
         <td class="num">{{drift .FeeMinor}}</td>
         <td class="num">{{drift .PenaltyMinor}}</td>
         <td class="mono">{{.EngineVersion}}</td>
-        <td class="nowrap">{{stamp .CreatedAt}}</td>
+        <td class="nowrap">{{stamp .CreatedAt}}<span class="ago">{{ago $.Now .CreatedAt}}</span></td>
       </tr>
     {{end}}</tbody>
   </table></div>
-  {{else}}<div class="empty">No reconciliation has run yet. Runs appear when a confirmed snapshot lands on a loan with ledger events.</div>{{end}}
+  {{else}}<div class="empty">No reconciliation has run yet. Runs appear when a confirmed snapshot lands on a loan with ledger events.<a class="next" href="/loans?reliability=confirmed">Loans with a confirmed balance →</a></div>{{end}}
 </div>
 {{end}}
 {{template "layout" .}}

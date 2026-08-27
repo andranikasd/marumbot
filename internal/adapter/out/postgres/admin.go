@@ -285,6 +285,24 @@ func (s *Store) CommandCounts(ctx context.Context) ([]app.StatusCount, error) {
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[app.StatusCount])
 }
 
+// CommandsForUser returns the latest commands one account sent.
+func (s *Store) CommandsForUser(ctx context.Context, userID string, limit int32) ([]app.CommandRow, error) {
+	rows, err := s.pool.Query(ctx, q("ListCommandsForUser"), userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[app.CommandRow])
+}
+
+// DeliveriesForUser returns the latest messages queued to one account.
+func (s *Store) DeliveriesForUser(ctx context.Context, userID string, limit int32) ([]app.DeliveryRow, error) {
+	rows, err := s.pool.Query(ctx, q("ListDeliveriesForUser"), userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[app.DeliveryRow])
+}
+
 // DeliveryCounts returns the outbox split by status.
 func (s *Store) DeliveryCounts(ctx context.Context) ([]app.StatusCount, error) {
 	rows, err := s.pool.Query(ctx, q("CountDeliveriesByStatus"))

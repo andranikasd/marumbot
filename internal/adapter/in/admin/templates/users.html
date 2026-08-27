@@ -7,22 +7,23 @@
   <div><label for="del">Deletion</label>
     <select id="del" name="deletion"><option value="">any</option><option value="requested" {{if eq .F.Deletion "requested"}}selected{{end}}>requested</option><option value="none" {{if eq .F.Deletion "none"}}selected{{end}}>not requested</option></select></div>
   <button class="quiet">Apply</button>
+  {{if or .F.Q .F.State .F.Deletion}}<a class="pill" href="/users">clear</a>{{end}}
 </form>
 <div class="panel">
   <div class="hd">{{len .Rows}} of {{.Total}} users</div>
   {{if .Rows}}
   <div class="scroll"><table>
     <thead><tr><th>ID</th><th>Access</th><th>Locale</th><th>Timezone</th>
-      <th class="num">Loans</th><th>Trial ends</th><th>Joined</th><th>Deletion</th><th></th></tr></thead>
+      <th class="num">Loans</th><th>Trial ends</th><th>Joined</th><th>Deletion</th><th class="actions"></th></tr></thead>
     <tbody>{{range .Rows}}
       <tr>
-        <td class="mono"><a href="/users/{{.ID}}">{{short .ID}}</a></td>
+        <td class="mono"><a href="/users/{{.ID}}" title="{{.ID}}">{{short .ID}}</a></td>
         <td><span class="tag {{access .AccessState}}">{{.AccessState}}</span></td>
         <td>{{.Locale}}</td>
         <td>{{.Timezone}}</td>
         <td class="num">{{.LoanCount}}</td>
-        <td class="nowrap">{{date .TrialEndsAt}}</td>
-        <td class="nowrap">{{date .CreatedAt}}</td>
+        <td class="nowrap">{{date .TrialEndsAt}}<span class="ago">{{ago $.Now .TrialEndsAt}}</span></td>
+        <td class="nowrap">{{date .CreatedAt}}<span class="ago">{{ago $.Now .CreatedAt}}</span></td>
         <td>{{if .DeletionRequested}}<span class="tag t-warn">requested</span>{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="actions">
           {{if eq .AccessState "paused"}}<form method="post" action="/users/{{.ID}}/restore"><button class="link">restore</button></form>
@@ -31,7 +32,10 @@
       </tr>
     {{end}}</tbody>
   </table></div>
-  {{else}}<div class="empty">No user matches.</div>{{end}}
+  {{else}}<div class="empty">
+    {{if not .Total}}No accounts yet. One appears the first time somebody talks to the bot.
+    {{else}}No user matches these filters.<a class="next" href="/users">Show everyone →</a>{{end}}
+  </div>{{end}}
 </div>
 {{end}}
 {{template "layout" .}}

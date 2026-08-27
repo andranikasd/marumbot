@@ -21,13 +21,19 @@
       <div><label for="unit">Rounding unit (minor)</label><input id="unit" name="unit" type="text" inputmode="numeric" value="{{.P.Input.Unit}}" placeholder="currency default"></div>
       <div><label for="balance">Balance now (optional)</label><input id="balance" name="balance" type="text" inputmode="decimal" value="{{.P.Input.Balance}}"></div>
       <div><label for="from">Balance as of (optional)</label><input id="from" name="from" type="date" value="{{.P.Input.From}}"></div>
+      <div class="span">
+        <label for="bank">Bank instalments, one per line (optional)</label>
+        <textarea id="bank" name="bank" rows="5" placeholder="76,200&#10;76,200&#10;76,200" {{if .P.BankError}}aria-invalid="true" aria-describedby="bank-error"{{end}}>{{.P.Input.Bank}}</textarea>
+        {{if .P.BankError}}<div class="field-error" id="bank-error">{{.P.BankError}}</div>
+        {{else}}<div class="hint">Paste the payment column from the bank's schedule to see, row by row, where the engine differs.</div>{{end}}
+      </div>
+      {{if .P.Error}}<div class="span field-error" role="alert">{{.P.Error}}</div>{{end}}
       <div><button>Project</button></div>
     </form>
     <p class="hint">Inecobank consumer loans: ACT/365, rounding unit 10 (0.10 AMD). The golden corpus reproduces 59 of 59 rows of a real agreement with these settings.</p>
   </div>
 </div>
 
-{{if .P.Error}}<div class="note bad">{{.P.Error}}</div>{{end}}
 {{if .P.Projection}}
 <div class="cards">
   <div class="card"><div class="n">{{.P.Projection.Instalment}}</div><div class="k">instalment</div></div>
@@ -35,18 +41,28 @@
   <div class="card"><div class="n">{{len .P.Projection.Rows}}</div><div class="k">instalments</div></div>
   <div class="card"><div class="n">{{.P.Projection.TotalInterest}}</div><div class="k">total interest</div></div>
   <div class="card"><div class="n">{{.P.Projection.TotalPaid}}</div><div class="k">total paid</div></div>
+  {{if .P.Compared}}
+  <div class="card {{if eq .P.Exact .P.Compared}}good{{else}}alert{{end}}"><div class="n">{{.P.Exact}} / {{.P.Compared}}</div><div class="k">rows match the bank</div></div>
+  {{end}}
 </div>
 <div class="panel" style="margin-top:16px">
   <div class="hd">Schedule <span class="tools muted">{{.P.Contract.Type}} · {{.P.Contract.DayCount}} · {{.P.Contract.NominalRate}}</span></div>
   <div class="scroll"><table>
     <thead><tr><th class="num">#</th><th>Due</th><th class="num">Days</th><th class="num">Opening</th>
-      <th class="num">Interest</th><th class="num">Principal</th><th class="num">Payment</th><th class="num">Closing</th><th></th></tr></thead>
-    <tbody>{{range .P.Projection.Rows}}
+      <th class="num">Interest</th><th class="num">Principal</th><th class="num">Payment</th>
+      {{if .P.Diffs}}<th class="num">Bank</th><th class="num">Diff</th>{{end}}
+      <th class="num">Closing</th><th></th></tr></thead>
+    <tbody>{{range $i, $r := .P.Projection.Rows}}
       <tr>
-        <td class="num">{{.N}}</td><td class="nowrap">{{.Due}}</td><td class="num">{{.Days}}</td>
-        <td class="num">{{.Opening}}</td><td class="num">{{.Interest}}</td><td class="num">{{.Principal}}</td>
-        <td class="num">{{.Payment}}</td><td class="num">{{.Closing}}</td>
-        <td><details><summary>why</summary><pre class="explain">{{.Explain}}</pre></details></td>
+        <td class="num">{{$r.N}}</td><td class="nowrap">{{$r.Due}}</td><td class="num">{{$r.Days}}</td>
+        <td class="num">{{$r.Opening}}</td><td class="num">{{$r.Interest}}</td><td class="num">{{$r.Principal}}</td>
+        <td class="num">{{$r.Payment}}</td>
+        {{if $.P.Diffs}}{{with index $.P.Diffs $i}}
+          {{if .Has}}<td class="num">{{.Bank}}</td><td class="num diff {{if .Exact}}same{{else}}off{{end}}">{{if .Exact}}exact{{else}}{{.Delta}}{{end}}</td>
+          {{else}}<td class="num muted">—</td><td class="num muted">—</td>{{end}}
+        {{end}}{{end}}
+        <td class="num">{{$r.Closing}}</td>
+        <td><details><summary>why</summary><pre class="explain">{{$r.Explain}}</pre></details></td>
       </tr>
     {{end}}</tbody>
   </table></div>
