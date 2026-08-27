@@ -155,7 +155,7 @@ Everything lives in [`docs/`](docs/README.md).
 | | |
 | --- | --- |
 | **Architecture** | [Overview](docs/architecture/01-overview.md) · [Domain model](docs/architecture/02-domain-model.md) · [Ledger and replay](docs/architecture/03-ledger-replay.md) · [Money and dates](docs/architecture/04-money-and-dates.md) · [Database](docs/architecture/05-database.md) · [Admin UI](docs/architecture/06-admin-ui.md) · [Messaging](docs/architecture/07-messaging.md) · [Observability](docs/architecture/08-observability.md) |
-| **Operations** | [Local development](docs/operations/local-development.md) · [Environments](docs/operations/environments.md) · [Releasing](docs/operations/releases.md) · [Deployment](docs/operations/deployment.md) · [Infrastructure](deploy/terraform/README.md) · [Runbooks](docs/operations/runbooks.md) |
+| **Operations** | [Local development](docs/operations/local-development.md) · [Environments](docs/operations/environments.md) · [Releasing](docs/operations/releases.md) · [Deployment](docs/operations/deployment.md) · [Infrastructure](deploy/terraform/README.md) · [Grafana Cloud](docs/operations/grafana-cloud.md) · [Runbooks](docs/operations/runbooks.md) |
 | **Reference** | [Engineering guide](docs/engineering-guide.md) · [Design document (PDF)](docs/design/Marum-MVP-System-and-Architecture-Design.pdf) · [Long-form design](docs/design/reliable-mvp-design.md) · [AGENTS.md](AGENTS.md) |
 
 ---
