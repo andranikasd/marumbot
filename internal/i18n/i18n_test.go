@@ -1,6 +1,11 @@
 package i18n
 
 import (
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -118,5 +123,51 @@ func TestMatchButtonIgnoresOrdinaryText(t *testing.T) {
 		if kind, ok := MatchButton(s); ok {
 			t.Errorf("MatchButton(%q) matched %q; ordinary text must not", s, kind)
 		}
+	}
+}
+
+// Every key the application asks for must exist. The completeness test above
+// checks that defined keys exist in every language; it cannot notice a key that
+// is USED but never defined, and that is exactly what shipped: a report whose
+// every line rendered as "advice.months". This walks the Go source for T(...)
+// calls and refuses any key the catalogue does not know.
+func TestEveryUsedKeyIsDefined(t *testing.T) {
+	root := filepath.Join("..", "..")
+	re := regexp.MustCompile(`i18n\.(?:T|Button)\([^,]+,\s*"([a-z][a-z0-9_.]*)"`)
+	known := map[string]bool{}
+	for _, k := range Keys() {
+		known[k] = true
+	}
+	var missing []string
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == "node_modules" || d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		src, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		for _, m := range re.FindAllStringSubmatch(string(src), -1) {
+			if !known[m[1]] {
+				missing = append(missing, m[1]+"  ("+filepath.Base(p)+")")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(missing)
+	for _, m := range missing {
+		t.Errorf("used but not in the catalogue: %s", m)
 	}
 }
