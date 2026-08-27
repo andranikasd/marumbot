@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="hy">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Marum</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  /* Telegram supplies the palette. Reading it rather than choosing one means
+     the form matches whatever theme the user already has, including dark. */
+  :root{
+    --bg: var(--tg-theme-bg-color, #fff);
+    --fg: var(--tg-theme-text-color, #000);
+    --hint: var(--tg-theme-hint-color, #707579);
+    --link: var(--tg-theme-link-color, #2481cc);
+    --field: var(--tg-theme-secondary-bg-color, #f4f4f5);
+    --danger: #d1453b;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;padding:16px 16px 96px;background:var(--bg);color:var(--fg);
+    font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  h1{font-size:20px;margin:0 0 4px}
+  p.lede{margin:0 0 20px;color:var(--hint);font-size:14px}
+  label{display:block;margin:0 0 4px;font-size:14px;font-weight:600}
+  .hint{font-size:13px;color:var(--hint);margin:4px 0 0}
+  .field{margin-bottom:18px}
+  input,select{
+    width:100%;padding:12px;font-size:17px;border:none;border-radius:10px;
+    background:var(--field);color:var(--fg);
+    /* 17px keeps iOS from zooming the viewport when a field is focused. */
+  }
+  input:focus,select:focus{outline:2px solid var(--link)}
+  input[aria-invalid="true"]{outline:2px solid var(--danger)}
+  .row{display:flex;gap:12px}
+  .row>*{flex:1}
+  .error{color:var(--danger);font-size:13px;margin:4px 0 0;min-height:1em}
+  .summary{
+    background:var(--field);border-radius:12px;padding:14px;margin:20px 0 0;
+    font-size:15px;
+  }
+  .summary dl{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:0}
+  .summary dt{color:var(--hint)}
+  .summary dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+  .summary .total{font-weight:700}
+</style>
+</head>
+<body>
+<h1 data-i18n="title">Ավելացնել վարկ</h1>
+<p class="lede" data-i18n="lede">Մուտքագրեք վարկի պայմանագրի տվյալները։</p>
+
+<form id="f" novalidate>
+  <div class="field">
+    <label for="lender" data-i18n="lender">Բանկ</label>
+    <input id="lender" name="lender" autocomplete="off" maxlength="60" required>
+    <p class="error" id="e-lender"></p>
+  </div>
+
+  <div class="field">
+    <label for="principal" data-i18n="principal">Վարկի գումար</label>
+    <div class="row">
+      <input id="principal" name="principal" inputmode="decimal" required>
+      <select id="currency" name="currency" style="flex:0 0 96px">
+        <option value="AMD" selected>AMD</option>
+        <option value="USD">USD</option>
+        <option value="EUR">EUR</option>
+        <option value="RUB">RUB</option>
+      </select>
+    </div>
+    <p class="error" id="e-principal"></p>
+  </div>
+
+  <div class="field">
+    <label for="rate" data-i18n="rate">Տարեկան տոկոսադրույք (%)</label>
+    <input id="rate" name="rate" inputmode="decimal" required>
+    <p class="error" id="e-rate"></p>
+  </div>
+
+  <div class="field">
+    <label for="method" data-i18n="method">Մարման եղանակ</label>
+    <select id="method" name="method">
+      <option value="annuity" selected data-i18n="method.annuity">Անուիտետային (հավասար վճար)</option>
+      <option value="declining" data-i18n="method.declining">Դիֆերենցված (նվազող վճար)</option>
+    </select>
+    <p class="hint" data-i18n="method.hint">Անուիտետի դեպքում ամսական վճարը նույնն է։</p>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label for="start" data-i18n="start">Սկիզբ</label>
+      <input id="start" name="start" type="date" required>
+      <p class="error" id="e-start"></p>
+    </div>
+    <div class="field">
+      <label for="maturity" data-i18n="maturity">Ավարտ</label>
+      <input id="maturity" name="maturity" type="date" required>
+      <p class="error" id="e-maturity"></p>
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="day" data-i18n="day">Վճարման օրը</label>
+    <input id="day" name="day" inputmode="numeric" value="15" required>
+    <p class="hint" data-i18n="day.hint">Ամսվա այն օրը, երբ վճարումը պարտադիր է։</p>
+    <p class="error" id="e-day"></p>
+  </div>
+
+  <div class="summary" id="summary" hidden>
+    <dl>
+      <dt data-i18n="sum.payment">Ամսական վճար</dt><dd id="s-payment">—</dd>
+      <dt data-i18n="sum.count">Վճարումների թիվ</dt><dd id="s-count">—</dd>
+      <dt data-i18n="sum.interest">Ընդհանուր տոկոս</dt><dd id="s-interest">—</dd>
+      <dt class="total" data-i18n="sum.total">Ընդամենը</dt><dd class="total" id="s-total">—</dd>
+    </dl>
+    <p class="hint" data-i18n="sum.note">Հաշվարկը մոտավոր է մինչև բանկի հաստատումը։</p>
+  </div>
+</form>
+
+<script src="app.js"></script>
+</body>
+</html>

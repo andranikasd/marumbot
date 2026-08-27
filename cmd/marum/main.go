@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/andranikasd/marumbot/internal/adapter/in/admin"
+	"github.com/andranikasd/marumbot/internal/adapter/in/miniapp"
 	"github.com/andranikasd/marumbot/internal/adapter/in/telegram"
 	"github.com/andranikasd/marumbot/internal/adapter/out/postgres"
 	"github.com/andranikasd/marumbot/internal/adapter/out/sysclock"
@@ -114,13 +115,19 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 
 	bot := telegramclient.New(cfg.BotToken)
 	worker := &app.Worker{
-		Inbox: store, Users: store,
+		Inbox: store, Users: store, Loans: store,
 		Chats:   postgres.ChatLookup{Store: store, Cipher: cipher},
 		Send:    bot,
 		Clock:   sysclock.New(),
 		Owner:   cfg.InstanceID,
 		Log:     log,
 		MiniApp: cfg.MiniAppURL,
+	}
+	// The Mini App is served from the public listener under /app, so it shares
+	// the Worker's hostname and needs no second custom domain or certificate.
+	mini := &miniapp.Server{
+		BotToken: cfg.BotToken, Loans: store, Users: store,
+		Cipher: cipher, Clock: sysclock.New(), Log: log,
 	}
 	hook := &telegram.Webhook{
 		Inbox: store, Users: store, Cipher: cipher,
@@ -129,8 +136,10 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	}
 
 	public := &http.Server{
-		Addr:              cfg.Addr,
-		Handler:           otelhttp.NewHandler(publicRoutes(adminSvc, hook, worker, cfg.ServiceToken, log), "marum", otelhttp.WithFilter(notHealthCheck)),
+		Addr: cfg.Addr,
+		Handler: otelhttp.NewHandler(
+			publicRoutes(adminSvc, hook, worker, mini, cfg.ServiceToken, log),
+			"marum", otelhttp.WithFilter(notHealthCheck)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	servers := []*http.Server{public}
@@ -184,7 +193,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 }
 
 func publicRoutes(a *app.Admin, hook *telegram.Webhook, w *app.Worker,
-	serviceToken string, log *slog.Logger,
+	mini *miniapp.Server, serviceToken string, log *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
 
@@ -196,6 +205,10 @@ func publicRoutes(a *app.Admin, hook *telegram.Webhook, w *app.Worker,
 	// The scheduler tick. Idempotent and safe to run concurrently, so a
 	// duplicate costs nothing and a missed one is caught by the next.
 	mux.Handle("POST /internal/tick", tickHandler(w, serviceToken, log))
+
+	// The Mini App. It authenticates every call with Telegram's signed
+	// initData, so it needs no service token and is safe to expose.
+	mux.Handle("/app/", http.StripPrefix("/app/", mini.Handler()))
 
 	// Liveness performs no database call: a probe that depends on Postgres
 	// turns a database blip into a restart loop.

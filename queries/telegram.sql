@@ -99,3 +99,9 @@ UPDATE users SET locale = $2 WHERE id = $1 AND deleted_at IS NULL RETURNING id;
 -- The chat id comes back encrypted; decryption happens above the adapter, so
 -- this package never holds a Telegram identifier in the clear.
 SELECT telegram_chat_enc, key_version FROM identities WHERE user_id = $1;
+
+-- name: GetUserByTelegramTag
+-- Finds an existing account only. The Mini App is reachable only from a bot
+-- message, so an account that does not exist means something is wrong rather
+-- than something new.
+SELECT user_id FROM identities WHERE telegram_user_hmac = $1;
