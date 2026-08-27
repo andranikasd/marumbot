@@ -26,6 +26,9 @@ services:
     environment:
       MARUM_DATABASE_URL: postgres://marum:marum@postgres:5432/marum?sslmode=disable
       # Same shape as production; only the endpoint differs.
+      MARUM_IDENTITY_KEY: ${MARUM_IDENTITY_KEY:-}
+      MARUM_SERVICE_TOKEN: ${MARUM_SERVICE_TOKEN:-}
+      MARUM_MINIAPP_URL: ${MARUM_MINIAPP_URL:-http://127.0.0.1:8080/app/}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040

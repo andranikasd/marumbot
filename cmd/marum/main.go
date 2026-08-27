@@ -208,7 +208,10 @@ func publicRoutes(a *app.Admin, hook *telegram.Webhook, w *app.Worker,
 
 	// The Mini App. It authenticates every call with Telegram's signed
 	// initData, so it needs no service token and is safe to expose.
-	mux.Handle("/app/", http.StripPrefix("/app/", mini.Handler()))
+	// StripPrefix takes "/app", not "/app/": stripping the trailing slash too
+	// would leave a path with no leading slash, which the inner mux answers
+	// with a redirect instead of the page.
+	mux.Handle("/app/", http.StripPrefix("/app", mini.Handler()))
 
 	// Liveness performs no database call: a probe that depends on Postgres
 	// turns a database blip into a restart loop.
