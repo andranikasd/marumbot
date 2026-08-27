@@ -49,6 +49,19 @@ echo "→ status endpoint"
 status=$(curl -sf --max-time 20 "$base/status") || fail "status did not answer"
 echo "$status" | grep -q 'oldest_pending_command_s' || fail "status is incomplete: $status"
 
+# The Mini App must be served by the container, not by the Worker's fallback.
+# Checking only the status code would have passed while /app/ answered with the
+# placeholder body -- which is exactly what happened the first time it shipped.
+echo "→ mini app"
+page=$(curl -sf --max-time 20 "$base/app/") || fail "the mini app did not answer"
+echo "$page" | grep -q 'telegram-web-app.js' || \
+  fail "$base/app/ did not serve the form; got: $(echo "$page" | head -c 80)"
+
+echo "→ mini app rejects an unsigned call"
+code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X POST \
+  "$base/app/api/loans" -H 'Content-Type: application/json' -d '{}')
+[ "$code" = "401" ] || fail "an unsigned loan POST answered $code, want 401"
+
 echo "→ cold start"
 # The container sleeps when idle. A request after a pause is the one that
 # exercises the path a real user hits first thing in the morning.
