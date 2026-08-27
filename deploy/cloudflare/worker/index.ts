@@ -42,6 +42,12 @@ export class MarumApp extends Container<Env> {
     super(ctx, env);
     this.envVars = {
       MARUM_ENV: env.ENVIRONMENT,
+      // Without this every deployed container reports as "local-1", the config
+      // default, so telemetry from Cloudflare is indistinguishable from a
+      // laptop's. The Durable Object id is stable for the lifetime of the
+      // instance and unique across them, which is exactly what a
+      // service.instance.id should be.
+      MARUM_INSTANCE_ID: `${env.ENVIRONMENT}-${ctx.id.toString().slice(0, 12)}`,
       // The edge already owns the transport. Long polling here would mean two
       // readers of the same bot and a race for every update.
       MARUM_MODE: "webhook",

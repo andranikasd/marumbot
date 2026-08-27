@@ -27,7 +27,7 @@
         "options": [],
         "query": "prometheus",
         "refresh": 1,
-        "regex": "",
+        "regex": "/^(Prometheus|grafanacloud-.*-prom)$/",
         "skipUrlSync": false,
         "type": "datasource"
       },
@@ -41,7 +41,7 @@
         "options": [],
         "query": "loki",
         "refresh": 1,
-        "regex": "",
+        "regex": "/^(Loki|grafanacloud-.*-logs)$/",
         "skipUrlSync": false,
         "type": "datasource"
       },
@@ -55,7 +55,7 @@
         "options": [],
         "query": "tempo",
         "refresh": 1,
-        "regex": "",
+        "regex": "/^(Tempo|grafanacloud-.*-traces)$/",
         "skipUrlSync": false,
         "type": "datasource"
       },
