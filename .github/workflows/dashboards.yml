@@ -1,0 +1,107 @@
+# Dashboards as code.
+#
+# The dashboards under deploy/observability/grafana/dashboards are the source of
+# truth for both places they are shown: docker compose provisions them from file
+# for local development, and this pushes the same files to Grafana Cloud.
+#
+# They bind their datasources through variables rather than by uid, which is
+# what lets one file serve both -- the local stack and the Cloud stack resolve
+# the binding themselves.
+#
+# gcx is the current tool for this. grafanactl is deprecated (its repository was
+# archived in June 2026) and Grizzly has been removed outright, so neither is a
+# safe thing to build on.
+
+name: Dashboards
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/observability/grafana/dashboards/**"
+      - ".github/workflows/dashboards.yml"
+  pull_request:
+    paths:
+      - "deploy/observability/grafana/dashboards/**"
+      - ".github/workflows/dashboards.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: dashboards
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  push:
+    name: Push to Grafana Cloud
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Valid JSON with a stable uid is the whole contract with Grafana: the uid
+      # is what makes a push an update rather than a duplicate, so a missing one
+      # silently multiplies dashboards on every run.
+      - name: Validate the dashboards
+        run: |
+          fail=0
+          for f in deploy/observability/grafana/dashboards/*.json; do
+            python3 - "$f" <<'PY' || fail=1
+          import json, sys
+          p = sys.argv[1]
+          try:
+              d = json.load(open(p))
+          except Exception as e:
+              print(f"::error file={p}::invalid JSON: {e}"); raise SystemExit(1)
+          if not d.get("uid"):
+              print(f"::error file={p}::no uid; a push without one creates a duplicate every run")
+              raise SystemExit(1)
+          if not d.get("title"):
+              print(f"::error file={p}::no title"); raise SystemExit(1)
+          hard = [x for x in json.dumps(d).split('"') if x.startswith("marum-") and x in
+                  ("marum-prometheus", "marum-loki", "marum-tempo", "marum-pyroscope")]
+          if hard:
+              print(f"::error file={p}::hard-coded local datasource uid {sorted(set(hard))}; "
+                    "use the ${ds_*} variables so the file also works in Grafana Cloud")
+              raise SystemExit(1)
+          print(f"  ok  {d['uid']:18s} {d['title']}")
+          PY
+          done
+          exit $fail
+
+      # Pushing is skipped rather than failed when the credentials are absent,
+      # for the same reason the Terraform plan is: "not configured yet" is not a
+      # broken pipeline, and a red cross that means it is noise people learn to
+      # ignore.
+      - name: Are the Grafana credentials configured?
+        id: configured
+        run: |
+          if [ -n "${{ secrets.GRAFANA_TOKEN }}" ] && [ -n "${{ secrets.GRAFANA_STACK_ID }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "GRAFANA_TOKEN or GRAFANA_STACK_ID is not set; dashboards were validated but not pushed." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Install gcx
+        if: steps.configured.outputs.ready == 'true' && github.event_name != 'pull_request'
+        run: |
+          curl -fsSL https://github.com/grafana/gcx/releases/latest/download/gcx_linux_amd64.tar.gz \
+            | tar -xz -C /usr/local/bin gcx
+          gcx --version
+
+      # Only main pushes. A pull request validates and stops, because a
+      # dashboard is shared state: pushing from a branch would change what
+      # everyone else is looking at before the change is reviewed.
+      - name: Push
+        if: steps.configured.outputs.ready == 'true' && github.event_name == 'push'
+        env:
+          GRAFANA_SERVER: ${{ vars.GRAFANA_URL }}
+          GRAFANA_STACK_ID: ${{ secrets.GRAFANA_STACK_ID }}
+          GRAFANA_TOKEN: ${{ secrets.GRAFANA_TOKEN }}
+        run: |
+          for f in deploy/observability/grafana/dashboards/*.json; do
+            echo "→ $(basename "$f")"
+            gcx resources push dashboards --path "$f"
+          done

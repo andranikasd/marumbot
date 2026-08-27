@@ -28,6 +28,7 @@ explain why the code is shaped the way it is.
 | [Releasing](operations/releases.md) | Versioning, tags, the release pipeline |
 | [Deployment](operations/deployment.md) | Cloudflare setup, secrets, the deploy order |
 | [Infrastructure](../deploy/terraform/README.md) | Terraform: where the database lives, Hyperdrive, who owns which resource |
+| [Grafana Cloud](operations/grafana-cloud.md) | The five signals, the two credentials, and the switch that is off by default |
 | [Runbooks](operations/runbooks.md) | What to do when something is wrong |
 
 ## Reference

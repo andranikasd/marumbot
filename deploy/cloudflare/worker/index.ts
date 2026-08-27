@@ -59,7 +59,17 @@ export class MarumApp extends Container<Env> {
       OTEL_EXPORTER_OTLP_HEADERS: env.OTEL_EXPORTER_OTLP_HEADERS ?? "",
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
       OTEL_SERVICE_NAME: "marum",
-      OTEL_RESOURCE_ATTRIBUTES: `deployment.environment=${env.ENVIRONMENT},service.namespace=marum`,
+      // Grafana Cloud's Application Observability derives its `job` label as
+      // `service.namespace/service.name`, so both must be set and neither may
+      // contain a slash. deployment.environment is emitted under both the old
+      // and the current OpenTelemetry semconv names: the old one is what
+      // Grafana still documents, the new one is what newer tooling reads, and
+      // baselines do not work without it.
+      OTEL_RESOURCE_ATTRIBUTES: [
+        `deployment.environment=${env.ENVIRONMENT}`,
+        `deployment.environment.name=${env.ENVIRONMENT}`,
+        "service.namespace=marum",
+      ].join(","),
       // Continuous profiling. The Go side has been wired for this since the
       // observability work, but nothing was passing the address, so Grafana had
       // traces, metrics and logs and a permanently empty profiles tab.
