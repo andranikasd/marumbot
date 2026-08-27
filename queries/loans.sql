@@ -44,11 +44,18 @@ SELECT loan_id FROM opening;
 
 -- name: ListLoansForUser
 -- Everything the planner and the loan list need, newest first.
+-- Dates and numerics are cast to text here rather than scanned as their own
+-- types. They are only ever rendered into a message, and pgx will not scan a
+-- date or a numeric into a string in binary format -- which failed at runtime,
+-- on every /loans, with
+--   cannot scan date (OID 1082) in binary format into *string
+-- Casting in SQL states the intent once, where the shape is visible, instead of
+-- converting in Go on the way back out.
 SELECT l.id, l.name, coalesce(l.lender, ''), l.currency,
-       c.nominal_rate, c.repayment_type, c.day_count,
-       c.start_date, c.maturity_date, c.payment_day,
+       c.nominal_rate::text, c.repayment_type, c.day_count,
+       c.start_date::text, c.maturity_date::text, c.payment_day,
        c.rounding_mode, c.rounding_unit_minor,
-       s.principal_minor, s.as_of, s.trust
+       s.principal_minor, s.as_of::text, s.trust
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v

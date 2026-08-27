@@ -134,7 +134,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	hook := &telegram.Webhook{
 		Inbox: store, Users: store, Cipher: cipher,
 		ServiceToken: cfg.ServiceToken, Timezone: cfg.DefaultTimezone,
-		Clock: sysclock.New(), Drain: worker.Drain, Log: log,
+		Clock: sysclock.New(), Handle: worker.HandleOne, Log: log,
 	}
 
 	public := &http.Server{

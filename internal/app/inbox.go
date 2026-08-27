@@ -52,6 +52,10 @@ type InboxStore interface {
 	// Lease claims up to n due commands for the given owner.
 	Lease(ctx context.Context, owner string, n int, until time.Time) ([]Lease, error)
 
+	// LeaseByID claims one specific command. The webhook uses this to answer
+	// the message in front of it rather than whichever is oldest.
+	LeaseByID(ctx context.Context, id, owner string, until time.Time) (Lease, bool, error)
+
 	// Complete marks a command done. It must verify the fencing token.
 	Complete(ctx context.Context, id, token string) error
 

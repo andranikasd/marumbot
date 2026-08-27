@@ -73,6 +73,29 @@ type Worker struct {
 // until someone notices.
 const LeaseFor = 2 * time.Minute
 
+// HandleOne processes one named command: the one the webhook just recorded.
+//
+// The webhook must answer the message in front of it. Draining oldest-first
+// there lets a single command that keeps failing hold the slot while every new
+// message queues behind it -- a backlog indistinguishable, from the outside,
+// from the bot being slow. That is exactly what happened: /loans failed on a
+// scan error, retried five times each, and starved every other command.
+func (w *Worker) HandleOne(ctx context.Context, id string) error {
+	if w.Menus != nil {
+		PublishOnce(ctx, &w.menusOnce, w.Menus, w.MiniApp)
+	}
+	l, ok, err := w.Inbox.LeaseByID(ctx, id, w.Owner, w.Clock.Now().Add(LeaseFor))
+	if err != nil {
+		return fmt.Errorf("leasing %s: %w", id, err)
+	}
+	if !ok {
+		// Already leased or finished: the tick got there first. Ordinary race.
+		return nil
+	}
+	w.handle(ctx, l)
+	return nil
+}
+
 // Drain leases up to n commands and processes them. It returns the number
 // handled, so a caller can decide whether to go round again.
 func (w *Worker) Drain(ctx context.Context, n int) (int, error) {
