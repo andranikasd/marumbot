@@ -11,10 +11,11 @@ import (
 // finely it is actually settled.
 //
 // Exponent and SettlementUnit are different facts and both matter. ISO 4217
-// gives AMD two decimal places — the luma — but the luma has not circulated
-// for decades and Armenian lenders settle in whole drams. Storing at exponent 2
-// keeps intermediate interest precise; settling at 100 minor units keeps the
-// schedule matching the bank's.
+// gives AMD two decimal places — the luma — and although the luma has not
+// circulated for decades, Armenian lenders do not settle in whole drams: a real
+// loan agreement in the corpus quotes an instalment of 125,079.60 and interest
+// of 73,018.20. Storing at exponent 2 keeps intermediate interest precise;
+// settling at 10 minor units keeps the schedule matching the bank's.
 type Currency struct {
 	Code           string // ISO 4217 alphabetic code
 	Exponent       uint8  // decimal places in the minor unit
@@ -33,8 +34,17 @@ var ErrUnknownCurrency = errors.New("unknown currency")
 // unless a market demonstrably settles more coarsely; each exception carries
 // the reason, and any further exception needs a real statement to justify it.
 var registry = map[string]Currency{
-	// Home market. Settles in whole drams — the luma is obsolete.
-	"AMD": {"AMD", 2, 100, "Armenian dram"},
+	// Home market. Settles to a tenth of a dram.
+	//
+	// This was 100 — whole drams — on the reasonable assumption that an obsolete
+	// subunit is not used. The Inecobank agreement in testdata/golden refutes it:
+	// every figure it prints ends in a zero luma and none is a whole dram, and 10
+	// is the only unit that reproduces its 60 rows.
+	//
+	// It remains a default rather than a rule. No Armenian regulation prescribes
+	// a rounding unit, so it is a property of each lender's system; a contract
+	// carries its own Rounding policy and the corpus records one per fixture.
+	"AMD": {"AMD", 2, 10, "Armenian dram"},
 
 	// Neighbours and common loan currencies in the region.
 	"GEL": {"GEL", 2, 1, "Georgian lari"},

@@ -27,7 +27,12 @@ func amd5m() (model.Contract, money.Amount) {
 		StartDate:    date.MustNew(2026, 1, 15),
 		MaturityDate: date.MustNew(2029, 1, 15),
 		PaymentDay:   15,
-		Rounding:     money.DefaultPolicy(money.MustLookup("AMD")),
+		// The quantum is stated rather than taken from the registry. These
+		// expectations came from an independent implementation at one whole
+		// dram, so the test must fix that unit -- otherwise it measures the
+		// registry's current default instead of the engine, and changes
+		// meaning silently when that default is corrected.
+		Rounding: money.Policy{Mode: money.HalfUp, Unit: 100},
 	}
 	return c, money.FromMinor(500_000_000, money.MustLookup("AMD"))
 }
