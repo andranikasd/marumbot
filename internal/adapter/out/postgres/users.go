@@ -74,3 +74,30 @@ func (s *Store) ByTelegramTag(ctx context.Context, tag string) (string, error) {
 	}
 	return id, err
 }
+
+// SetState records what the bot is waiting for from this user.
+func (s *Store) SetState(ctx context.Context, userID, state string) error {
+	var got string
+	return s.pool.QueryRow(ctx, q("SetConversationState"), userID, state).Scan(&got)
+}
+
+// State returns what the bot is waiting for, or empty when it is waiting for
+// nothing. An expired state reads as empty rather than as an error.
+func (s *Store) State(ctx context.Context, userID string) (string, error) {
+	var name string
+	err := s.pool.QueryRow(ctx, q("GetConversationState"), userID).Scan(&name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return name, err
+}
+
+// ClearState forgets what the bot was waiting for.
+func (s *Store) ClearState(ctx context.Context, userID string) error {
+	var got string
+	err := s.pool.QueryRow(ctx, q("ClearConversationState"), userID).Scan(&got)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	return err
+}

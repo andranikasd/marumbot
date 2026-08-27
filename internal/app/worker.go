@@ -59,12 +59,17 @@ type Worker struct {
 	Users   UserStore
 	Loans   LoanReader
 	Budgets BudgetStore
-	Chats   ChatResolver
-	Send    Sender
-	Clock   Clock
-	Owner   string
-	Log     *slog.Logger
-	MiniApp string // absolute URL of the loan form, empty if not deployed
+	Convos  ConversationStore
+
+	// DefaultCurrency is what a bare number means. AMD here; a user with a
+	// dollar loan writes the code and it is honoured.
+	DefaultCurrency money.Currency
+	Chats           ChatResolver
+	Send            Sender
+	Clock           Clock
+	Owner           string
+	Log             *slog.Logger
+	MiniApp         string // absolute URL of the loan form, empty if not deployed
 
 	// Menus is the Telegram surface used to publish the command list. Optional:
 	// without it the bot works and simply suggests nothing.
@@ -215,16 +220,7 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 		return w.advise(ctx, c.UserID, chat, l)
 
 	case KindBudget:
-		// A budget is a number with a currency, which is a form rather than a
-		// sentence. Typing it as free text left the answer unhandled and the
-		// bot replying with help, which reads as the bot ignoring you.
-		if w.MiniApp == "" {
-			return w.Send.SendMessage(ctx, chat, i18n.T(l, "add.unavailable"), w.mainMenu(l))
-		}
-		return w.Send.SendMessage(ctx, chat, i18n.T(l, "budget.open"),
-			map[string]any{"inline_keyboard": [][]map[string]any{{
-				webAppButton(i18n.T(l, "budget.button"), w.MiniApp+"?screen=budget"),
-			}}})
+		return w.askBudget(ctx, c.UserID, chat, l)
 
 	case KindLanguage:
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "language.prompt"), languageMenu())
@@ -239,6 +235,24 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 		// on screen until they tap something.
 		if kind, ok := i18n.MatchButton(p.Text); ok {
 			return w.apply(ctx, InboundCommand{UserID: c.UserID, Kind: kind, Payload: c.Payload})
+		}
+		// An answer to a question the bot asked. Checked before falling back to
+		// help, because a reply that goes unheard is how a user decides the bot
+		// is broken.
+		if w.Convos != nil {
+			state, err := w.Convos.State(ctx, c.UserID)
+			if err != nil {
+				w.Log.WarnContext(ctx, "reading the conversation state failed", "error", err)
+			} else if state == StateAwaitingBudget {
+				taken, err := w.takeBudget(ctx, c.UserID, chat, l, p.Text)
+				if err != nil {
+					return err
+				}
+				if taken {
+					return nil
+				}
+				return w.Send.SendMessage(ctx, chat, i18n.T(l, "budget.not_a_number"), w.mainMenu(l))
+			}
 		}
 		return w.Send.SendMessage(ctx, chat, w.helpText(l), w.mainMenu(l))
 	}
