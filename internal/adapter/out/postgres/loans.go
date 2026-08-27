@@ -26,6 +26,8 @@ func dayCountName(d money.DayCount) string {
 		return "act360"
 	case money.Thirty360:
 		return "30_360"
+	case money.ActualActual:
+		return "act_act"
 	default:
 		return "act365"
 	}
@@ -169,6 +171,8 @@ func dayCountFrom(s string) money.DayCount {
 		return money.Actual360
 	case "30_360":
 		return money.Thirty360
+	case "act_act":
+		return money.ActualActual
 	default:
 		return money.Actual365
 	}
