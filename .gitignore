@@ -22,3 +22,6 @@ deploy/terraform/.terraform/
 # wrangler's local build and state directory.
 deploy/cloudflare/.wrangler/
 deploy/cloudflare/node_modules/
+
+# Local agent worktrees and session files
+.claude/

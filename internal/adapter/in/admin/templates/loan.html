@@ -200,7 +200,18 @@
     {{if gt .VsAvalanche.Sign 0}}<dt>vs highest-rate-first</dt><dd class="num">saves {{.VsAvalanche}}</dd>{{end}}
     {{if gt .VsSnowball.Sign 0}}<dt>vs smallest-first</dt><dd class="num">saves {{.VsSnowball}}</dd>{{end}}
     {{if gt .TimingSaving.Sign 0}}<dt>from timing alone</dt><dd class="num">{{.TimingSaving}}</dd>{{end}}
+    {{if .MinimumMonths}}<dt>Minimum only</dt><dd>{{.MinimumMonths}} months, interest <span class="num">{{.MinimumInterest}}</span></dd>{{end}}
+    <dt>Prepayment effect</dt><dd class="mono">{{.Effect}}</dd>
+    {{if .ReliefMonth}}<dt>Relief</dt><dd>from month {{.ReliefMonth}}: <span class="num">{{.PeakMonthly}}</span> → <span class="num">{{.FinalMonthly}}</span></dd>{{end}}
   </dl>
+  {{if .Ladder}}
+  <h2>Budget ladder</h2>
+  <div class="scroll"><table>
+    <thead><tr><th class="num">Monthly</th><th class="num">Months</th><th class="num">Interest</th></tr></thead>
+    <tbody>{{range .Ladder}}<tr><td class="num">{{.Budget}}</td><td class="num">{{.Months}}</td><td class="num">{{.Interest}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{end}}
+  {{if .Ties}}<p class="hint">{{range .Ties}}{{.}}. {{end}}</p>{{end}}
   {{if .Actions}}
   <h2>First month</h2>
   <ul class="steps">{{range .Actions}}

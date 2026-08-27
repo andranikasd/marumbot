@@ -135,6 +135,19 @@ type PlanSummary struct {
 	ClearedFirst string
 	ClearedMonth int
 	Actions      []plan.Action
+	// The floor: paying only what the contracts require.
+	MinimumMonths   int
+	MinimumInterest money.Amount
+	// What more money per month would buy, under the best policy.
+	Ladder []plan.Rung
+	// Why candidates coincide, when they do.
+	Ties []string
+	// Relief, when the goal is to pay less: the month the outflow first
+	// drops and what it drops to.
+	ReliefMonth  int
+	PeakMonthly  money.Amount
+	FinalMonthly money.Amount
+	Effect       string
 }
 
 // enrich adds the engine's reading to a loan view. Nothing here is fatal:
@@ -273,7 +286,11 @@ func summarise(rep plan.Report) *PlanSummary {
 		Interest: b.TotalInterest, Owed: b.NextMonthOwed,
 		Evaluated: rep.Evaluated, Exhaustive: rep.Exhaustive,
 		TimingSaving: rep.TimingSaving, ClearedFirst: b.ClearedFirst, ClearedMonth: b.ClearedMonth,
-		Actions: b.Actions,
+		Actions:       b.Actions,
+		MinimumMonths: rep.Minimum.Months, MinimumInterest: rep.Minimum.TotalInterest,
+		Ladder: rep.Ladder, Ties: rep.Ties,
+		ReliefMonth: b.ReliefMonth, PeakMonthly: b.PeakMonthly, FinalMonthly: b.FinalMonthly,
+		Effect: b.Policy.Effect.String(),
 	}
 	s.VsAvalanche, _ = rep.Avalanche.TotalInterest.Sub(b.TotalInterest)
 	s.VsSnowball, _ = rep.Snowball.TotalInterest.Sub(b.TotalInterest)
