@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -72,6 +73,7 @@ func (s *Store) CreateLoan(ctx context.Context, d app.LoanDraft) (string, error)
 		c.MaturityDate.String(), c.PaymentDay,
 		roundingModeName(c.Rounding.Mode), c.Rounding.Unit,
 		uuid.NewString(), d.Balance.Minor(), d.AsOf.String(),
+		prepaymentJSON(c.Prepayment),
 	).Scan(&got)
 	return got, err
 }
@@ -105,11 +107,17 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 			asOf      *string
 			trust     *string
 			excess    string
+			effect    string
+			feeBP     int32
 		)
 		if err := rows.Scan(&l.ID, &l.Name, &l.Description, &code,
 			&rate, &repayment, &dayCount, &start, &maturity, &day,
-			&mode, &unit, &principal, &asOf, &trust, &excess); err != nil {
+			&mode, &unit, &principal, &asOf, &trust, &excess, &effect, &feeBP); err != nil {
 			return nil, err
+		}
+		prepayEffect, err := model.ParsePrepaymentEffect(effect)
+		if err != nil {
+			return nil, fmt.Errorf("loan %s: %w", l.ID, err)
 		}
 		if l.Excess, err = allocation.ParseExcessRule(excess); err != nil {
 			return nil, fmt.Errorf("loan %s: %w", l.ID, err)
@@ -139,6 +147,7 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 			MaturityDate: maturityDate,
 			PaymentDay:   int(day),
 			Rounding:     money.Policy{Mode: roundingModeFrom(mode), Unit: int64(unit)},
+			Prepayment:   model.Prepayment{Effect: prepayEffect, FeeBP: int(feeBP)},
 		}
 		if principal != nil {
 			l.Balance = money.FromMinor(*principal, cur)
@@ -292,4 +301,19 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 		l.Balance = money.Zero(cur)
 	}
 	return l, nil
+}
+
+// prepaymentJSON is the stored form of the contract's prepayment terms. The
+// default effect is stored as an absent key, so a contract that never stated
+// one reads back as the default rather than as a choice somebody made.
+func prepaymentJSON(p model.Prepayment) string {
+	out := map[string]any{}
+	if p.Effect != model.PrepayBorrowerChooses {
+		out["effect"] = p.Effect.String()
+	}
+	if p.FeeBP > 0 {
+		out["fee_bp"] = p.FeeBP
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
 }
