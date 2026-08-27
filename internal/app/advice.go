@@ -167,3 +167,14 @@ func goalMenu(l i18n.Locale) any {
 		},
 	}}
 }
+
+// RequiredThisMonth sums the next instalment of every active loan, using the
+// same projection the advice report uses so the two cannot disagree.
+func (w *Worker) RequiredThisMonth(ctx context.Context, userID string) (money.Amount, money.Currency, error) {
+	loans, err := w.Loans.LoansForUser(ctx, userID, 25)
+	if err != nil {
+		return money.Amount{}, money.Currency{}, err
+	}
+	_, _, required, cur, err := w.positions(ctx, loans)
+	return required, cur, err
+}
