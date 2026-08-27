@@ -25,7 +25,7 @@ on:
         description: "Environment to apply to"
         required: true
         type: choice
-        options: [dev, production]
+        options: [dev]
       action:
         description: "plan leaves everything untouched; apply changes real infrastructure"
         required: true
@@ -57,16 +57,14 @@ jobs:
       pull-requests: write
 
     strategy:
-      # Both environments are planned on every change, because a change meant
-      # for dev that would also alter production must be visible while it is
-      # still a pull request.
+      # One environment for now. Production was removed until there is a
+      # product worth shipping there; the matrix stays so a second entry is a
+      # two-line change rather than a restructure.
       fail-fast: false
       matrix:
         include:
           - environment: dev
             database_secret: TF_DATABASE_DEV
-          - environment: production
-            database_secret: TF_DATABASE_PRODUCTION
 
     # Deliberately no `environment:`. An environment is a deploy gate, and both
     # gates restrict which refs may deploy -- so declaring one here means every
@@ -233,7 +231,7 @@ jobs:
           TF_VAR_cloudflare_api_token: ${{ secrets.TF_CLOUDFLARE_API_TOKEN }}
           TF_VAR_cloudflare_account_id: ${{ secrets.TF_CLOUDFLARE_ACCOUNT_ID }}
           TF_VAR_cloudflare_zone_id: ${{ secrets.TF_CLOUDFLARE_ZONE_ID }}
-          TF_VAR_database: ${{ github.event.inputs.environment == 'production' && secrets.TF_DATABASE_PRODUCTION || secrets.TF_DATABASE_DEV }}
+          TF_VAR_database: ${{ secrets.TF_DATABASE_DEV }}
 
       - name: Apply
         if: github.event.inputs.action == 'apply'
@@ -244,7 +242,7 @@ jobs:
           TF_VAR_cloudflare_api_token: ${{ secrets.TF_CLOUDFLARE_API_TOKEN }}
           TF_VAR_cloudflare_account_id: ${{ secrets.TF_CLOUDFLARE_ACCOUNT_ID }}
           TF_VAR_cloudflare_zone_id: ${{ secrets.TF_CLOUDFLARE_ZONE_ID }}
-          TF_VAR_database: ${{ github.event.inputs.environment == 'production' && secrets.TF_DATABASE_PRODUCTION || secrets.TF_DATABASE_DEV }}
+          TF_VAR_database: ${{ secrets.TF_DATABASE_DEV }}
 
       - name: Report the Hyperdrive binding
         if: github.event.inputs.action == 'apply'

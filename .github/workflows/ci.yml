@@ -158,7 +158,6 @@ jobs:
       - name: Both environments resolve
         run: |
           npx wrangler deploy --env dev        --dry-run --containers-rollout=none --outdir /tmp/dev
-          npx wrangler deploy --env production --dry-run --containers-rollout=none --outdir /tmp/prod
 
   image:
     name: Image builds
