@@ -44,11 +44,31 @@
   .summary dt{color:var(--hint)}
   .summary dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
   .summary .total{font-weight:700}
+  .card{
+    background:var(--field);border-radius:12px;padding:14px;margin:0 0 12px;
+  }
+  .card h2{font-size:17px;margin:0 0 2px}
+  .card .meta{color:var(--hint);font-size:14px;margin:0 0 10px}
+  .card .actions{display:flex;gap:8px}
+  .card button{
+    flex:1;padding:10px;border:none;border-radius:8px;font-size:15px;
+    background:var(--bg);color:var(--link);cursor:pointer;
+  }
+  .card button.danger{color:var(--danger)}
+  .card input{margin:0 0 8px}
+  .edit{display:none}
+  .card.editing .edit{display:block}
+  .card.editing .view{display:none}
 </style>
 </head>
 <body>
 <h1 data-i18n="title">Ավելացնել վարկ</h1>
 <p class="lede" data-i18n="lede">Մուտքագրեք վարկի պայմանագրի տվյալները։</p>
+
+<div id="manage" hidden>
+  <p class="lede" id="manage-empty" hidden data-i18n="manage.empty">Դուք դեռ վարկ չեք ավելացրել։</p>
+  <div id="manage-list"></div>
+</div>
 
 <form id="budget-form" novalidate hidden>
   <div class="field">

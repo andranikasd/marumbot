@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"time"
 
 	"github.com/andranikasd/marumbot/internal/obs"
 )
@@ -38,10 +39,66 @@ type AdminStore interface {
 }
 
 // Admin is the read-mostly service behind the private web interface.
-type Admin struct{ store AdminStore }
+type Admin struct {
+	store AdminStore
+	mod   Moderation
+}
 
 // NewAdmin builds the read-mostly service behind the admin interface.
 func NewAdmin(s AdminStore) *Admin { return &Admin{store: s} }
+
+// WithModeration attaches the operator's write surface. Separate from the read
+// store so a build that only reads cannot accidentally gain the ability to
+// delete an account.
+func (a *Admin) WithModeration(m Moderation) *Admin { a.mod = m; return a }
+
+// The moderation actions, each a thin pass-through that exists so the inbound
+// handler never touches a store directly.
+
+// PauseUser suspends an account without destroying anything.
+func (a *Admin) PauseUser(ctx context.Context, userID string) error {
+	return a.mod.SetUserAccess(ctx, userID, "paused")
+}
+
+// RestoreUser returns a suspended account to active use.
+func (a *Admin) RestoreUser(ctx context.Context, userID string) error {
+	return a.mod.SetUserAccess(ctx, userID, "active")
+}
+
+// RequestDeletion marks an account for erasure. Reversible until honoured.
+func (a *Admin) RequestDeletion(ctx context.Context, userID string) error {
+	return a.mod.RequestUserDeletion(ctx, userID)
+}
+
+// EraseUser honours a deletion request. Irreversible, and the only such action.
+func (a *Admin) EraseUser(ctx context.Context, userID string) error {
+	return a.mod.DeleteUser(ctx, userID)
+}
+
+// ArchiveLoan hides a loan; its ledger is kept so the balance stays checkable.
+func (a *Admin) ArchiveLoan(ctx context.Context, loanID string) error {
+	return a.mod.ArchiveLoanAdmin(ctx, loanID)
+}
+
+// RestoreLoan un-archives a loan.
+func (a *Admin) RestoreLoan(ctx context.Context, loanID string) error {
+	return a.mod.RestoreLoan(ctx, loanID)
+}
+
+// RenameLoan changes a loan's title and note.
+func (a *Admin) RenameLoan(ctx context.Context, loanID, name, description string) error {
+	return a.mod.RenameLoanAdmin(ctx, loanID, name, description)
+}
+
+// Queue returns the command inbox in detail, optionally filtered by status.
+func (a *Admin) Queue(ctx context.Context, status string) ([]CommandDetail, error) {
+	return a.mod.CommandsDetailed(ctx, status, 100)
+}
+
+// Retry puts a command back in the queue with a fresh attempt budget.
+func (a *Admin) Retry(ctx context.Context, id string) error {
+	return a.mod.RetryCommand(ctx, id)
+}
 
 // Overview returns the dashboard counters.
 func (a *Admin) Overview(ctx context.Context) (Overview, error) {
@@ -132,3 +189,38 @@ func (a *Admin) Health(ctx context.Context) Health {
 	}
 	return h
 }
+
+// Moderation is the operator's write surface.
+//
+// Every action here is reversible except DeleteUser, and that one is deliberately
+// two steps: a request, then an erasure. Erasure destroys the evidence for the
+// decision that caused it, so it should never be one click away from a list.
+type Moderation interface {
+	SetUserAccess(ctx context.Context, userID, state string) error
+	RequestUserDeletion(ctx context.Context, userID string) error
+	DeleteUser(ctx context.Context, userID string) error
+	ArchiveLoanAdmin(ctx context.Context, loanID string) error
+	RestoreLoan(ctx context.Context, loanID string) error
+	RenameLoanAdmin(ctx context.Context, loanID, name, description string) error
+	CommandsDetailed(ctx context.Context, status string, limit int32) ([]CommandDetail, error)
+	RetryCommand(ctx context.Context, id string) error
+}
+
+// CommandDetail is one queue entry with enough context to explain a stuck one.
+type CommandDetail struct {
+	ID            string
+	UpdateID      int64
+	UserID        string
+	Kind          string
+	Status        string
+	Attempts      int
+	ReceivedAt    time.Time
+	NextAttemptAt time.Time
+	LeaseOwner    string
+	LastError     string
+	CompletedAt   *time.Time
+	DueAgeS       int64
+}
+
+// AccessStates are the values users.access_state accepts.
+var AccessStates = []string{"trial", "grace", "active", "paused"}

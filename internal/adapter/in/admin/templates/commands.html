@@ -1,22 +1,35 @@
 {{define "content"}}
 <h1>Command inbox</h1>
 <p class="lead">Every Telegram update becomes a durable command before Telegram is answered. Nothing here should stay pending for long.</p>
+<p class="lead">
+  {{range .Statuses}}<a class="filter{{if eq . $.Status}} on{{end}}"
+     href="/commands{{if .}}?status={{.}}{{end}}">{{if .}}{{.}}{{else}}all{{end}}</a> {{end}}
+</p>
 <div class="panel">
-  <div class="hd">{{len .Rows}} most recent</div>
+  <div class="hd">{{len .Rows}} shown{{if .Status}}, status {{.Status}}{{end}}</div>
   {{if .Rows}}
   <table>
     <thead><tr><th class="num">Update</th><th>Kind</th><th>Status</th><th class="num">Attempts</th>
-      <th>Next attempt</th><th>Lease</th><th>Received</th><th>Error</th></tr></thead>
+      <th>Next attempt</th><th class="num">Overdue</th><th>Lease</th><th>Received</th>
+      <th>Error</th><th></th></tr></thead>
     <tbody>{{range .Rows}}
       <tr>
         <td class="num mono">{{.UpdateID}}</td>
         <td>{{.Kind}}</td>
         <td><span class="tag {{status .Status}}">{{.Status}}</span></td>
         <td class="num">{{.Attempts}}</td>
-        <td>{{stamp .NextAttempt}}</td>
+        <td>{{stamp .NextAttemptAt}}</td>
+        <td class="num">{{if gt .DueAgeS 0}}{{.DueAgeS}}s{{else}}—{{end}}</td>
         <td class="mono">{{if .LeaseOwner}}{{.LeaseOwner}}{{else}}—{{end}}</td>
         <td>{{stamp .ReceivedAt}}</td>
         <td class="mono">{{if .LastError}}{{.LastError}}{{else}}—{{end}}</td>
+        <td>
+          {{if ne .Status "completed"}}
+          <form method="post" action="/commands/{{.ID}}/retry">
+            <button class="link">retry</button>
+          </form>
+          {{end}}
+        </td>
       </tr>
     {{end}}</tbody>
   </table>

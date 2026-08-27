@@ -1,6 +1,7 @@
 package miniapp
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -21,6 +22,8 @@ var assets embed.FS
 type Server struct {
 	BotToken string
 	Loans    app.LoanWriter
+	Editor   app.LoanEditor
+	Reader   app.LoanReader
 	Budgets  app.BudgetStore
 	Users    app.UserStore
 	Cipher   TagCipher
@@ -47,6 +50,9 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/loans", s.createLoan())
 	mux.Handle("POST /api/budget", s.setBudget())
+	mux.Handle("GET /api/loans", s.listLoans())
+	mux.Handle("PATCH /api/loans/{id}", s.updateLoan())
+	mux.Handle("DELETE /api/loans/{id}", s.deleteLoan())
 	mux.Handle("/", s.static(http.FileServerFS(sub)))
 	return mux
 }
@@ -80,7 +86,7 @@ func (s *Server) createLoan() http.Handler {
 		v, err := Verify(r.Header.Get("X-Telegram-Init-Data"), s.BotToken, s.Clock.Now())
 		if err != nil {
 			// No detail: which part failed is exactly what an attacker wants.
-			s.Log.WarnContext(ctx, "miniapp auth rejected", "error", err)
+			s.Log.WarnContext(ctx, "miniapp auth rejected", "reason", err.Error())
 			http.Error(w, `{"error":"unauthorised"}`, http.StatusUnauthorized)
 			return
 		}
@@ -136,7 +142,7 @@ func (s *Server) setBudget() http.Handler {
 
 		v, err := Verify(r.Header.Get("X-Telegram-Init-Data"), s.BotToken, s.Clock.Now())
 		if err != nil {
-			s.Log.WarnContext(ctx, "miniapp auth rejected", "error", err)
+			s.Log.WarnContext(ctx, "miniapp auth rejected", "reason", err.Error())
 			http.Error(w, `{"error":"unauthorised"}`, http.StatusUnauthorized)
 			return
 		}
@@ -164,6 +170,116 @@ func (s *Server) setBudget() http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"monthly_minor": minor, "currency": cur})
+	})
+}
+
+// authed resolves the caller, or writes the refusal itself.
+//
+// Every endpoint needs the same two steps -- prove the initData, then find the
+// account -- and repeating them is how one of them eventually gets left out.
+func (s *Server) authed(w http.ResponseWriter, r *http.Request) (ctx context.Context, userID string, ok bool) {
+	ctx = r.Context()
+	v, err := Verify(r.Header.Get("X-Telegram-Init-Data"), s.BotToken, s.Clock.Now())
+	if err != nil {
+		// The reason is logged even though it is withheld from the response.
+		// Four failures look identical from outside and need different fixes:
+		// a stale payload means the form sat open, a signature mismatch means
+		// the wrong bot token, an absent one means the page was opened outside
+		// Telegram.
+		s.Log.WarnContext(ctx, "miniapp auth rejected", "reason", err.Error())
+		http.Error(w, `{"error":"unauthorised"}`, http.StatusUnauthorized)
+		return ctx, "", false
+	}
+	userID, err = s.Users.ByTelegramTag(ctx, s.Cipher.Tag(v.User.ID))
+	if err != nil {
+		http.Error(w, `{"error":"unknown account"}`, http.StatusForbidden)
+		return ctx, "", false
+	}
+	return ctx, userID, true
+}
+
+// listLoans backs the management screen.
+func (s *Server) listLoans() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, userID, ok := s.authed(w, r)
+		if !ok {
+			return
+		}
+		loans, err := s.Reader.LoansForUser(ctx, userID, 50)
+		if err != nil {
+			s.Log.ErrorContext(ctx, "listing loans failed", "error", err)
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		out := make([]map[string]any, 0, len(loans))
+		for _, l := range loans {
+			out = append(out, map[string]any{
+				"id": l.ID, "name": l.Name, "description": l.Description,
+				"balance": l.Balance.String(), "currency": l.Contract.Currency.Code,
+				"maturity":  l.Contract.MaturityDate.String(),
+				"confirmed": l.Confirmed(),
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"loans": out})
+	})
+}
+
+// updateLoan renames a loan. Only the borrower's own words change; the contract
+// terms do not, because editing them would silently rewrite what a balance
+// means without any record that it happened.
+func (s *Server) updateLoan() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, userID, ok := s.authed(w, r)
+		if !ok {
+			return
+		}
+		var in struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, maxRequest)).Decode(&in); err != nil {
+			http.Error(w, `{"error":"malformed"}`, http.StatusBadRequest)
+			return
+		}
+		name := trimTo(in.Name, 60)
+		if name == "" {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "a name is required"})
+			return
+		}
+		err := s.Editor.UpdateLoan(ctx, r.PathValue("id"), userID, name, trimTo(in.Description, 200))
+		if errors.Is(err, app.ErrNotFound) {
+			http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			s.Log.ErrorContext(ctx, "updating a loan failed", "error", err)
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"id": r.PathValue("id")})
+	})
+}
+
+// deleteLoan hides a loan. The ledger behind it is kept: a balance is only
+// checkable because its events can be replayed, and a borrower who removes a
+// loan by mistake would otherwise lose that permanently.
+func (s *Server) deleteLoan() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, userID, ok := s.authed(w, r)
+		if !ok {
+			return
+		}
+		err := s.Editor.ArchiveLoan(ctx, r.PathValue("id"), userID)
+		if errors.Is(err, app.ErrNotFound) {
+			http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			s.Log.ErrorContext(ctx, "archiving a loan failed", "error", err)
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"id": r.PathValue("id")})
 	})
 }
 

@@ -22,6 +22,7 @@ SELECT
 
 -- name: ListUsers
 SELECT u.id, u.locale, u.timezone, u.access_state, u.trial_ends_at, u.created_at, u.deleted_at,
+       (u.deletion_requested_at IS NOT NULL) AS deletion_requested,
        (SELECT count(*) FROM loans l WHERE l.user_id = u.id AND l.archived_at IS NULL) AS loan_count
 FROM users u
 ORDER BY u.created_at DESC
@@ -95,3 +96,72 @@ FROM loan_state WHERE loan_id = $1;
 -- name: CoveredEventIDs
 SELECT event_id FROM snapshot_event_coverage c
 JOIN loan_events e ON e.id = c.event_id WHERE e.loan_id = $1;
+
+-- name: SetUserAccess
+-- Pause or restore an account.
+--
+-- Paused rather than deleted: a suspended account keeps its ledger, so the
+-- decision is reversible and the evidence for it survives. Deleting to
+-- discipline someone destroys the record of why.
+UPDATE users SET access_state = $2
+ WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, access_state;
+
+-- name: RequestUserDeletion
+-- Marks an account for erasure without erasing it yet.
+--
+-- Two steps on purpose. Erasure is irreversible and the request is not, so a
+-- mistake is recoverable for as long as the tombstone has not been honoured.
+-- deletion_tombstones is what stops a restored backup resurrecting the account.
+UPDATE users SET deletion_requested_at = now()
+ WHERE id = $1 AND deleted_at IS NULL
+RETURNING id;
+
+-- name: DeleteUser
+-- Honours a deletion request. Cascades remove the loans, events, identities
+-- and everything else keyed to the account.
+WITH tombstone AS (
+    INSERT INTO deletion_tombstones (subject_hmac)
+    SELECT encode(sha256(id::text::bytea), 'hex') FROM users WHERE id = $1
+    ON CONFLICT DO NOTHING
+    RETURNING subject_hmac
+)
+DELETE FROM users WHERE id = $1 RETURNING id;
+
+-- name: ArchiveLoan
+-- Hides a loan without destroying its ledger. A loan whose events are gone
+-- cannot be replayed, and replay is the only thing that makes a balance
+-- checkable.
+UPDATE loans SET archived_at = now()
+ WHERE id = $1 AND archived_at IS NULL
+RETURNING id;
+
+-- name: RestoreLoan
+UPDATE loans SET archived_at = NULL WHERE id = $1 RETURNING id;
+
+-- name: RenameLoan
+UPDATE loans SET name = $2, description = $3 WHERE id = $1 RETURNING id;
+
+-- name: ListCommandsDetailed
+-- The command queue with enough detail to explain a stuck one: how many times
+-- it has been tried, when it will be tried again, who holds it, and why it
+-- last failed.
+SELECT c.id, c.telegram_update_id, coalesce(c.user_id::text, ''), c.command_kind,
+       c.status, c.attempts, c.received_at, c.next_attempt_at,
+       coalesce(c.lease_owner, ''), coalesce(c.last_error_code, ''),
+       c.completed_at,
+       greatest(0, extract(epoch FROM now() - c.next_attempt_at))::bigint AS due_age_s
+  FROM telegram_commands c
+ WHERE ($1 = '' OR c.status = $1)
+ ORDER BY c.received_at DESC
+ LIMIT $2;
+
+-- name: RetryCommand
+-- Puts a dead command back in the queue. The attempt count is reset because the
+-- operator is asserting the cause was fixed; leaving it would make one retry
+-- exhaust the budget again immediately.
+UPDATE telegram_commands
+   SET status = 'pending', attempts = 0, next_attempt_at = now(),
+       lease_owner = NULL, lease_token = NULL, lease_until = NULL
+ WHERE id = $1 AND status IN ('dead', 'pending', 'leased')
+RETURNING id;

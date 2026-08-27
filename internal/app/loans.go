@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
@@ -93,3 +94,19 @@ type ConversationStore interface {
 	State(ctx context.Context, userID string) (string, error)
 	ClearState(ctx context.Context, userID string) error
 }
+
+// LoanEditor lets a borrower manage their own loans.
+//
+// Every method takes the user id and every query scopes on it, so ownership is
+// enforced in the predicate rather than by a caller remembering to check. A
+// mismatched id then updates nothing, instead of updating somebody else's loan.
+type LoanEditor interface {
+	UpdateLoan(ctx context.Context, loanID, userID, name, description string) error
+	ArchiveLoan(ctx context.Context, loanID, userID string) error
+	LoanForUser(ctx context.Context, loanID, userID string) (UserLoan, error)
+}
+
+// ErrNotFound is returned when a loan does not exist, or does not belong to the
+// caller. Deliberately the same error for both: telling someone a loan exists
+// but is not theirs is telling them something about another account.
+var ErrNotFound = errors.New("app: not found")

@@ -105,7 +105,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	}
 	defer store.Close()
 
-	adminSvc := app.NewAdmin(store)
+	adminSvc := app.NewAdmin(store).WithModeration(store)
 
 	// Identifiers are sealed before they reach the database, so the key is built
 	// here and the store never sees it. A bad key is fatal: running without one
@@ -131,6 +131,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	// the Worker's hostname and needs no second custom domain or certificate.
 	mini := &miniapp.Server{
 		BotToken: cfg.BotToken, Loans: store, Users: store, Budgets: store,
+		Editor: store, Reader: store,
 		Cipher: cipher, Clock: sysclock.New(), Log: log,
 	}
 	hook := &telegram.Webhook{

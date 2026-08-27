@@ -220,3 +220,66 @@ func (s *Store) Budget(ctx context.Context, userID string) (app.Budget, error) {
 	b.Monthly, b.Set = money.FromMinor(minor, cur), true
 	return b, nil
 }
+
+// UpdateLoan renames a loan the borrower owns.
+func (s *Store) UpdateLoan(ctx context.Context, loanID, userID, name, description string) error {
+	var got string
+	err := s.pool.QueryRow(ctx, q("UpdateLoanForUser"), loanID, userID, name, description).Scan(&got)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.ErrNotFound
+	}
+	return err
+}
+
+// ArchiveLoan hides a loan the borrower owns. The ledger behind it is kept: a
+// balance is only checkable because its events can be replayed.
+func (s *Store) ArchiveLoan(ctx context.Context, loanID, userID string) error {
+	var got string
+	err := s.pool.QueryRow(ctx, q("ArchiveLoanForUser"), loanID, userID).Scan(&got)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.ErrNotFound
+	}
+	return err
+}
+
+// LoanForUser returns one loan the borrower owns.
+func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.UserLoan, error) {
+	var (
+		l         app.UserLoan
+		code      string
+		rate      string
+		repayment string
+		start     string
+		maturity  string
+		day       int16
+		principal *int64
+	)
+	err := s.pool.QueryRow(ctx, q("GetLoanForUser"), loanID, userID).Scan(
+		&l.ID, &l.Name, &l.Description, &code, &rate, &repayment,
+		&start, &maturity, &day, &principal)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.UserLoan{}, app.ErrNotFound
+	}
+	if err != nil {
+		return app.UserLoan{}, err
+	}
+	cur, err := money.Lookup(code)
+	if err != nil {
+		return app.UserLoan{}, err
+	}
+	startDate, _ := date.Parse(start)
+	maturityDate, _ := date.Parse(maturity)
+	l.Contract = model.Contract{
+		LoanID: model.ID(l.ID), Version: 1, Currency: cur,
+		NominalRate: parseRate(rate), DayCount: money.Actual365,
+		Type: repaymentTypeFrom(repayment), StartDate: startDate,
+		MaturityDate: maturityDate, PaymentDay: int(day),
+		Rounding: money.DefaultPolicy(cur),
+	}
+	if principal != nil {
+		l.Balance = money.FromMinor(*principal, cur)
+	} else {
+		l.Balance = money.Zero(cur)
+	}
+	return l, nil
+}

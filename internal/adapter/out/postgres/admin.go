@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 
@@ -117,4 +118,85 @@ func (s *Store) ListReconciliationRuns(ctx context.Context, limit int32) ([]app.
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[app.ReconRow])
+}
+
+// SetUserAccess pauses or restores an account.
+func (s *Store) SetUserAccess(ctx context.Context, userID, state string) error {
+	var id, got string
+	err := s.pool.QueryRow(ctx, q("SetUserAccess"), userID, state).Scan(&id, &got)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.ErrNotFound
+	}
+	return err
+}
+
+// RequestUserDeletion marks an account for erasure without erasing it.
+func (s *Store) RequestUserDeletion(ctx context.Context, userID string) error {
+	var id string
+	err := s.pool.QueryRow(ctx, q("RequestUserDeletion"), userID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.ErrNotFound
+	}
+	return err
+}
+
+// DeleteUser honours a deletion request, leaving a tombstone so a restored
+// backup cannot resurrect the account.
+func (s *Store) DeleteUser(ctx context.Context, userID string) error {
+	var id string
+	err := s.pool.QueryRow(ctx, q("DeleteUser"), userID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.ErrNotFound
+	}
+	return err
+}
+
+// ArchiveLoanAdmin hides a loan regardless of who owns it.
+func (s *Store) ArchiveLoanAdmin(ctx context.Context, loanID string) error {
+	var id string
+	err := s.pool.QueryRow(ctx, q("ArchiveLoan"), loanID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.ErrNotFound
+	}
+	return err
+}
+
+// RestoreLoan un-archives a loan.
+func (s *Store) RestoreLoan(ctx context.Context, loanID string) error {
+	var id string
+	err := s.pool.QueryRow(ctx, q("RestoreLoan"), loanID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.ErrNotFound
+	}
+	return err
+}
+
+// RenameLoanAdmin renames a loan regardless of who owns it.
+func (s *Store) RenameLoanAdmin(ctx context.Context, loanID, name, description string) error {
+	var id string
+	err := s.pool.QueryRow(ctx, q("RenameLoan"), loanID, name, description).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.ErrNotFound
+	}
+	return err
+}
+
+// CommandsDetailed returns the queue, optionally filtered by status.
+func (s *Store) CommandsDetailed(ctx context.Context, status string, limit int32) ([]app.CommandDetail, error) {
+	rows, err := s.pool.Query(ctx, q("ListCommandsDetailed"), status, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[app.CommandDetail])
+}
+
+// RetryCommand puts a command back in the queue with a fresh attempt budget.
+func (s *Store) RetryCommand(ctx context.Context, id string) error {
+	var got string
+	err := s.pool.QueryRow(ctx, q("RetryCommand"), id).Scan(&got)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.ErrNotFound
+	}
+	return err
 }
