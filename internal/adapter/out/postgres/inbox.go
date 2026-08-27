@@ -61,6 +61,26 @@ func (s *Store) Lease(ctx context.Context, owner string, n int, until time.Time)
 	return out, rows.Err()
 }
 
+// LeaseByID claims one named command, if it is still available.
+//
+// Returns false rather than an error when the row is already leased or done:
+// that is an ordinary race with the tick, not a fault.
+func (s *Store) LeaseByID(ctx context.Context, id, owner string, until time.Time) (app.Lease, bool, error) {
+	var l app.Lease
+	err := s.pool.QueryRow(ctx, q("LeaseCommandByID"), id, owner, until).Scan(
+		&l.Command.ID, &l.Command.UpdateID, &l.Command.UserID, &l.Command.Kind,
+		&l.Command.Payload, &l.Command.TraceContext, &l.Command.Attempts,
+		&l.Command.ReceivedAt, &l.Token, &l.Until,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.Lease{}, false, nil
+	}
+	if err != nil {
+		return app.Lease{}, false, err
+	}
+	return l, true, nil
+}
+
 // Complete marks a command done, but only if this worker still holds the lease.
 //
 // A stalled worker whose lease expired will find no row to update, and gets

@@ -105,3 +105,23 @@ SELECT telegram_chat_enc, key_version FROM identities WHERE user_id = $1;
 -- message, so an account that does not exist means something is wrong rather
 -- than something new.
 SELECT user_id FROM identities WHERE telegram_user_hmac = $1;
+
+-- name: LeaseCommandByID
+-- Claim one specific command, by the id the webhook just wrote.
+--
+-- The webhook must answer the message in front of it, not whichever command
+-- happens to be oldest. Leasing oldest-first there means one command that keeps
+-- failing holds the slot and every new message queues behind it -- which is a
+-- backlog that looks exactly like the bot being slow.
+UPDATE telegram_commands c
+   SET status      = 'leased',
+       lease_owner = $2,
+       lease_token = gen_random_uuid(),
+       lease_until = $3,
+       attempts    = c.attempts + 1
+ WHERE c.id = $1
+   AND c.status IN ('pending', 'leased')
+   AND (c.lease_until IS NULL OR c.lease_until < now())
+RETURNING c.id, c.telegram_update_id, coalesce(c.user_id::text, ''), c.command_kind,
+          c.command_payload, coalesce(c.trace_context, ''), c.attempts,
+          c.received_at, c.lease_token, c.lease_until;

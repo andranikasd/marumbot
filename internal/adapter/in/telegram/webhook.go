@@ -18,8 +18,8 @@ import (
 	"github.com/andranikasd/marumbot/internal/obs"
 )
 
-// DrainFunc processes pending commands. It returns how many it handled.
-type DrainFunc func(ctx context.Context, n int) (int, error)
+// HandleFunc processes one command by id.
+type HandleFunc func(ctx context.Context, id string) error
 
 // maxBody caps what the handler will read. Telegram updates are small; an
 // unbounded read is a way to be knocked over by one large request.
@@ -33,10 +33,11 @@ type Webhook struct {
 	ServiceToken string
 	Timezone     string
 	Clock        app.Clock
-	// Drain processes the command that was just recorded, before the webhook
-	// answers. See accept for why this is synchronous.
-	Drain DrainFunc
-	Log   *slog.Logger
+	// Handle processes the command that was just recorded, before the webhook
+	// answers. See accept for why this is synchronous, and why it is the one
+	// command rather than whatever is oldest.
+	Handle HandleFunc
+	Log    *slog.Logger
 }
 
 // Handler returns the route Cloudflare's Worker forwards to.
@@ -100,8 +101,9 @@ func (h *Webhook) accept(ctx context.Context, u Update) error {
 	carrier := propagation.MapCarrier{}
 	otelPropagator.Inject(ctx, carrier)
 
+	id := uuid.NewString()
 	accepted, err := h.Inbox.Enqueue(ctx, app.InboundCommand{
-		ID:           uuid.NewString(),
+		ID:           id,
 		UpdateID:     u.UpdateID,
 		UserID:       acct.ID,
 		Kind:         n.Kind,
@@ -130,11 +132,11 @@ func (h *Webhook) accept(ctx context.Context, u Update) error {
 	// tick will retry it; turning a send failure into a 500 would make Telegram
 	// redeliver an update that is safely stored, which is how one slow reply
 	// becomes four.
-	if h.Drain != nil {
-		drainCtx, cancel := context.WithTimeout(ctx, drainBudget)
+	if h.Handle != nil {
+		handleCtx, cancel := context.WithTimeout(ctx, drainBudget)
 		defer cancel()
-		if _, err := h.Drain(drainCtx, 1); err != nil {
-			h.Log.WarnContext(ctx, "immediate drain failed; the tick will retry",
+		if err := h.Handle(handleCtx, id); err != nil {
+			h.Log.WarnContext(ctx, "immediate handling failed; the tick will retry",
 				"error", err, "update_id", u.UpdateID)
 		}
 	}
