@@ -24,7 +24,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "marum-prometheus"
+        "uid": "${ds_prometheus}"
       },
       "targets": [
         {
@@ -65,7 +65,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "marum-prometheus"
+        "uid": "${ds_prometheus}"
       },
       "targets": [
         {
@@ -107,7 +107,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "marum-prometheus"
+        "uid": "${ds_prometheus}"
       },
       "targets": [
         {
@@ -148,7 +148,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "marum-prometheus"
+        "uid": "${ds_prometheus}"
       },
       "targets": [
         {
@@ -202,7 +202,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "marum-prometheus"
+        "uid": "${ds_prometheus}"
       },
       "targets": [
         {
@@ -240,7 +240,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "marum-prometheus"
+        "uid": "${ds_prometheus}"
       },
       "targets": [
         {
@@ -278,7 +278,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "marum-prometheus"
+        "uid": "${ds_prometheus}"
       },
       "targets": [
         {
@@ -316,7 +316,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "marum-prometheus"
+        "uid": "${ds_prometheus}"
       },
       "targets": [
         {
@@ -341,5 +341,23 @@
         }
       }
     }
-  ]
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 2,
+        "includeAll": false,
+        "label": "Prometheus",
+        "multi": false,
+        "name": "ds_prometheus",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      }
+    ]
+  }
 }
