@@ -175,7 +175,8 @@ func writeJSON(w http.ResponseWriter, code int, body any) {
 
 // LoanRequest is what the form posts.
 type LoanRequest struct {
-	Lender         string  `json:"lender"`
+	Title          string  `json:"title"`
+	Description    string  `json:"description"`
 	PrincipalMajor float64 `json:"principal_major"`
 	Currency       string  `json:"currency"`
 	RatePercent    float64 `json:"rate_percent"`

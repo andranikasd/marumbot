@@ -10,7 +10,7 @@ import (
 
 func good() LoanRequest {
 	return LoanRequest{
-		Lender: "Ameriabank", PrincipalMajor: 5_000_000, Currency: "AMD",
+		Title: "Car loan", Description: "monthly, 15th", PrincipalMajor: 5_000_000, Currency: "AMD",
 		RatePercent: 14.5, Method: "annuity",
 		StartDate: "2026-01-15", MaturityDate: "2029-01-15", PaymentDay: 15,
 	}
@@ -50,7 +50,7 @@ func TestValidateAcceptsDeclining(t *testing.T) {
 // is using it and its validation can simply be deleted.
 func TestValidateRejects(t *testing.T) {
 	cases := map[string]func(*LoanRequest){
-		"no lender":          func(r *LoanRequest) { r.Lender = "   " },
+		"no title":           func(r *LoanRequest) { r.Title = "   " },
 		"zero principal":     func(r *LoanRequest) { r.PrincipalMajor = 0 },
 		"negative principal": func(r *LoanRequest) { r.PrincipalMajor = -1 },
 		"absurd principal":   func(r *LoanRequest) { r.PrincipalMajor = 1e18 },
@@ -97,19 +97,19 @@ func TestValidateRejectsNonFiniteNumbers(t *testing.T) {
 
 // A lender name is displayed. Overlong input is truncated rather than refused,
 // because a paste with trailing whitespace is a user error worth absorbing.
-func TestLenderIsTruncated(t *testing.T) {
+func TestTitleIsTruncated(t *testing.T) {
 	r := good()
 	long := ""
 	for i := 0; i < 200; i++ {
 		long += "x"
 	}
-	r.Lender = long
+	r.Title = long
 	d, err := r.Validate()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(d.Lender) != 60 {
-		t.Errorf("lender kept %d characters, want 60", len(d.Lender))
+	if len(d.Title) != 60 {
+		t.Errorf("title kept %d characters, want 60", len(d.Title))
 	}
 }
 

@@ -20,10 +20,11 @@ const maxTermYears = 40
 // user quickly; this one exists because the browser belongs to whoever is using
 // it and its checks can simply be deleted.
 func (r LoanRequest) Validate() (app.LoanDraft, error) {
-	lender := trimTo(r.Lender, 60)
-	if lender == "" {
-		return app.LoanDraft{}, fmt.Errorf("%w: no lender", ErrInvalid)
+	title := trimTo(r.Title, 60)
+	if title == "" {
+		return app.LoanDraft{}, fmt.Errorf("%w: no title", ErrInvalid)
 	}
+	description := trimTo(r.Description, 200)
 
 	cur, err := money.Lookup(r.Currency)
 	if err != nil {
@@ -78,8 +79,9 @@ func (r LoanRequest) Validate() (app.LoanDraft, error) {
 	}
 
 	return app.LoanDraft{
-		Lender:    lender,
-		Principal: principal,
+		Title:       title,
+		Description: description,
+		Principal:   principal,
 		Contract: model.Contract{
 			Version:     1,
 			Currency:    cur,

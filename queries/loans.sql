@@ -12,7 +12,7 @@
 -- own figure arrives -- which is the whole reliability model working as
 -- intended rather than an omission.
 WITH new_loan AS (
-    INSERT INTO loans (id, user_id, name, lender, currency)
+    INSERT INTO loans (id, user_id, name, description, currency)
     VALUES ($1, $2, $3, $4, $5)
     RETURNING id
 ), new_contract AS (
@@ -51,7 +51,7 @@ SELECT loan_id FROM opening;
 --   cannot scan date (OID 1082) in binary format into *string
 -- Casting in SQL states the intent once, where the shape is visible, instead of
 -- converting in Go on the way back out.
-SELECT l.id, l.name, coalesce(l.lender, ''), l.currency,
+SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        c.nominal_rate::text, c.repayment_type, c.day_count,
        c.start_date::text, c.maturity_date::text, c.payment_day,
        c.rounding_mode, c.rounding_unit_minor,

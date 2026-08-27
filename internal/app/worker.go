@@ -39,6 +39,7 @@ const (
 // Sender is the outbound Telegram surface the worker needs.
 type Sender interface {
 	SendMessage(ctx context.Context, chatID int64, text string, markup any) error
+	SendChatAction(ctx context.Context, chatID int64, action string) error
 }
 
 // ChatResolver turns an account back into the chat to reply to. The chat id is
@@ -180,6 +181,15 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 		return fmt.Errorf("resolving chat: %w", err)
 	}
 
+	// Show that the bot heard, before doing the work that produces a reply.
+	// This does not make anything faster; it makes the wait legible, which is
+	// the difference between a bot that seems slow and one that seems broken.
+	// A failure here is ignored: an indicator that did not appear is no reason
+	// to fail the command it was announcing.
+	if err := w.Send.SendChatAction(ctx, chat, "typing"); err != nil {
+		w.Log.DebugContext(ctx, "typing indicator failed", "error", err)
+	}
+
 	switch c.Kind {
 	case KindStart:
 		return w.Send.SendMessage(ctx, chat,
@@ -259,6 +269,9 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 	b.WriteString("<b>" + i18n.T(l, "loans.title") + "</b>\n")
 	for _, ln := range loans {
 		b.WriteString("\n<b>" + html.EscapeString(ln.Name) + "</b>\n")
+		if ln.Description != "" {
+			b.WriteString("<i>" + html.EscapeString(ln.Description) + "</i>\n")
+		}
 		b.WriteString(i18n.T(l, "loan.balance", ln.Balance.String()) + "\n")
 		b.WriteString(i18n.T(l, "loan.rate", percent(ln.Contract.NominalRate)) + "\n")
 

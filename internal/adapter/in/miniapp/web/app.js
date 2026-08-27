@@ -19,7 +19,11 @@ tg?.expand();
 const STRINGS = {
   hy: {
     title: "Ավելացնել վարկ", lede: "Մուտքագրեք վարկի պայմանագրի տվյալները։",
-    lender: "Բանկ", principal: "Վարկի գումար", rate: "Տարեկան տոկոսադրույք (%)",
+    "title.field": "Անվանում",
+    "title.hint": "Ինչպե՞ս եք անվանում այս վարկը։",
+    description: "Նշում (ըստ ցանկության)",
+    "description.hint": "Բանկի անուն կամ հաշվեհամար պետք չէ։",
+    principal: "Վարկի գումար", rate: "Տարեկան տոկոսադրույք (%)",
     method: "Մարման եղանակ",
     "method.annuity": "Անուիտետային (հավասար վճար)",
     "method.declining": "Դիֆերենցված (նվազող վճար)",
@@ -41,7 +45,11 @@ const STRINGS = {
   },
   en: {
     title: "Add a loan", lede: "Enter the details from your loan agreement.",
-    lender: "Lender", principal: "Loan amount", rate: "Annual interest rate (%)",
+    "title.field": "Name",
+    "title.hint": "What do you call this loan?",
+    description: "Note (optional)",
+    "description.hint": "No bank name or account number needed.",
+    principal: "Loan amount", rate: "Annual interest rate (%)",
     method: "Repayment method",
     "method.annuity": "Annuity (level payment)",
     "method.declining": "Declining (falling payment)",
@@ -98,7 +106,7 @@ const num = (s) => {
 
 function validate() {
   const errs = {};
-  if (!$("lender").value.trim()) errs.lender = T("err.required");
+  if (!$("title").value.trim()) errs.title = T("err.required");
 
   const p = num($("principal").value);
   if (!$("principal").value.trim()) errs.principal = T("err.required");
@@ -118,7 +126,7 @@ function validate() {
   if (!m) errs.maturity = T("err.required");
   if (s && m && m <= s) errs.maturity = T("err.order");
 
-  for (const f of ["lender", "principal", "rate", "day", "start", "maturity"]) {
+  for (const f of ["title", "principal", "rate", "day", "start", "maturity"]) {
     const box = $("e-" + f);
     if (box) box.textContent = errs[f] || "";
     $(f).setAttribute("aria-invalid", errs[f] ? "true" : "false");
@@ -226,7 +234,8 @@ async function save() {
         "X-Telegram-Init-Data": tg?.initData || "",
       },
       body: JSON.stringify({
-        lender: $("lender").value.trim(),
+        title: $("title").value.trim(),
+        description: $("description").value.trim(),
         principal_major: v.p,
         currency: $("currency").value,
         rate_percent: v.r,
@@ -243,7 +252,7 @@ async function save() {
     tg?.MainButton.hideProgress();
     tg?.MainButton.setText(T("save"));
     tg?.HapticFeedback?.notificationOccurred("error");
-    $("e-lender").textContent = T("err.save");
+    $("e-title").textContent = T("err.save");
   }
 }
 

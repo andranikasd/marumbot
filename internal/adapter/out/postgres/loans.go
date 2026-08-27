@@ -56,14 +56,14 @@ func repaymentTypeName(t model.RepaymentType) string {
 // explain it or the anchor that gives it a balance.
 func (s *Store) CreateLoan(ctx context.Context, d app.LoanDraft) (string, error) {
 	c := d.Contract
-	name := d.Lender
-	if name == "" {
-		name = "Loan"
+	title := d.Title
+	if title == "" {
+		title = "Loan"
 	}
 
 	var got string
 	err := s.pool.QueryRow(ctx, q("CreateLoan"),
-		uuid.NewString(), d.UserID, name, d.Lender, c.Currency.Code,
+		uuid.NewString(), d.UserID, title, d.Description, c.Currency.Code,
 		uuid.NewString(), c.StartDate.String(),
 		c.NominalRate.String(), dayCountName(c.DayCount), repaymentTypeName(c.Type),
 		c.MaturityDate.String(), c.PaymentDay,
@@ -102,7 +102,7 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 			asOf      *string
 			trust     *string
 		)
-		if err := rows.Scan(&l.ID, &l.Name, &l.Lender, &code,
+		if err := rows.Scan(&l.ID, &l.Name, &l.Description, &code,
 			&rate, &repayment, &dayCount, &start, &maturity, &day,
 			&mode, &unit, &principal, &asOf, &trust); err != nil {
 			return nil, err

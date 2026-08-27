@@ -13,9 +13,13 @@ import (
 // projection, and storing one would create a second source of truth that can
 // disagree with replay.
 type LoanDraft struct {
-	UserID   string
-	Lender   string
-	Contract model.Contract
+	UserID string
+	// Title is what the borrower calls this loan. Marum does not ask which bank
+	// issued it: the arithmetic does not need a lender's name, and a name it
+	// does not need is a name it should not hold beside a balance.
+	Title       string
+	Description string
+	Contract    model.Contract
 	// Principal is the amount advanced. It becomes the opening balance of the
 	// ledger rather than a field on the loan, so every later figure is derived
 	// from events instead of from a number somebody typed once.
@@ -36,10 +40,10 @@ type LoanWriter interface {
 // balance and a rate, which made every number the engine can produce
 // unreachable from the bot.
 type UserLoan struct {
-	ID       string
-	Name     string
-	Lender   string
-	Contract model.Contract
+	ID          string
+	Name        string
+	Description string
+	Contract    model.Contract
 	// Balance is the latest anchor: what was owed on AsOf, by whoever said so.
 	Balance money.Amount
 	AsOf    date.Date
