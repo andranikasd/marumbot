@@ -42,6 +42,7 @@ const (
 type Sender interface {
 	SendMessage(ctx context.Context, chatID int64, text string, markup any) error
 	SendChatAction(ctx context.Context, chatID int64, action string) error
+	SetChatMenuButtonFor(ctx context.Context, chatID int64, text, url string) error
 }
 
 // ChatResolver turns an account back into the chat to reply to. The chat id is
@@ -371,6 +372,16 @@ func (w *Worker) callback(ctx context.Context, userID string, chat int64, data s
 		}
 		if err := w.Users.SetLocale(ctx, userID, string(want)); err != nil {
 			return fmt.Errorf("setting locale: %w", err)
+		}
+		// The menu button beside the message box follows the language too. It
+		// is set per chat because the global one is per bot and cannot be
+		// localised -- which is why it read Armenian for everyone. Not fatal:
+		// a button in the wrong language is worse than none, but not a reason
+		// to fail the switch that fixes everything else.
+		if w.MiniApp != "" {
+			if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.Button(want, KindLoans), w.MiniApp+"?screen=manage"); err != nil {
+				w.Log.DebugContext(ctx, "menu button not localised", "error", err)
+			}
 		}
 		// Redraw the keyboard in the new language. Without this the buttons stay
 		// in the old one until the user finds another reason to receive a

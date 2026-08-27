@@ -10,9 +10,11 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/andranikasd/marumbot/internal/app"
 	"github.com/andranikasd/marumbot/internal/obs"
+	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/money"
 )
 
@@ -102,7 +104,7 @@ func (s *Server) createLoan() http.Handler {
 
 		// Validated here, not only in the browser. The browser is the attacker's
 		// machine; its checks tell the user quickly and prove nothing.
-		draft, err := in.Validate()
+		draft, err := in.Validate(date.From(s.Clock.Now(), time.UTC))
 		if err != nil {
 			s.Log.InfoContext(ctx, "miniapp loan rejected", "error", err)
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
@@ -336,12 +338,15 @@ type LoanRequest struct {
 	Title          string  `json:"title"`
 	Description    string  `json:"description"`
 	PrincipalMajor float64 `json:"principal_major"`
-	Currency       string  `json:"currency"`
-	RatePercent    float64 `json:"rate_percent"`
-	Method         string  `json:"method"`
-	StartDate      string  `json:"start_date"`
-	MaturityDate   string  `json:"maturity_date"`
-	PaymentDay     int     `json:"payment_day"`
+	// BalanceMajor is what is owed TODAY, for a loan that has been running.
+	// Zero means "same as principal": a loan filed on its drawdown date.
+	BalanceMajor float64 `json:"balance_major"`
+	Currency     string  `json:"currency"`
+	RatePercent  float64 `json:"rate_percent"`
+	Method       string  `json:"method"`
+	StartDate    string  `json:"start_date"`
+	MaturityDate string  `json:"maturity_date"`
+	PaymentDay   int     `json:"payment_day"`
 }
 
 // ErrInvalid marks a request the form should not have sent.

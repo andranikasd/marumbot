@@ -6,6 +6,11 @@
 -- applies events after it, so the opening figure is the anchor rather than a
 -- fact competing with one.
 --
+-- The anchor date ($17) is the day the loan is FILED, not the day it started.
+-- A loan that has been running is filed with what is owed now, and the schedule
+-- must project from now: anchoring on the start date would re-accrue months
+-- that have already been paid.
+--
 -- Its trust is 'user_entered', which is the honest grade for a number a
 -- borrower typed off a piece of paper. Only a bank-confirmed snapshot resets
 -- drift, so a loan filed this way is reported as indicative until the lender's
@@ -35,7 +40,7 @@ WITH new_loan AS (
         id, loan_id, contract_version_id, as_of, trust,
         principal_minor, source_note, idempotency_key
     )
-    SELECT $15, loan_id, contract_id, $7, 'user_entered', $16,
+    SELECT $15, loan_id, contract_id, $17, 'user_entered', $16,
            'opening balance as filed by the borrower', 'opening:' || loan_id::text
       FROM new_contract
     RETURNING loan_id

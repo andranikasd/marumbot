@@ -18,7 +18,9 @@ const STRINGS = {
     title: "Ավելացնել վարկ", lede: "Մուտքագրեք վարկի պայմանագրի տվյալները։",
     "title.field": "Անվանում", "title.hint": "Ինչպե՞ս եք անվանում այս վարկը։",
     description: "Նշում (ըստ ցանկության)", "description.hint": "Բանկի անուն կամ հաշվեհամար պետք չէ։",
-    principal: "Վարկի գումար", rate: "Տարեկան տոկոսադրույք (%)", method: "Մարման եղանակ",
+    principal: "Վարկի գումար", balance: "Արդեն մարված գումար (ըստ ցանկության)",
+    "balance.hint": "Եթե վարկն արդեն ընթացքի մեջ է՝ նշեք մայր գումարից մարված մասը։",
+    "err.balance": "Պետք է լինի վարկի գումարից փոքր", rate: "Տարեկան տոկոսադրույք (%)", method: "Մարման եղանակ",
     "method.annuity": "Անուիտետային", "method.declining": "Դիֆերենցված",
     "method.hint": "Անուիտետի դեպքում ամսական վճարը նույնն է։",
     "method.hint.declining": "Դիֆերենցվածի դեպքում վճարը սկզբում մեծ է, հետո նվազում է։",
@@ -49,7 +51,9 @@ const STRINGS = {
     title: "Add a loan", lede: "Enter the details from your loan agreement.",
     "title.field": "Name", "title.hint": "What do you call this loan?",
     description: "Note (optional)", "description.hint": "No bank name or account number needed.",
-    principal: "Loan amount", rate: "Annual interest rate (%)", method: "Repayment method",
+    principal: "Loan amount", balance: "Already repaid (optional)",
+    "balance.hint": "If the loan is already running, enter the principal you have repaid so far.",
+    "err.balance": "Must be less than the loan amount", rate: "Annual interest rate (%)", method: "Repayment method",
     "method.annuity": "Annuity", "method.declining": "Declining",
     "method.hint": "An annuity keeps the monthly payment the same.",
     "method.hint.declining": "Declining starts higher and falls every month.",
@@ -149,6 +153,10 @@ function validate() {
   if (!$("principal").value.trim()) errs.principal = T("err.required");
   else if (Number.isNaN(p)) errs.principal = T("err.number");
   else if (p <= 0) errs.principal = T("err.positive");
+  const paidRaw = $("balance").value.trim(), paid = paidRaw ? num(paidRaw) : 0;
+  if (paidRaw && Number.isNaN(paid)) errs.balance = T("err.number");
+  else if (paid < 0) errs.balance = T("err.positive");
+  else if (!Number.isNaN(p) && paid >= p) errs.balance = T("err.balance");
   const r = num($("rate").value);
   if (!$("rate").value.trim()) errs.rate = T("err.required");
   else if (Number.isNaN(r)) errs.rate = T("err.number");
@@ -159,12 +167,12 @@ function validate() {
   if (!s) errs.start = T("err.required");
   if (!m) errs.maturity = T("err.required");
   if (s && m && m <= s) errs.maturity = T("err.order");
-  for (const f of ["title", "principal", "rate", "day", "start", "maturity"]) {
+  for (const f of ["title", "principal", "balance", "rate", "day", "start", "maturity"]) {
     const box = $("e-" + f);
     if (box) box.textContent = errs[f] || "";
     $(f).setAttribute("aria-invalid", errs[f] ? "true" : "false");
   }
-  return { ok: Object.keys(errs).length === 0, p, r, d };
+  return { ok: Object.keys(errs).length === 0, p, r, d, paid };
 }
 
 function occurrences(start, day, maturity) {
@@ -248,7 +256,7 @@ async function saveLoan() {
       body: JSON.stringify({
         title: $("title").value.trim(),
         description: $("description").value.trim(),
-        principal_major: v.p, currency: $("currency").value, rate_percent: v.r,
+        principal_major: v.p, balance_major: v.paid ? v.p - v.paid : 0, currency: $("currency").value, rate_percent: v.r,
         method: method(), start_date: $("start").value,
         maturity_date: $("maturity").value, payment_day: v.d,
       }),

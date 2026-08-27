@@ -21,10 +21,15 @@ type LoanDraft struct {
 	Title       string
 	Description string
 	Contract    model.Contract
-	// Principal is the amount advanced. It becomes the opening balance of the
-	// ledger rather than a field on the loan, so every later figure is derived
-	// from events instead of from a number somebody typed once.
+	// Principal is the amount advanced.
 	Principal money.Amount
+	// Balance is what is owed on the day the loan is filed. It is the anchor the
+	// schedule projects from. For a fresh loan it equals Principal; for one that
+	// has been running it is lower, and the difference is what has already been
+	// paid down -- which the ledger never has to reconstruct.
+	Balance money.Amount
+	// AsOf is the day Balance was true: today, for a loan filed by its owner.
+	AsOf date.Date
 }
 
 // LoanWriter records loans. Declared by the consumer.
