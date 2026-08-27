@@ -32,7 +32,7 @@ WITH new_loan AS (
     SELECT $6, id, 1, $7, $8, $9, $10, $7, $11, $12, $13, $14,
            (SELECT id FROM allocation_policy_versions
              WHERE policy_key = 'am-consumer-credit-prepayment' ORDER BY version DESC LIMIT 1),
-           '{}'::jsonb, 1
+           $18::jsonb, 1
       FROM new_loan
     RETURNING id AS contract_id, loan_id
 ), opening AS (
@@ -61,7 +61,8 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        c.start_date::text, c.maturity_date::text, c.payment_day,
        c.rounding_mode, c.rounding_unit_minor,
        s.principal_minor, s.as_of::text, s.trust,
-       coalesce(p.excess_rule, 'unknown')
+       coalesce(p.excess_rule, 'unknown'),
+       coalesce(c.prepayment_policy->>'effect', ''), coalesce((c.prepayment_policy->>'fee_bp')::int, 0)
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v

@@ -25,7 +25,7 @@ func ProjectDeclining(c model.Contract, principal money.Amount, from date.Date) 
 	if principal.Sign() <= 0 {
 		return Schedule{}, fmt.Errorf("%w: principal must be positive", ErrUnsolvable)
 	}
-	dates, err := PaymentDates(c)
+	dates, err := RemainingDates(c, from)
 	if err != nil {
 		return Schedule{}, err
 	}
