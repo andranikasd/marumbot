@@ -39,6 +39,13 @@ crons = ["*/5 * * * *"]
 pattern = "dev.marum.loan"
 custom_domain = true
 
+# The admin interface, on its own hostname so that its root-relative links keep
+# working. One level deep on purpose: the universal certificate covers
+# *.marum.loan and no deeper, so admin.dev.marum.loan would fail TLS.
+[[env.dev.routes]]
+pattern = "admin-dev.marum.loan"
+custom_domain = true
+
 [[env.dev.containers]]
 class_name = "MarumApp"
 image = "../Dockerfile"

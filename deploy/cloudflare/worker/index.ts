@@ -9,6 +9,10 @@ import { Container, getContainer } from "@cloudflare/containers";
 
 export class MarumApp extends Container<Env> {
   defaultPort = 8080;
+  // 8080 is the public surface, 8081 the admin interface. Both must be up
+  // before the container counts as ready, otherwise the first admin request
+  // races the listener.
+  requiredPorts = [8080, 8081];
   // Long enough that a borrower mid-conversation does not pay a cold start,
   // short enough that an idle night costs nothing.
   sleepAfter = "10m";
@@ -56,6 +60,12 @@ export class MarumApp extends Container<Env> {
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
       OTEL_SERVICE_NAME: "marum",
       OTEL_RESOURCE_ATTRIBUTES: `deployment.environment=${env.ENVIRONMENT},service.namespace=marum`,
+      // Continuous profiling. The Go side has been wired for this since the
+      // observability work, but nothing was passing the address, so Grafana had
+      // traces, metrics and logs and a permanently empty profiles tab.
+      PYROSCOPE_SERVER_ADDRESS: env.PYROSCOPE_SERVER_ADDRESS ?? "",
+      PYROSCOPE_BASIC_AUTH_USER: env.PYROSCOPE_BASIC_AUTH_USER ?? "",
+      PYROSCOPE_BASIC_AUTH_PASSWORD: env.PYROSCOPE_BASIC_AUTH_PASSWORD ?? "",
     };
   }
 }
@@ -76,6 +86,9 @@ interface Env {
   MARUM_ADMIN_PASSWORD_HASH?: string;
   OTEL_EXPORTER_OTLP_ENDPOINT?: string;
   OTEL_EXPORTER_OTLP_HEADERS?: string;
+  PYROSCOPE_SERVER_ADDRESS?: string;
+  PYROSCOPE_BASIC_AUTH_USER?: string;
+  PYROSCOPE_BASIC_AUTH_PASSWORD?: string;
   WEBHOOK_PATH: string;
   ENVIRONMENT: string;
 }
@@ -118,9 +131,33 @@ export default {
       return app(env).fetch(new Request(new URL(url.pathname, "http://container"), request));
     }
 
-    // The admin interface is never exposed through the Worker. It is reached
-    // over a private path, because a public admin login is an invitation.
-    if (url.pathname.startsWith("/admin")) return new Response(null, { status: 404 });
+    // The admin interface listens on container port 8081 and serves from the
+    // root: /login, /loans, /users. It gets its own hostname rather than a
+    // /admin prefix, because stripping a prefix here would leave every link and
+    // form action in the templates pointing at the public host.
+    //
+    // The hostname is one level deep (admin-dev.marum.loan, not
+    // admin.dev.marum.loan) because Cloudflare's universal certificate covers
+    // *.marum.loan and no deeper.
+    //
+    // Outside production this is reachable, because an admin interface nobody
+    // can open is not an admin interface. It still sits behind the app's own
+    // PBKDF2 login, and the listener stays down entirely when
+    // MARUM_ADMIN_PASSWORD_HASH is unset -- so exposing the hostname cannot
+    // produce an unauthenticated console.
+    //
+    // Production returns 404 here. A public login page there is a standing
+    // invitation to credential stuffing, and the answer is Cloudflare Access in
+    // front of the hostname rather than trusting one password.
+    if (url.hostname.startsWith("admin-")) {
+      if (env.ENVIRONMENT === "production") return new Response(null, { status: 404 });
+      return app(env).containerFetch(request, 8081);
+    }
+
+    // No admin surface on the public hostname, in any environment.
+    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
+      return new Response(null, { status: 404 });
+    }
 
     return env.ASSETS ? env.ASSETS.fetch(request) : new Response("Marum", { status: 200 });
   },
