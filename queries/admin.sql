@@ -165,3 +165,14 @@ UPDATE telegram_commands
        lease_owner = NULL, lease_token = NULL, lease_until = NULL
  WHERE id = $1 AND status IN ('dead', 'pending', 'leased')
 RETURNING id;
+
+-- name: PurgeDeadCommands
+-- Removes every command that has exhausted its retries.
+--
+-- Dead is normally kept: a command that could not be processed is evidence
+-- about a bug, and deleting it destroys the only record of what the user sent.
+-- Purging is therefore an operator's decision, taken once the evidence has
+-- been read -- which is why it is a button in the inbox and not a scheduled
+-- job. Only 'dead' rows are touched; a pending or leased command is live work.
+DELETE FROM telegram_commands WHERE status = 'dead'
+RETURNING id;

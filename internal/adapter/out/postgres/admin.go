@@ -200,3 +200,12 @@ func (s *Store) RetryCommand(ctx context.Context, id string) error {
 	}
 	return err
 }
+
+// PurgeDeadCommands removes every dead command and reports the count.
+func (s *Store) PurgeDeadCommands(ctx context.Context) (int64, error) {
+	tag, err := s.pool.Exec(ctx, q("PurgeDeadCommands"))
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
