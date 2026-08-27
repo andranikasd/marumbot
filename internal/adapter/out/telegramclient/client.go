@@ -166,3 +166,21 @@ func (c *Client) SetChatMenuButton(ctx context.Context, text, url string) error 
 		},
 	})
 }
+
+// SendChatAction shows "typing…" in the chat.
+//
+// It does not make the reply faster; it makes the wait legible. A bot that sits
+// silent for two seconds reads as broken, and the same two seconds with a
+// typing indicator reads as working. Telegram clears it after five seconds or
+// when a message arrives, whichever comes first.
+//
+// Failures are ignored by the caller: an indicator that did not appear is not a
+// reason to fail the command it was announcing.
+func (c *Client) SendChatAction(ctx context.Context, chatID int64, action string) error {
+	ctx, span := obs.ComponentSender.CallService(ctx, "telegram", "sendChatAction")
+	defer span.End()
+	return c.call(ctx, "sendChatAction", map[string]any{
+		"chat_id": chatID,
+		"action":  action,
+	})
+}

@@ -69,9 +69,16 @@
 
 <form id="f" novalidate>
   <div class="field">
-    <label for="lender" data-i18n="lender">Բանկ</label>
-    <input id="lender" name="lender" autocomplete="off" maxlength="60" required>
-    <p class="error" id="e-lender"></p>
+    <label for="title" data-i18n="title.field">Անվանում</label>
+    <input id="title" name="title" autocomplete="off" maxlength="60" required>
+    <p class="hint" data-i18n="title.hint">Ինչպե՞ս եք անվանում այս վարկը։</p>
+    <p class="error" id="e-title"></p>
+  </div>
+
+  <div class="field">
+    <label for="description" data-i18n="description">Նշում (ըստ ցանկության)</label>
+    <input id="description" name="description" autocomplete="off" maxlength="200">
+    <p class="hint" data-i18n="description.hint">Բանկի անուն կամ հաշվեհամար պետք չէ։</p>
   </div>
 
   <div class="field">

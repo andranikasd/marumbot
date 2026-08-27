@@ -288,6 +288,11 @@ func tickHandler(w *app.Worker, serviceToken string, log *slog.Logger) http.Hand
 			writeJSON(rw, http.StatusInternalServerError, map[string]any{"error": "tick failed"})
 			return
 		}
+		// Logged on every tick, including the empty ones. A scheduler that is
+		// not running looks exactly like a scheduler with nothing to do, and
+		// the difference matters: the tick is also what keeps the container
+		// awake, so its absence turns every message into a cold start.
+		log.InfoContext(ctx, "tick", "handled", n)
 		writeJSON(rw, http.StatusOK, map[string]any{"handled": n})
 	})
 }
