@@ -57,10 +57,18 @@ page=$(curl -sf --max-time 20 "$base/app/") || fail "the mini app did not answer
 echo "$page" | grep -q 'telegram-web-app.js' || \
   fail "$base/app/ did not serve the form; got: $(echo "$page" | head -c 80)"
 
+echo "→ budget form"
+budget=$(curl -sf --max-time 20 "$base/app/?screen=budget") || fail "the budget screen did not answer"
+echo "$budget" | grep -q 'budget-form' || fail "the budget screen did not serve its form"
+
 echo "→ mini app rejects an unsigned call"
 code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X POST \
   "$base/app/api/loans" -H 'Content-Type: application/json' -d '{}')
 [ "$code" = "401" ] || fail "an unsigned loan POST answered $code, want 401"
+
+code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X POST \
+  "$base/app/api/budget" -H 'Content-Type: application/json' -d '{}')
+[ "$code" = "401" ] || fail "an unsigned budget POST answered $code, want 401"
 
 echo "→ cold start"
 # The container sleeps when idle, so a request after a pause exercises the path

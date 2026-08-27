@@ -105,6 +105,7 @@ var buttonKeys = map[string]string{
 	"loans":    "btn.loans",
 	"budget":   "btn.budget",
 	"language": "btn.language",
+	"advice":   "btn.advice",
 	"help":     "btn.help",
 }
 

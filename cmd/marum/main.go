@@ -116,7 +116,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 
 	bot := telegramclient.New(cfg.BotToken)
 	worker := &app.Worker{
-		Inbox: store, Users: store, Loans: store,
+		Inbox: store, Users: store, Loans: store, Budgets: store,
 		Chats:   postgres.ChatLookup{Store: store, Cipher: cipher},
 		Send:    bot,
 		Clock:   sysclock.New(),
@@ -128,7 +128,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	// The Mini App is served from the public listener under /app, so it shares
 	// the Worker's hostname and needs no second custom domain or certificate.
 	mini := &miniapp.Server{
-		BotToken: cfg.BotToken, Loans: store, Users: store,
+		BotToken: cfg.BotToken, Loans: store, Users: store, Budgets: store,
 		Cipher: cipher, Clock: sysclock.New(), Log: log,
 	}
 	hook := &telegram.Webhook{

@@ -21,6 +21,7 @@ var assets embed.FS
 type Server struct {
 	BotToken string
 	Loans    app.LoanWriter
+	Budgets  app.BudgetStore
 	Users    app.UserStore
 	Cipher   TagCipher
 	Clock    app.Clock
@@ -45,6 +46,7 @@ func (s *Server) Handler() http.Handler {
 	}
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/loans", s.createLoan())
+	mux.Handle("POST /api/budget", s.setBudget())
 	mux.Handle("/", s.static(http.FileServerFS(sub)))
 	return mux
 }
@@ -118,6 +120,50 @@ func (s *Server) createLoan() http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusCreated, map[string]string{"id": id})
+	})
+}
+
+// setBudget records how much a borrower can put towards loans each month.
+//
+// A form rather than a chat answer. Typing "100000" after a prompt left the
+// reply unhandled -- there was no conversation state to receive it -- and the
+// bot answered with its help text, which reads as being ignored. A number with
+// a currency is a form.
+func (s *Server) setBudget() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := obs.ComponentWebhook.Enter(r.Context(), "miniapp.set_budget")
+		defer span.End()
+
+		v, err := Verify(r.Header.Get("X-Telegram-Init-Data"), s.BotToken, s.Clock.Now())
+		if err != nil {
+			s.Log.WarnContext(ctx, "miniapp auth rejected", "error", err)
+			http.Error(w, `{"error":"unauthorised"}`, http.StatusUnauthorized)
+			return
+		}
+
+		var in BudgetRequest
+		if err := json.NewDecoder(io.LimitReader(r.Body, maxRequest)).Decode(&in); err != nil {
+			http.Error(w, `{"error":"malformed"}`, http.StatusBadRequest)
+			return
+		}
+		cur, minor, err := in.Validate()
+		if err != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			return
+		}
+
+		userID, err := s.Users.ByTelegramTag(ctx, s.Cipher.Tag(v.User.ID))
+		if err != nil {
+			http.Error(w, `{"error":"unknown account"}`, http.StatusForbidden)
+			return
+		}
+		if err := s.Budgets.SetBudget(ctx, userID, cur, minor); err != nil {
+			span.RecordError(err)
+			s.Log.ErrorContext(ctx, "recording the budget failed", "error", err)
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"monthly_minor": minor, "currency": cur})
 	})
 }
 

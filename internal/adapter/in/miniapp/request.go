@@ -97,3 +97,25 @@ func (r LoanRequest) Validate() (app.LoanDraft, error) {
 		},
 	}, nil
 }
+
+// BudgetRequest is what the budget form posts.
+type BudgetRequest struct {
+	MonthlyMajor float64 `json:"monthly_major"`
+	Currency     string  `json:"currency"`
+}
+
+// Validate turns a posted budget into minor units.
+func (r BudgetRequest) Validate() (string, int64, error) {
+	cur, err := money.Lookup(r.Currency)
+	if err != nil {
+		return "", 0, fmt.Errorf("%w: currency %q", ErrInvalid, r.Currency)
+	}
+	if math.IsNaN(r.MonthlyMajor) || math.IsInf(r.MonthlyMajor, 0) || r.MonthlyMajor < 0 {
+		return "", 0, fmt.Errorf("%w: a budget cannot be negative", ErrInvalid)
+	}
+	minor := math.Round(r.MonthlyMajor * math.Pow10(int(cur.Exponent)))
+	if minor > float64(math.MaxInt64/1000) {
+		return "", 0, fmt.Errorf("%w: budget too large", ErrInvalid)
+	}
+	return cur.Code, int64(minor), nil
+}

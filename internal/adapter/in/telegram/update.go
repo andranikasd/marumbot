@@ -58,6 +58,7 @@ const (
 	KindAdd      = "add"
 	KindBudget   = "budget"
 	KindLanguage = "language"
+	KindAdvice   = "advice"   // what should I do, given everything on file
 	KindText     = "text"     // free text, meaningful only inside a conversation
 	KindCallback = "callback" // an inline button
 	KindIgnore   = "ignore"   // understood, and deliberately not acted on
@@ -144,6 +145,8 @@ func classify(text string) (kind, arg string) {
 		return KindAdd, arg
 	case "budget":
 		return KindBudget, arg
+	case "advice", "plan":
+		return KindAdvice, arg
 	case "language", "lang":
 		return KindLanguage, arg
 	default:

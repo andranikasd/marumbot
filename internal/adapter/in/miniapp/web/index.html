@@ -50,6 +50,23 @@
 <h1 data-i18n="title">Ավելացնել վարկ</h1>
 <p class="lede" data-i18n="lede">Մուտքագրեք վարկի պայմանագրի տվյալները։</p>
 
+<form id="budget-form" novalidate hidden>
+  <div class="field">
+    <label for="monthly" data-i18n="budget.monthly">Ամսական գումար</label>
+    <div class="row">
+      <input id="monthly" name="monthly" inputmode="decimal" required>
+      <select id="budget-currency" name="budget-currency" style="flex:0 0 96px">
+        <option value="AMD" selected>AMD</option>
+        <option value="USD">USD</option>
+        <option value="EUR">EUR</option>
+        <option value="RUB">RUB</option>
+      </select>
+    </div>
+    <p class="hint" data-i18n="budget.hint">Որքա՞ն կարող եք ամսական հատկացնել բոլոր վարկերին։</p>
+    <p class="error" id="e-monthly"></p>
+  </div>
+</form>
+
 <form id="f" novalidate>
   <div class="field">
     <label for="lender" data-i18n="lender">Բանկ</label>
