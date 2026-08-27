@@ -31,7 +31,7 @@ WITH new_loan AS (
     )
     SELECT $6, id, 1, $7, $8, $9, $10, $7, $11, $12, $13, $14,
            (SELECT id FROM allocation_policy_versions
-             WHERE policy_key = 'am-civil-code-358' ORDER BY version DESC LIMIT 1),
+             WHERE policy_key = 'am-consumer-credit-prepayment' ORDER BY version DESC LIMIT 1),
            '{}'::jsonb, 1
       FROM new_loan
     RETURNING id AS contract_id, loan_id
@@ -60,12 +60,14 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        c.nominal_rate::text, c.repayment_type, c.day_count,
        c.start_date::text, c.maturity_date::text, c.payment_day,
        c.rounding_mode, c.rounding_unit_minor,
-       s.principal_minor, s.as_of::text, s.trust
+       s.principal_minor, s.as_of::text, s.trust,
+       coalesce(p.excess_rule, 'unknown')
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
          WHERE v.loan_id = l.id ORDER BY v.version DESC LIMIT 1
        ) c ON true
+  LEFT JOIN allocation_policy_versions p ON p.id = c.allocation_policy_version_id
   LEFT JOIN LATERAL (
         SELECT * FROM loan_snapshots sn
          WHERE sn.loan_id = l.id ORDER BY sn.as_of DESC, sn.captured_at DESC LIMIT 1
@@ -78,15 +80,18 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
 -- One budget per user per currency. Allocating a dram budget across a dollar
 -- loan needs an exchange rate and there is no validated source for one, so the
 -- currency is part of the key rather than a conversion.
-INSERT INTO budgets (user_id, currency, monthly_amount_minor, overrides_schema_version)
-VALUES ($1, $2, $3, 1)
+-- A pay day of zero means "not stated" and keeps whatever was stored, so the
+-- text flow, which only asks for an amount, does not erase the form's answer.
+INSERT INTO budgets (user_id, currency, monthly_amount_minor, overrides_schema_version, pay_day)
+VALUES ($1, $2, $3, 1, $4)
 ON CONFLICT (user_id, currency) DO UPDATE
    SET monthly_amount_minor = EXCLUDED.monthly_amount_minor,
+       pay_day = CASE WHEN EXCLUDED.pay_day > 0 THEN EXCLUDED.pay_day ELSE budgets.pay_day END,
        updated_at = now()
 RETURNING monthly_amount_minor;
 
 -- name: GetBudget
-SELECT currency, monthly_amount_minor FROM budgets
+SELECT currency, monthly_amount_minor, pay_day FROM budgets
  WHERE user_id = $1 ORDER BY monthly_amount_minor DESC LIMIT 1;
 
 -- name: UpdateLoanForUser

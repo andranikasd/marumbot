@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/andranikasd/marumbot/internal/i18n"
+	"github.com/andranikasd/marumbot/pkg/core/allocation"
 	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 	"github.com/andranikasd/marumbot/pkg/core/money"
 	"github.com/andranikasd/marumbot/pkg/core/plan"
@@ -51,14 +52,20 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 		return w.Send.SendMessage(ctx, chat, b.String(), w.mainMenu(l))
 	}
 
+	cash := plan.Cash{Monthly: budget.Monthly, Day: budget.PayDay}
+	if budget.PayDay > 0 {
+		b.WriteString(i18n.T(l, "advice.payday", budget.PayDay) + "\n")
+	}
+
 	if compare {
-		outs, err := plan.CompareAll(positions, budget.Monthly)
-		if err != nil {
-			return fmt.Errorf("comparing plans: %w", err)
-		}
 		b.WriteString("\n<b>" + i18n.T(l, "advice.compare") + "</b>\n")
-		for _, o := range outs {
-			b.WriteString("\n" + i18n.T(l, goalKey(o.Goal)) + "\n")
+		for _, g := range []plan.Goal{plan.PayLeastInterest, plan.FinishSoonest, plan.FreeUpMonthly} {
+			rep, err := plan.Search(positions, cash, g)
+			if err != nil {
+				return fmt.Errorf("searching %s: %w", g, err)
+			}
+			o := rep.Best
+			b.WriteString("\n" + i18n.T(l, goalKey(g)) + "\n")
 			b.WriteString(i18n.T(l, "advice.months", o.Months) + "\n")
 			b.WriteString(i18n.T(l, "advice.interest", o.TotalInterest.String()) + "\n")
 			if o.ClearedFirst != "" {
@@ -70,19 +77,15 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 		return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l))
 	}
 
-	o, err := plan.Simulate(positions, budget.Monthly, goal)
+	rep, err := plan.Search(positions, cash, goal)
 	if err != nil {
-		return fmt.Errorf("simulating %s: %w", goal, err)
+		return fmt.Errorf("searching %s: %w", goal, err)
 	}
+	o := rep.Best
 
 	b.WriteString("\n<b>" + i18n.T(l, goalKey(goal)) + "</b>\n")
-	if o.FirstTarget != "" && o.FirstExtra.Sign() > 0 {
-		b.WriteString(i18n.T(l, "advice.do",
-			o.FirstExtra.String(), html.EscapeString(o.FirstTarget)) + "\n")
-	} else {
-		b.WriteString(i18n.T(l, "advice.no_surplus") + "\n")
-	}
-	b.WriteString(i18n.T(l, "advice.remaining", o.NextMonthOwed.String()) + "\n")
+	writeActions(&b, l, o.Actions)
+	b.WriteString("\n" + i18n.T(l, "advice.remaining", o.NextMonthOwed.String()) + "\n")
 	b.WriteString(i18n.T(l, "advice.months", o.Months) + "\n")
 	b.WriteString(i18n.T(l, "advice.interest", o.TotalInterest.String()) + "\n")
 	if o.ClearedFirst != "" {
@@ -92,8 +95,69 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 			b.WriteString(i18n.T(l, "advice.frees", o.MonthlyFreed.String()) + "\n")
 		}
 	}
-	b.WriteString("\n<i>" + i18n.T(l, "advice.why") + "</i>")
+	writeSearchSummary(&b, l, rep, positions)
 	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l))
+}
+
+// writeActions lists the first month as dated payments: what to pay, when, to
+// which loan, and what an early payment saves. The instalments are listed too,
+// because "pay the extra on the 5th" is only half an instruction when the
+// instalment is still due on the 20th.
+func writeActions(b *strings.Builder, l i18n.Locale, acts []plan.Action) {
+	var extra int
+	for _, a := range acts {
+		name := html.EscapeString(a.Loan)
+		switch {
+		case a.Extra && a.Saves.Sign() > 0:
+			b.WriteString(i18n.T(l, "advice.step_early", a.On.String(), a.Amount.String(), name, a.Saves.String()) + "\n")
+			extra++
+		case a.Extra:
+			b.WriteString(i18n.T(l, "advice.step_extra", a.On.String(), a.Amount.String(), name) + "\n")
+			extra++
+		default:
+			b.WriteString(i18n.T(l, "advice.step_due", a.On.String(), a.Amount.String(), name) + "\n")
+		}
+	}
+	if extra == 0 {
+		b.WriteString(i18n.T(l, "advice.no_surplus") + "\n")
+	}
+}
+
+// writeSearchSummary says how the answer was found and what it beat, so the
+// reader can tell an exhaustive search from a shortlist and can see the cost
+// of the strategies they may have heard of.
+func writeSearchSummary(b *strings.Builder, l i18n.Locale, rep plan.Report, positions []plan.Position) {
+	b.WriteString("\n")
+	if rep.Exhaustive {
+		b.WriteString(i18n.T(l, "advice.evaluated", rep.Evaluated) + "\n")
+	} else {
+		b.WriteString(i18n.T(l, "advice.evaluated_named", rep.Evaluated) + "\n")
+	}
+	if d, err := rep.Avalanche.TotalInterest.Sub(rep.Best.TotalInterest); err == nil && d.Sign() > 0 {
+		b.WriteString(i18n.T(l, "advice.vs_avalanche", d.String()) + "\n")
+	}
+	if d, err := rep.Snowball.TotalInterest.Sub(rep.Best.TotalInterest); err == nil && d.Sign() > 0 {
+		b.WriteString(i18n.T(l, "advice.vs_snowball", d.String()) + "\n")
+	}
+	if rep.TimingSaving.Sign() > 0 {
+		b.WriteString(i18n.T(l, "advice.timing", rep.TimingSaving.String()) + "\n")
+	}
+	switch {
+	case !anyReducesOnPayment(positions):
+		b.WriteString(i18n.T(l, "advice.rule_unknown") + "\n")
+	case rep.Best.Policy.Timing == plan.OnDue && rep.TimingSaving.Sign() == 0 && !rep.Best.TimingCredited:
+		b.WriteString(i18n.T(l, "advice.set_payday") + "\n")
+	}
+	b.WriteString("<i>" + i18n.T(l, "advice.why") + "</i>")
+}
+
+func anyReducesOnPayment(ps []plan.Position) bool {
+	for _, p := range ps {
+		if p.Excess == allocation.ExcessReducePrincipal {
+			return true
+		}
+	}
+	return false
 }
 
 // positions turns stored loans into what the simulator needs, and totals what
@@ -137,7 +201,7 @@ func (w *Worker) positions(ctx context.Context, loans []UserLoan) ([]plan.Positi
 		}
 		out = append(out, plan.Position{
 			ID: ln.ID, Name: ln.Name, Contract: ln.Contract,
-			Balance: ln.Balance, From: ln.AsOf,
+			Balance: ln.Balance, From: ln.AsOf, Excess: ln.Excess,
 		})
 	}
 	return out, owed, required, cur, nil

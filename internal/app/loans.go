@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/andranikasd/marumbot/pkg/core/allocation"
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
@@ -57,6 +58,10 @@ type UserLoan struct {
 	// imported_verified. Only a confirmed figure resets drift, so this decides
 	// whether a number is shown as reliable or as indicative.
 	Trust string
+	// Excess is the lender's rule for money paid beyond the instalment, from
+	// the allocation policy the contract names. The planner credits early
+	// payment only under ExcessReducePrincipal.
+	Excess allocation.ExcessRule
 }
 
 // Confirmed reports whether the balance came from the lender rather than the
@@ -74,12 +79,16 @@ type LoanReader interface {
 type Budget struct {
 	Currency string
 	Monthly  money.Amount
-	Set      bool
+	// PayDay is the day of the month the money arrives, 1..31, or 0 when the
+	// borrower has not said.
+	PayDay int
+	Set    bool
 }
 
 // BudgetStore records and reads a monthly budget.
 type BudgetStore interface {
-	SetBudget(ctx context.Context, userID, currency string, minor int64) error
+	// SetBudget records the amount; a payDay of zero keeps the stored one.
+	SetBudget(ctx context.Context, userID, currency string, minor int64, payDay int) error
 	Budget(ctx context.Context, userID string) (Budget, error)
 }
 
