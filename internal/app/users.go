@@ -22,6 +22,10 @@ type Account struct {
 type UserStore interface {
 	UpsertByTelegram(ctx context.Context, in UpsertUser) (Account, error)
 	Locale(ctx context.Context, userID string) (locale, timezone string, err error)
+	// ByTelegramTag finds an existing account from the hashed identifier. It
+	// never creates one: the Mini App is only reachable from a bot message, so
+	// an account that does not exist means something is wrong rather than new.
+	ByTelegramTag(ctx context.Context, tag string) (userID string, err error)
 	SetLocale(ctx context.Context, userID, locale string) error
 }
 

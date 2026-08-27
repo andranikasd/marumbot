@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log/slog"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/propagation"
@@ -49,6 +51,7 @@ type Clock interface{ Now() time.Time }
 type Worker struct {
 	Inbox   InboxStore
 	Users   UserStore
+	Loans   LoanReader
 	Chats   ChatResolver
 	Send    Sender
 	Clock   Clock
@@ -152,9 +155,7 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "add.open"), w.addButton(l))
 
 	case KindLoans:
-		// No loans can exist yet: nothing writes them. Saying so plainly is
-		// better than an empty list that looks like a failure.
-		return w.Send.SendMessage(ctx, chat, i18n.T(l, "loans.none"), nil)
+		return w.listLoans(ctx, c.UserID, chat, l)
 
 	case KindBudget:
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "budget.prompt"), nil)
@@ -169,6 +170,34 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 		return w.Send.SendMessage(ctx, chat, w.helpText(l), nil)
 	}
 	return fmt.Errorf("unknown command kind %q", c.Kind)
+}
+
+// listLoans renders the borrower's loans.
+//
+// Each figure carries how it was established. A balance the borrower typed is
+// shown as indicative, because only a lender-confirmed one resets drift -- and
+// a planner that presents a guess with the same confidence as a bank statement
+// is the thing this product exists not to be.
+func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18n.Locale) error {
+	loans, err := w.Loans.LoansForUser(ctx, userID, 25)
+	if err != nil {
+		return fmt.Errorf("listing loans: %w", err)
+	}
+	if len(loans) == 0 {
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "loans.none"), w.mainMenu(l))
+	}
+
+	var b strings.Builder
+	b.WriteString("<b>" + i18n.T(l, "loans.title") + "</b>\n")
+	for _, ln := range loans {
+		b.WriteString("\n<b>" + html.EscapeString(ln.Name) + "</b>\n")
+		b.WriteString(i18n.T(l, "loan.balance", ln.Balance.String()) + "\n")
+		b.WriteString(i18n.T(l, "loan.rate", ln.Rate) + "\n")
+		if ln.Trust == "user_entered" {
+			b.WriteString("<i>" + i18n.T(l, "reliability.stale", ln.MaturityDate) + "</i>\n")
+		}
+	}
+	return w.Send.SendMessage(ctx, chat, b.String(), w.mainMenu(l))
 }
 
 func (w *Worker) callback(ctx context.Context, userID string, chat int64, data string) error {

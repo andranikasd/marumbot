@@ -64,3 +64,13 @@ func (s *Store) ChatCipher(ctx context.Context, userID string) ([]byte, int, err
 	}
 	return box, ver, err
 }
+
+// ByTelegramTag finds the account behind a hashed Telegram identifier.
+func (s *Store) ByTelegramTag(ctx context.Context, tag string) (string, error) {
+	var id string
+	err := s.pool.QueryRow(ctx, q("GetUserByTelegramTag"), tag).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", errors.New("postgres: no account for that identity")
+	}
+	return id, err
+}
