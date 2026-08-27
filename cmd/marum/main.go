@@ -27,6 +27,7 @@ import (
 	"github.com/andranikasd/marumbot/internal/adapter/out/telegramclient"
 	"github.com/andranikasd/marumbot/internal/app"
 	"github.com/andranikasd/marumbot/internal/config"
+	"github.com/andranikasd/marumbot/internal/i18n"
 	"github.com/andranikasd/marumbot/internal/identity"
 	"github.com/andranikasd/marumbot/internal/obs"
 
@@ -132,7 +133,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	hook := &telegram.Webhook{
 		Inbox: store, Users: store, Cipher: cipher,
 		ServiceToken: cfg.ServiceToken, Timezone: cfg.DefaultTimezone,
-		Clock: sysclock.New(), Log: log,
+		Clock: sysclock.New(), Drain: worker.Drain, Log: log,
 	}
 
 	public := &http.Server{
@@ -174,6 +175,22 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 			}
 		}(s)
 	}
+
+	// Tell Telegram what this bot offers, in both languages, and point the chat
+	// menu button at the loan form. Without this the chat suggests nothing when
+	// a user types "/" and the Mini App has no permanent way in.
+	//
+	// Not fatal: a bot with no suggestions is worse to use but still works, and
+	// refusing to start because Telegram was briefly busy is worse than that.
+	go func() {
+		menuCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := app.PublishMenus(menuCtx, bot, cfg.MiniAppURL); err != nil {
+			log.Warn("publishing the command menus failed", "err", err)
+		} else {
+			log.Info("command menus published", "languages", len(i18n.Supported()))
+		}
+	}()
 
 	log.Info("marum listening",
 		"addr", cfg.Addr, "admin", cfg.AdminAddr, "mode", cfg.Mode, "env", cfg.Env,

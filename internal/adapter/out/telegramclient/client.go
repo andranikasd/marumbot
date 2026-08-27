@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/andranikasd/marumbot/internal/app"
 	"github.com/andranikasd/marumbot/internal/obs"
 )
 
@@ -128,4 +129,40 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// SetMyCommands publishes the command list for one language.
+//
+// Without this the chat offers no suggestions at all: a user has to know the
+// command names and type them exactly. Telegram scopes the list by language
+// code, so Armenian and English users each see their own -- and the default
+// scope, sent with an empty language, is what everyone else gets.
+func (c *Client) SetMyCommands(ctx context.Context, lang string, cmds []app.BotCommand) error {
+	ctx, span := obs.ComponentSender.CallService(ctx, "telegram", "setMyCommands")
+	defer span.End()
+
+	body := map[string]any{"commands": cmds}
+	if lang != "" {
+		body["language_code"] = lang
+	}
+	return c.call(ctx, "setMyCommands", body)
+}
+
+// SetChatMenuButton replaces the chat's menu button with one that opens the
+// Mini App.
+//
+// This is the difference between a form a user can find and one they cannot.
+// An inline button only exists inside the message that carried it, and scrolls
+// away; the menu button sits beside the message box permanently.
+func (c *Client) SetChatMenuButton(ctx context.Context, text, url string) error {
+	ctx, span := obs.ComponentSender.CallService(ctx, "telegram", "setChatMenuButton")
+	defer span.End()
+
+	return c.call(ctx, "setChatMenuButton", map[string]any{
+		"menu_button": map[string]any{
+			"type":    "web_app",
+			"text":    text,
+			"web_app": map[string]any{"url": url},
+		},
+	})
 }

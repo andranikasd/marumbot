@@ -146,11 +146,15 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 			i18n.T(l, "start.greeting")+"\n\n"+i18n.T(l, "start.no_ai"), w.mainMenu(l))
 
 	case KindHelp:
-		return w.Send.SendMessage(ctx, chat, w.helpText(l), nil)
+		return w.Send.SendMessage(ctx, chat, w.helpText(l), w.mainMenu(l))
 
 	case KindAdd:
 		if w.MiniApp == "" {
-			return w.Send.SendMessage(ctx, chat, i18n.T(l, "error.generic"), nil)
+			// Say what is actually wrong. "Something went wrong" sent a user
+			// hunting for a bug in the command when the cause was a variable
+			// the container never received.
+			w.Log.ErrorContext(ctx, "the mini app url is not configured; /add cannot offer a form")
+			return w.Send.SendMessage(ctx, chat, i18n.T(l, "add.unavailable"), w.mainMenu(l))
 		}
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "add.open"), w.addButton(l))
 
@@ -158,7 +162,7 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 		return w.listLoans(ctx, c.UserID, chat, l)
 
 	case KindBudget:
-		return w.Send.SendMessage(ctx, chat, i18n.T(l, "budget.prompt"), nil)
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "budget.prompt"), w.mainMenu(l))
 
 	case KindLanguage:
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "language.prompt"), languageMenu())
@@ -167,7 +171,14 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 		return w.callback(ctx, c.UserID, chat, p.Data)
 
 	case KindText:
-		return w.Send.SendMessage(ctx, chat, w.helpText(l), nil)
+		// A reply-keyboard button sends its own label as a message, so this is
+		// where a tap arrives. Matching runs across every locale, not just the
+		// current one: a user who switches language still has the old keyboard
+		// on screen until they tap something.
+		if kind, ok := i18n.MatchButton(p.Text); ok {
+			return w.apply(ctx, InboundCommand{UserID: c.UserID, Kind: kind, Payload: c.Payload})
+		}
+		return w.Send.SendMessage(ctx, chat, w.helpText(l), w.mainMenu(l))
 	}
 	return fmt.Errorf("unknown command kind %q", c.Kind)
 }
@@ -209,6 +220,9 @@ func (w *Worker) callback(ctx context.Context, userID string, chat int64, data s
 		if err := w.Users.SetLocale(ctx, userID, string(want)); err != nil {
 			return fmt.Errorf("setting locale: %w", err)
 		}
+		// Redraw the keyboard in the new language. Without this the buttons stay
+		// in the old one until the user finds another reason to receive a
+		// keyboard, which makes the switch look like it did not work.
 		return w.Send.SendMessage(ctx, chat, i18n.T(want, "language.set"), w.mainMenu(want))
 	}
 	return nil
@@ -223,34 +237,60 @@ func (w *Worker) helpText(l i18n.Locale) string {
 		i18n.T(l, "help.help")
 }
 
-// mainMenu is a keyboard rather than a list of commands to type. A borrower on a
-// phone should not have to remember a command name to see what they owe.
+// mainMenu is the persistent keyboard under the message box.
+//
+// A reply keyboard rather than an inline one, because an inline keyboard lives
+// inside the message that carried it and scrolls out of reach; this stays put.
+// A borrower on a phone should never have to remember a command name to see
+// what they owe.
+//
+// The first button opens the loan form directly. web_app works on a reply
+// keyboard as well as an inline one, which is what lets the form be one tap
+// from anywhere in the conversation rather than buried behind /add.
 func (w *Worker) mainMenu(l i18n.Locale) any {
 	rows := [][]map[string]any{}
 	if w.MiniApp != "" {
-		rows = append(rows, []map[string]any{{
-			"text":    i18n.T(l, "add.button"),
-			"web_app": map[string]any{"url": w.MiniApp},
-		}})
+		rows = append(rows, []map[string]any{webAppButton(i18n.Button(l, KindAdd), w.MiniApp)})
 	}
-	if len(rows) == 0 {
-		return nil
+	rows = append(rows,
+		[]map[string]any{button(i18n.Button(l, KindLoans)), button(i18n.Button(l, KindBudget))},
+		[]map[string]any{button(i18n.Button(l, KindLanguage)), button(i18n.Button(l, KindHelp))},
+	)
+	return map[string]any{
+		"keyboard":                rows,
+		"resize_keyboard":         true,
+		"is_persistent":           true,
+		"input_field_placeholder": i18n.T(l, "kb.placeholder"),
 	}
-	return map[string]any{"inline_keyboard": rows}
 }
 
 func (w *Worker) addButton(l i18n.Locale) any {
-	return map[string]any{"inline_keyboard": [][]map[string]any{{{
-		"text":    i18n.T(l, "add.button"),
-		"web_app": map[string]any{"url": w.MiniApp},
-	}}}}
+	return map[string]any{"inline_keyboard": [][]map[string]any{{
+		webAppButton(i18n.T(l, "add.button"), w.MiniApp),
+	}}}
 }
+
+// button is a plain keyboard button. Tapping it sends its own label as a
+// message, which is why every label has to map back to a command.
+func button(label string) map[string]any {
+	return map[string]any{keyText: label}
+}
+
+// webAppButton opens the Mini App directly, without a round trip through the
+// bot to fetch a link.
+func webAppButton(label, url string) map[string]any {
+	return map[string]any{keyText: label, "web_app": map[string]any{"url": url}}
+}
+
+// keyText is Telegram's JSON field, not a command kind. Naming it keeps the two
+// apart -- they happen to be the same string and mean entirely different things.
+const keyText = "text"
 
 func languageMenu() any {
 	row := []map[string]any{}
 	for _, l := range i18n.Supported() {
 		row = append(row, map[string]any{
-			"text":          l.Name(),
+			keyText:         l.Name(),
 			"callback_data": "lang:" + string(l),
 		})
 	}

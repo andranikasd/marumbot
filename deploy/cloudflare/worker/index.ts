@@ -54,6 +54,13 @@ export class MarumApp extends Container<Env> {
       MARUM_DATABASE_URL: env.MARUM_DATABASE_URL,
       MARUM_BOT_TOKEN: env.MARUM_BOT_TOKEN,
       MARUM_WEBHOOK_SECRET: env.MARUM_WEBHOOK_SECRET,
+      // Proves to the container that a request arrived through this Worker.
+      MARUM_SERVICE_TOKEN: env.MARUM_SERVICE_TOKEN,
+      // Absolute URL of the loan form. Without it /add has no button to offer
+      // and answers with an error, which is what shipped: the secret existed,
+      // the container never saw it, and the failure looked like a bug in the
+      // command rather than a missing variable.
+      MARUM_MINIAPP_URL: env.MARUM_MINIAPP_URL ?? "",
       MARUM_IDENTITY_KEY: env.MARUM_IDENTITY_KEY,
       // Absent leaves the admin listener down rather than unauthenticated,
       // which is the behaviour we want if the secret was never set.
@@ -100,6 +107,7 @@ interface Env {
   MARUM_IDENTITY_KEY: string;
   MARUM_ADMIN_USER?: string;
   MARUM_ADMIN_PASSWORD_HASH?: string;
+  MARUM_MINIAPP_URL?: string;
   OTEL_EXPORTER_OTLP_ENDPOINT?: string;
   OTEL_EXPORTER_OTLP_HEADERS?: string;
   PYROSCOPE_SERVER_ADDRESS?: string;
