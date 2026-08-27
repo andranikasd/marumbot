@@ -32,6 +32,7 @@ const (
 	KindBudget   = "budget"
 	KindLanguage = "language"
 	KindAdvice   = "advice"
+	KindWorking  = "working"
 	KindText     = "text"
 	KindCallback = "callback"
 	KindIgnore   = "ignore"
@@ -59,6 +60,7 @@ type Worker struct {
 	Inbox     InboxStore
 	Users     UserStore
 	Loans     LoanReader
+	Editor    LoanEditor
 	Budgets   BudgetStore
 	Convos    ConversationStore
 	Reminders ReminderStore
@@ -282,6 +284,7 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 	}
 
 	var b strings.Builder
+	rows := [][]map[string]any{}
 	b.WriteString("<b>" + i18n.T(l, "loans.title") + "</b>\n")
 	for _, ln := range loans {
 		b.WriteString("\n<b>" + html.EscapeString(ln.Name) + "</b>\n")
@@ -305,8 +308,16 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 		if !ln.Confirmed() {
 			b.WriteString("<i>" + i18n.T(l, "reliability.yours", ln.AsOf.String()) + "</i>\n")
 		}
+		rows = append(rows, []map[string]any{{
+			keyText:     i18n.T(l, "working.button", ln.Name),
+			keyCallback: "work:" + ln.ID,
+		}})
 	}
-	return w.Send.SendMessage(ctx, chat, b.String(), w.mainMenu(l))
+	markup := w.mainMenu(l)
+	if len(rows) > 0 {
+		markup = map[string]any{keyInline: rows}
+	}
+	return w.Send.SendMessage(ctx, chat, b.String(), markup)
 }
 
 // percent renders a rate the way a borrower reads it. The engine holds parts
@@ -326,6 +337,16 @@ func percent(r money.Rate) string {
 
 func (w *Worker) callback(ctx context.Context, userID string, chat int64, data string) error {
 	// The reader changing the question rather than accepting the answer.
+	// "Show me how you got that." The only answer that settles a doubt about
+	// arithmetic is the arithmetic.
+	if strings.HasPrefix(data, "work:") {
+		locale, _, err := w.Users.Locale(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("reading locale: %w", err)
+		}
+		return w.showWorking(ctx, userID, chat, i18n.Locale(locale), data[5:])
+	}
+
 	if strings.HasPrefix(data, "goal:") {
 		locale, _, err := w.Users.Locale(ctx, userID)
 		if err != nil {
@@ -357,6 +378,35 @@ func (w *Worker) callback(ctx context.Context, userID string, chat int64, data s
 		return w.Send.SendMessage(ctx, chat, i18n.T(want, "language.set"), w.mainMenu(want))
 	}
 	return nil
+}
+
+// showWorking prints the arithmetic behind a loan's next instalments.
+//
+// Three rows, not the whole schedule: enough to check the method against a
+// statement, few enough to read on a phone. Someone who can reproduce three
+// rows can reproduce sixty.
+func (w *Worker) showWorking(ctx context.Context, userID string, chat int64, l i18n.Locale, loanID string) error {
+	ln, err := w.Editor.LoanForUser(ctx, loanID, userID)
+	if err != nil {
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "error.generic"), w.mainMenu(l))
+	}
+	s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
+	if err != nil || len(s.Rows) == 0 {
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "loan.no_schedule"), w.mainMenu(l))
+	}
+
+	var b strings.Builder
+	b.WriteString("<b>" + html.EscapeString(ln.Name) + "</b>\n")
+	b.WriteString("<i>" + i18n.T(l, "working.intro") + "</i>\n")
+	for i, r := range s.Rows {
+		if i == 3 {
+			break
+		}
+		b.WriteString("\n<pre>" + html.EscapeString(
+			amortisation.Explain(r, ln.Contract.NominalRate, ln.Contract.DayCount, ln.Contract.Rounding)) + "</pre>")
+	}
+	b.WriteString("\n" + i18n.T(l, "working.check"))
+	return w.Send.SendMessage(ctx, chat, b.String(), w.mainMenu(l))
 }
 
 func (w *Worker) helpText(l i18n.Locale) string {
