@@ -20,13 +20,12 @@ func (w *Worker) askBudget(ctx context.Context, userID string, chat int64, l i18
 	if err := w.Convos.SetState(ctx, userID, StateAwaitingBudget); err != nil {
 		return fmt.Errorf("recording the question: %w", err)
 	}
-	markup := w.mainMenu(l)
-	if w.MiniApp != "" {
-		markup = map[string]any{keyInline: [][]map[string]any{{
-			webAppButton(i18n.T(l, "budget.button"), w.MiniApp+"?screen=budget"),
-		}}}
+	text := i18n.T(l, "budget.prompt_or_type")
+	// The figure the answer has to clear, so it is chosen against a fact.
+	if req, _, err := w.RequiredThisMonth(ctx, userID); err == nil && req.Sign() > 0 {
+		text = i18n.T(l, "budget.required_hint", req.String()) + "\n\n" + text
 	}
-	return w.Send.SendMessage(ctx, chat, i18n.T(l, "budget.prompt_or_type"), markup)
+	return w.Send.SendMessage(ctx, chat, text, w.budgetMarkup(l))
 }
 
 // takeBudget interprets a reply to that question.
@@ -34,6 +33,10 @@ func (w *Worker) askBudget(ctx context.Context, userID string, chat int64, l i18
 // Returns false when the text is not a number, so an ordinary message during a
 // pending question is still treated as an ordinary message rather than
 // swallowed as a malformed answer.
+//
+// The confirmation says what the figure means: the surplus over this month's
+// instalments and a button to the plan, or a warning that it does not cover
+// them. A bare "set" leaves the reader to find out from the next report.
 func (w *Worker) takeBudget(ctx context.Context, userID string, chat int64, l i18n.Locale, text string) (bool, error) {
 	minor, cur, ok := parseAmount(text, w.DefaultCurrency)
 	if !ok {
@@ -45,8 +48,28 @@ func (w *Worker) takeBudget(ctx context.Context, userID string, chat int64, l i1
 	if err := w.Convos.ClearState(ctx, userID); err != nil {
 		w.Log.WarnContext(ctx, "clearing the conversation state failed", "error", err)
 	}
-	return true, w.Send.SendMessage(ctx, chat,
-		i18n.T(l, "budget.set", money.FromMinor(minor, cur).String()), w.mainMenu(l))
+
+	monthly := money.FromMinor(minor, cur)
+	req, reqCur, err := w.RequiredThisMonth(ctx, userID)
+	if err != nil || req.Sign() <= 0 || reqCur.Code != cur.Code {
+		return true, w.Send.SendMessage(ctx, chat, i18n.T(l, "budget.set", monthly.String()), w.mainMenu(l))
+	}
+	if monthly.Cmp(req) < 0 {
+		return true, w.Send.SendMessage(ctx, chat,
+			i18n.T(l, "budget.set_low", monthly.String(), req.String()), w.budgetMarkup(l))
+	}
+	msg := i18n.T(l, "budget.set", monthly.String())
+	if surplus, err := monthly.Sub(req); err == nil && surplus.Sign() > 0 {
+		msg += "\n" + i18n.T(l, "budget.set_surplus", surplus.String())
+	}
+	return true, w.Send.SendMessage(ctx, chat, msg, planButton(l))
+}
+
+// planButton is the one tap from "budget saved" to "what do I do".
+func planButton(l i18n.Locale) any {
+	return map[string]any{keyInline: [][]map[string]any{{
+		{keyText: i18n.T(l, "btn.plan"), keyCallback: "goal:cheapest"},
+	}}}
 }
 
 // parseAmount reads a money figure the way a person writes one.

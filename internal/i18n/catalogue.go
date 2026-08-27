@@ -5,263 +5,306 @@ package i18n
 // Terminology matters more than fluency here. A borrower reading about their
 // own debt needs the words their lender used, so these follow standard Armenian
 // banking usage: վարկ for a loan, մայր գումար for principal, տոկոսադրույք for
-// the interest rate, մարման գրաֆիկ for a repayment schedule. "Marum" itself is
-// մարում, the repayment of a debt.
+// the interest rate, մարման գրաֆիկ for a repayment schedule, and վճարում for
+// the monthly instalment -- the word on the bank's own schedule. "Marum"
+// itself is մարում, the repayment of a debt.
+//
+// English uses "instalment" for the contractual monthly figure and "payment"
+// for any money handed over, so an extra payment is never an instalment.
+//
+// Messages go out in Telegram's HTML mode, so a string may carry <b>, <i> and
+// <code>; anything a borrower typed is escaped before it is formatted in.
+// Numbers sit in <code> so they line up and stand out from the prose.
 //
 // Every key must exist in every locale. TestEveryKeyIsTranslated enforces it,
 // because a message that falls back to another language mid-conversation is how
 // a user stops trusting the numbers around it.
 var catalogue = map[Locale]map[string]string{
 	HY: {
-		// --- greeting and help ---
-		"start.greeting": "Բարի գալուստ Մարում 👋\n\n" +
-			"Ես կօգնեմ ձեզ հետևել ձեր վարկերին, հիշեցնեմ վճարումների մասին և հաշվարկեմ, " +
-			"թե ինչպես մարել դրանք ավելի քիչ գումարով։",
-		"start.no_ai": "Ոչ մի կանխատեսում։ Յուրաքանչյուր թիվ հաշվարկվում է " +
-			"հրապարակված բանաձևով՝ ձեր մուտքագրած տվյալների հիման վրա։",
-		"help.title":    "Հրամաններ",
-		"help.start":    "/start — սկսել",
-		"help.add":      "/add — ավելացնել վարկ",
-		"help.loans":    "/loans — իմ վարկերը",
-		"help.budget":   "/budget — ամսական բյուջե",
-		"help.language": "/language — լեզուն",
-		"help.help":     "/help — այս ցանկը",
+		// --- greeting ---
+		"start.greeting": "Բարև, ես Մարումն եմ 👋\n\n" +
+			"1️⃣ Ավելացնում եք վարկերը\n" +
+			"2️⃣ Նշում եք ամսական բյուջեն\n" +
+			"3️⃣ Ես ասում եմ՝ ում, երբ և որքան վճարել, որ տոկոսն ամենաքիչը լինի",
+		"start.next":     "👇 Սկսենք՝ սեղմեք «➕ Ավելացնել վարկ»։",
+		"start.language": "🌐 Prefer English? Tap «🌐 Լեզուն»։",
+		"start.no_ai":    "Ոչ մի կռահում․ ամեն թիվ հաշվարկվում է հրապարակված բանաձևով՝ ձեր տվյալներից։",
+
+		// --- how it works ---
+		"help.title": "❓ Ինչպե՞ս է աշխատում Մարումը",
+		"help.intro": "Դուք ավելացնում եք վարկերն ու բյուջեն։ Ես ստուգում եմ վճարման բոլոր " +
+			"հերթականություններն ու ժամկետները և ասում՝ որն է լավագույնը ձեր նպատակի համար։",
+		"help.goals":         "Երեք նպատակ՝",
+		"help.goal.cheapest": "💸 <b>Ամենաքիչ տոկոս</b> — բանկին ընդհանուր առմամբ ամենաքիչը վճարել։",
+		"help.goal.soonest":  "🏁 <b>Ամենաշուտ ավարտ</b> — բոլոր վարկերը փակել հնարավորինս շուտ, և տեսնել՝ ինչ կտա ավելի մեծ բյուջեն։",
+		"help.goal.relief":   "🌬 <b>Ամսական թեթևացում</b> — առաջին վարկը փակելուց հետո ամսական վճարն իջեցնել։",
+		"help.commands":      "Հրամաններ՝",
+		"help.add":           "/add — ավելացնել վարկ",
+		"help.advice":        "/advice — ի՞նչ անել այս ամիս",
+		"help.loans":         "/loans — իմ վարկերը",
+		"help.budget":        "/budget — ամսական բյուջե",
+		"help.language":      "/language — լեզուն",
+		"help.help":          "/help — այս բացատրությունը",
 
 		// Command descriptions, shown by Telegram in the "/" menu. Kept short:
 		// the client truncates them, and a description that needs a comma is
 		// describing too much.
 		"menu.add":      "Ավելացնել վարկ",
-		"menu.advice":   "Ի՞նչ անել հիմա",
+		"menu.advice":   "Ի՞նչ անել այս ամիս",
 		"menu.loans":    "Իմ վարկերը",
 		"menu.budget":   "Ամսական բյուջե",
 		"menu.language": "Լեզուն / Language",
-		"menu.help":     "Օգնություն",
+		"menu.help":     "Ինչպես է աշխատում",
 
 		// Keyboard buttons. Short enough to sit two to a row on a phone.
-		"btn.add":                   "➕ Ավելացնել վարկ",
-		"btn.loans":                 "📋 Իմ վարկերը",
-		"btn.budget":                "💰 Բյուջե",
-		"btn.language":              "🌐 Լեզուն",
-		"btn.help":                  "❓ Օգնություն",
-		"kb.placeholder":            "Ընտրեք կամ գրեք հրաման",
-		"btn.advice":                "💡 Ի՞նչ անել",
-		"advice.title":              "Ձեր վիճակը",
-		"advice.owed":               "Ընդհանուր պարտք՝ %s",
-		"advice.required":           "Այս ամիս պարտադիր՝ %s",
-		"advice.budget":             "Ձեր բյուջեն՝ %s",
-		"advice.why":                "Մեկ վարկի վրա կենտրոնանալը ավելի էժան է, քան գումարը բաշխելը։",
-		"advice.no_surplus":         "Բյուջեն ծածկում է պարտադիր վճարումները առանց ավելցուկի։",
-		"advice.set_budget":         "Նշեք ամսական բյուջեն՝ պլան ստանալու համար։",
-		"advice.nothing":            "Ակտիվ վարկ չկա։",
-		"goal.cheapest":             "💸 Ամենաքիչ տոկոս",
-		"goal.soonest":              "🏁 Ամենաշուտ ավարտ",
-		"goal.relief":               "🌬 Ամսական թեթևացում",
-		"advice.compare":            "⚖️ Համեմատել բոլորը",
-		"advice.do":                 "Այս ամիս ավելցուկը՝ %s, ուղղեք «%s» վարկին։",
-		"advice.remaining":          "Դրանից հետո կմնա՝ %s։",
-		"advice.months":             "Բոլոր վարկերը կփակվեն %d ամսում։",
-		"advice.interest":           "Ընդհանուր տոկոս մինչև վերջ՝ %s։",
-		"advice.first_clear":        "Առաջինը կփակվի «%s»-ը՝ %d-րդ ամսում։",
-		"advice.frees":              "Դա կազատի ամսական %s։",
-		"advice.payday":             "Աշխատավարձի օր՝ ամսի %d-ին",
-		"advice.this_month":         "Այս ամիս",
-		"advice.how":                "Ինչպես է հաշվարկվել",
-		"advice.row":                "Կփակվի %d ամսում, տոկոս՝ %s։",
-		"advice.row_flat":           "Ամսական՝ %s մինչև վերջ։",
-		"advice.row_relief":         "Ամսական՝ %s, ապա %s՝ %d-րդ ամսից։",
-		"advice.minimum":            "🐢 Միայն պարտադիրը",
-		"advice.ties_intro":         "Ինչու են տարբերակները համընկնում",
-		"advice.cheapest.head":      "Ամենաէժան ճանապարհը՝ %d ամիս, ընդհանուր տոկոս՝ %s։",
-		"advice.vs_minimum":         "Միայն պարտադիրը վճարելու համեմատ խնայում եք %s և ավարտում %d ամիս շուտ։",
-		"advice.soonest.head":       "Ձեր բյուջեով՝ %d ամիս, տոկոս՝ %s։ Ավելի շատ գումարով՝",
-		"advice.ladder":             "• %s ամսական → %d ամիս, տոկոս՝ %s",
-		"advice.budget_for":         "%d ամսում փակելու համար պետք է ամսական %s։",
-		"advice.relief.head":        "Ամսական վճարը %s-ից կիջնի %s-ի՝ սկսած %d-րդ ամսից։",
-		"advice.relief.none":        "Բյուջեն չի թույլ տալիս շուտով թեթևացում. մինչ առաջին վարկի փակումը վճարը նույնն է։",
-		"advice.relief.cost":        "Կփակվի %d ամսում, ընդհանուր տոկոս՝ %s։",
-		"advice.relief.vs_cheapest": "Դա %s-ով թանկ է ամենաէժան տարբերակից, որը կփակվեր %d ամսում։",
-		"advice.effect.shorten":     "Ենթադրություն՝ վաղաժամկետ մարումից հետո վճարը մնում է նույնը, ժամկետը կրճատվում է։",
-		"advice.effect.reduce":      "Ենթադրություն՝ վաղաժամկետ մարումից հետո բանկը վերահաշվարկում է (նվազեցնում) վճարը։",
-		"advice.tie.one_loan":       "Մեկ վարկ է՝ հերթականությունը նշանակություն չունի։",
-		"advice.tie.no_surplus":     "Ավելցուկ չկա՝ բոլոր տարբերակները վճարում են միայն պարտադիրը։",
-		"advice.tie.same_order":     "Ամենաբարձր տոկոսով վարկը նաև ամենափոքրն է՝ երկու հայտնի ռազմավարությունները նույնն են։",
-		"advice.step_due":           "📅 %s — %s պարտադիր վճար «%s»-ի համար։",
-		"advice.step_extra":         "➕ %s — %s լրացուցիչ «%s»-ին։",
-		"advice.step_early":         "⚡ %s — %s լրացուցիչ «%s»-ին՝ մինչև վճարման օրը. այս ամիս խնայում է %s։",
-		"advice.evaluated":          "Ստուգվել է վճարման %d տարբերակ՝ բոլոր հերթականություններն ու ժամկետները։",
-		"advice.evaluated_named":    "Ստուգվել է վճարման %d հայտնի ռազմավարություն։",
-		"advice.vs_avalanche":       "Ամենաբարձր տոկոսից սկսելու սովորական ձևից էժան է %s-ով։",
-		"advice.vs_snowball":        "Ամենափոքր մնացորդից սկսելուց էժան է %s-ով։",
-		"advice.timing":             "Դրանից %s-ը միայն վճարման օրվա ընտրությունից է։",
-		"advice.set_payday":         "Բյուջեում նշեք աշխատավարձի օրը՝ տեսնելու, թե վաղ վճարումը որքան կխնայի։",
-		"advice.rule_unknown":       "Ձեր բանկի վաղաժամկետ մարման կանոնը հաստատված չէ, ուստի վաղ վճարման խնայողությունը չի հաշվվել։",
-		"loan.remaining":            "Մնացած վճարումներ՝ %d",
-		"loan.no_schedule":          "Գրաֆիկը հասանելի չէ։",
-		"working.intro":             "Ահա հաշվարկը՝ քայլ առ քայլ։",
-		"working.check":             "Համեմատեք ձեր բանկի գրաֆիկի հետ։ Եթե տարբերվում է, գրեք մեզ՝ դա մեր սխալն է։",
-		"working.button":            "🔍 Ինչպե՞ս է հաշվարկվել՝ %s",
-		"reliability.yours":         "Ձեր նշած մնացորդը՝ %s դրությամբ։ Բանկի հաստատումից հետո ավելի ճշգրիտ կլինի։",
-		"budget.open":               "Բացեք ձևը՝ բյուջեն նշելու համար։",
-		"budget.button":             "Նշել բյուջեն",
-		"budget.prompt_or_type":     "Որքա՞ն կարող եք ամսական հատկացնել բոլոր վարկերին։\n\nԳրեք գումարը (օրինակ՝ 100000) կամ բացեք ձևը։",
-		"budget.not_a_number":       "Չհասկացա գումարը։ Գրեք միայն թիվ, օրինակ՝ 100000։",
+		"btn.add":        "➕ Ավելացնել վարկ",
+		"btn.advice":     "💡 Ի՞նչ անել",
+		"btn.loans":      "📋 Իմ վարկերը",
+		"btn.budget":     "💰 Բյուջե",
+		"btn.language":   "🌐 Լեզուն",
+		"btn.help":       "❓ Ինչպե՞ս է աշխատում",
+		"btn.plan":       "💡 Տեսնել պլանը",
+		"btn.manage":     "✏️ Կառավարել վարկերը",
+		"kb.placeholder": "Ընտրեք գործողություն",
+
+		// --- the advice report ---
+		"advice.title":    "💡 Ձեր պլանը",
+		"advice.currency": "Բոլոր գումարները՝ %s",
+		"advice.owed":     "Ընդհանուր պարտք",
+		"advice.required": "Այս ամիս պարտադիր",
+		"advice.budget":   "Բյուջե",
+		"advice.payday":   "Աշխատավարձ՝ ամսի %d-ին",
+
+		"goal.cheapest": "💸 Ամենաքիչ տոկոս",
+		"goal.soonest":  "🏁 Ամենաշուտ ավարտ",
+		"goal.relief":   "🌬 Ամսական թեթևացում",
+
+		"advice.this_month":  "📌 Այս ամիս",
+		"advice.step_due":    "☐ %s — <code>%s</code> → «%s»",
+		"advice.step_extra":  "☐ %s — <code>%s</code> → «%s» ➕ լրացուցիչ",
+		"advice.step_early":  "☐ %s — <code>%s</code> → «%s» ⚡ լրացուցիչ, մինչև վճարման օրը (խնայում է %s)",
+		"advice.no_surplus":  "Ավելցուկ չկա՝ միայն պարտադիր վճարումները։",
+		"advice.remaining":   "Ամսվա վերջում կմնա՝ <code>%s</code>",
+		"advice.first_clear": "Առաջինը կփակվի «%s»-ը՝ %d-րդ ամսում։",
+
+		"advice.result":             "📊 Արդյունք",
+		"advice.months_interest":    "Ավարտ՝ <code>%d</code> ամսում · ընդհանուր տոկոս՝ <code>%s</code>",
+		"advice.vs_minimum":         "Միայն պարտադիրը վճարելու համեմատ՝ խնայում եք <code>%s</code> և ավարտում %d ամիս շուտ։",
+		"advice.ladder_intro":       "Ավելի մեծ բյուջեով՝",
+		"advice.ladder":             "• <code>%s</code>/ամիս → %d ամիս, տոկոս՝ <code>%s</code>",
+		"advice.budget_for":         "%d ամսում ավարտելու համար պետք է <code>%s</code>/ամիս։",
+		"advice.relief.head":        "Ամսական վճարը <code>%s</code>-ից կիջնի <code>%s</code>-ի՝ %d-րդ ամսից։",
+		"advice.relief.none":        "Այս բյուջեով շուտով թեթևացում չի լինի․ մինչև առաջին վարկի փակումը վճարը նույնն է։",
+		"advice.relief.vs_cheapest": "Դա <code>%s</code>-ով թանկ է ամենաէժան տարբերակից, որը կավարտվեր %d ամսում։",
+
+		"advice.how":             "🔍 Ինչու",
+		"advice.evaluated":       "Ստուգվել է %d տարբերակ՝ բոլոր հերթականություններն ու ժամկետները։",
+		"advice.evaluated_named": "Ստուգվել է %d հայտնի ռազմավարություն։",
+		"advice.vs_avalanche":    "Ամենաբարձր տոկոսից սկսելուց էժան է <code>%s</code>-ով։",
+		"advice.vs_snowball":     "Ամենափոքր մնացորդից սկսելուց էժան է <code>%s</code>-ով։",
+		"advice.timing":          "Դրանից <code>%s</code>-ը միայն վճարման օրվա ընտրությունից է։",
+		"advice.effect.shorten":  "Ենթադրություն՝ վաղաժամկետ մարումից հետո վճարը մնում է նույնը, ժամկետը կրճատվում է։",
+		"advice.effect.reduce":   "Ենթադրություն՝ վաղաժամկետ մարումից հետո բանկը վերահաշվարկում (նվազեցնում) է վճարը։",
+		"advice.tie.one_loan":    "Մեկ վարկ է՝ հերթականությունը նշանակություն չունի։",
+		"advice.tie.no_surplus":  "Ավելցուկ չկա՝ բոլոր տարբերակները վճարում են միայն պարտադիրը։",
+		"advice.tie.same_order":  "Ամենաբարձր տոկոսով վարկը նաև ամենափոքրն է՝ երկու հայտնի ռազմավարությունները համընկնում են։",
+		"advice.set_payday":      "Բյուջեում նշեք աշխատավարձի օրը՝ տեսնելու, թե վաղ վճարելը որքան կխնայի։",
+		"advice.rule_unknown":    "Ձեր բանկի վաղաժամկետ մարման կանոնը հաստատված չէ, ուստի վաղ վճարման խնայողությունը հաշվված չէ։",
+		"advice.pick":            "Այլ նպատա՞կ — ընտրեք ներքևում։",
+
+		"advice.compare":       "⚖️ Համեմատել",
+		"advice.compare_title": "⚖️ Համեմատություն",
+		"advice.row":           "<code>⏱ %d ամիս · 💸 %s</code>",
+		"advice.row_flat":      "<code>📆 %s/ամիս մինչև վերջ</code>",
+		"advice.row_relief":    "<code>📆 %s → %s՝ %d-րդ ամսից</code>",
+		"advice.minimum":       "🐢 Միայն պարտադիրը",
+		"advice.ties_intro":    "Ինչու են տարբերակները համընկնում",
+		"advice.compare_pick":  "Ընտրեք նպատակը՝ ամսվա քայլերը տեսնելու համար։",
+
+		// --- empty states: what is missing and where to fix it ---
+		"loans.none":               "Դեռ վարկ չկա։ Ավելացրեք առաջինը, և ես կասեմ՝ ինչ անել։",
+		"advice.set_budget":        "Բյուջե դեռ նշված չէ։ Նշեք՝ որքան կարող եք ամսական հատկացնել բոլոր վարկերին, և ես կկազմեմ պլանը։",
+		"advice.currency_mismatch": "Բյուջեն %s-ով է, իսկ վարկերը՝ %s-ով։ Նշեք բյուջեն վարկերի արժույթով։",
+		"budget.too_low": "Բյուջեն <code>%s</code> է, իսկ պարտադիր վճարումները՝ <code>%s</code>։ " +
+			"Պլան չեմ կարող առաջարկել՝ այն կհանգեցնի ժամկետանց պարտքի։ Մեծացրեք բյուջեն կամ ստուգեք վարկերը։",
+
+		// --- loans ---
+		"loans.title":       "📋 Ձեր վարկերը",
+		"loan.balance":      "Մնացորդ՝ <code>%s</code> · %s%%",
+		"loan.next":         "Հաջորդ վճարումը՝ %s — <code>%s</code>",
+		"loan.remaining":    "Մնացած վճարումներ՝ %d",
+		"loan.no_schedule":  "Մարման գրաֆիկը հասանելի չէ։",
+		"working.intro":     "Ահա հաշվարկը՝ քայլ առ քայլ։",
+		"working.check":     "Համեմատեք ձեր բանկի գրաֆիկի հետ։ Եթե տարբերվում է՝ գրեք մեզ, դա մեր սխալն է։",
+		"working.button":    "🔍 Հաշվարկը՝ %s",
+		"reliability.yours": "Ձեր նշած մնացորդը՝ %s դրությամբ։ Բանկի հաստատումից հետո ավելի ճշգրիտ կլինի։",
+
+		// --- adding a loan ---
+		"add.open":        "Բացեք ձևը՝ վարկն ավելացնելու համար։",
+		"add.button":      "➕ Ավելացնել վարկ",
+		"add.saved":       "✅ Վարկն ավելացված է։",
+		"add.invalid":     "Տվյալներն ամբողջական չեն։ Ստուգեք և փորձեք նորից։",
+		"add.unavailable": "Ձևն այս պահին հասանելի չէ։ Դա կարգավորման խնդիր է, ոչ թե ձեր։",
+
+		// --- budget ---
+		"budget.button": "💰 Նշել բյուջեն",
+		"budget.prompt_or_type": "Որքա՞ն կարող եք ամսական հատկացնել բոլոր վարկերին՝ պարտադիր վճարումները ներառյալ։\n\n" +
+			"Գրեք գումարը (օրինակ՝ 100000) կամ բացեք ձևը։",
+		"budget.required_hint": "Այս ամիս պարտադիրը՝ <code>%s</code>։",
+		"budget.not_a_number":  "Չհասկացա գումարը։ Գրեք միայն թիվ, օրինակ՝ 100000։",
+		"budget.set":           "✅ Բյուջեն նշված է՝ <code>%s</code>։",
+		"budget.set_surplus":   "Ավելցուկ՝ <code>%s</code>/ամիս։",
+		"budget.set_low": "⚠️ Բյուջեն նշված է՝ <code>%s</code>, բայց պարտադիր վճարումները <code>%s</code> են։ " +
+			"Պլանի համար պետք է առնվազն այդքան։",
+
+		// --- reminders: date, amount, loan -- nothing else ---
+		"reminder.due_soon":        "🔔 %s — <code>%s</code> «%s»-ի համար։",
+		"reminder.due_today":       "🔔 Այսօր, %s — <code>%s</code> «%s»-ի համար։",
+		"reminder.due_soon_plain":  "🔔 %s — վճարում «%s»-ի համար։",
+		"reminder.due_today_plain": "🔔 Այսօր, %s — վճարում «%s»-ի համար։",
 
 		// --- language ---
 		"language.prompt": "Ընտրեք լեզուն։",
 		"language.set":    "Լեզուն փոխված է հայերենի։",
 
-		// --- loans ---
-		"loans.none":     "Դուք դեռ վարկ չեք ավելացրել։ Սեղմեք /add՝ սկսելու համար։",
-		"loans.title":    "Ձեր վարկերը",
-		"loan.balance":   "Մնացորդ՝ %s",
-		"loan.next":      "Հաջորդ վճարումը՝ %s՝ %s",
-		"loan.rate":      "Տոկոսադրույք՝ %s%%",
-		"loan.principal": "Մայր գումար",
-		"loan.interest":  "Տոկոս",
-		"loan.total":     "Ընդամենը",
-		"loan.schedule":  "Մարման գրաֆիկ",
-
-		// --- adding a loan ---
-		"add.open":        "Բացեք ձևը՝ վարկն ավելացնելու համար։",
-		"add.button":      "Ավելացնել վարկ",
-		"add.saved":       "Վարկն ավելացված է։",
-		"add.invalid":     "Այս տվյալները ամբողջական չեն։ Ստուգեք և փորձեք նորից։",
-		"add.unavailable": "Ձևը հասանելի չէ այս պահին։ Դա կարգավորման խնդիր է, ոչ թե ձեր։",
-
-		// --- budget ---
-		"budget.prompt": "Որքա՞ն կարող եք ամսական հատկացնել բոլոր վարկերին։",
-		"budget.set":    "Ամսական բյուջեն սահմանված է՝ %s։",
-		"budget.too_low": "Այս գումարը պակաս է պարտադիր վճարումներից (%s)։ " +
-			"Մարումը չի կարող առաջարկել պլան, որը հանգեցնում է ժամկետանց պարտքի։",
-
-		// --- reliability, the honest answer ---
-		"reliability.blocked": "Ես չեմ կարող վստահորեն հաշվարկել այս մնացորդը։ " +
-			"Խնդրում եմ նշեք բանկի հաստատած մնացորդը։",
-		"reliability.stale": "Այս թիվը հիմնված է %s-ի տվյալների վրա և կարող է հնացած լինել։",
-
 		// --- errors ---
-		"error.generic":  "Ինչ-որ բան սխալ գնաց։ Փորձեք նորից մի փոքր ուշ։",
-		"error.not_text": "Ես հասկանում եմ միայն տեքստ և հրամաններ։",
+		"error.generic": "Ինչ-որ բան սխալ գնաց։ Փորձեք նորից մի փոքր ուշ։",
 	},
 
 	EN: {
-		"start.greeting": "Welcome to Marum 👋\n\n" +
-			"I keep track of your loans, remind you before each payment is due, " +
-			"and work out how to clear them for the least money.",
-		"start.no_ai": "No guessing. Every figure comes from a published formula " +
-			"over the data you entered.",
-		"help.title":    "Commands",
-		"help.start":    "/start — get started",
-		"help.add":      "/add — add a loan",
-		"help.loans":    "/loans — my loans",
-		"help.budget":   "/budget — monthly budget",
-		"help.language": "/language — change language",
-		"help.help":     "/help — this list",
+		"start.greeting": "Hi, I am Marum 👋\n\n" +
+			"1️⃣ You add your loans\n" +
+			"2️⃣ You set a monthly budget\n" +
+			"3️⃣ I tell you whom, when and how much to pay so the interest is lowest",
+		"start.next":     "👇 Start by tapping “➕ Add a loan”.",
+		"start.language": "🌐 Հայերե՞ն — սեղմեք «🌐 Language»։",
+		"start.no_ai":    "No guessing: every figure comes from a published formula over your own data.",
+
+		"help.title": "❓ How Marum works",
+		"help.intro": "You add your loans and a budget. I check every order and timing of paying " +
+			"them and say which is best for your goal.",
+		"help.goals":         "Three goals:",
+		"help.goal.cheapest": "💸 <b>Least interest</b> — pay the bank the least overall.",
+		"help.goal.soonest":  "🏁 <b>Finish soonest</b> — clear every loan as early as possible, and see what a bigger budget would buy.",
+		"help.goal.relief":   "🌬 <b>Ease each month</b> — once the first loan clears, pay less every month.",
+		"help.commands":      "Commands:",
+		"help.add":           "/add — add a loan",
+		"help.advice":        "/advice — what to do this month",
+		"help.loans":         "/loans — my loans",
+		"help.budget":        "/budget — monthly budget",
+		"help.language":      "/language — change language",
+		"help.help":          "/help — this explanation",
 
 		"menu.add":      "Add a loan",
-		"menu.advice":   "What should I do now",
+		"menu.advice":   "What to do this month",
 		"menu.loans":    "My loans",
 		"menu.budget":   "Monthly budget",
 		"menu.language": "Language / Լեզուն",
-		"menu.help":     "Help",
+		"menu.help":     "How it works",
 
-		"btn.add":                   "➕ Add a loan",
-		"btn.loans":                 "📋 My loans",
-		"btn.budget":                "💰 Budget",
-		"btn.language":              "🌐 Language",
-		"btn.help":                  "❓ Help",
-		"kb.placeholder":            "Choose an option or type a command",
-		"btn.advice":                "💡 What should I do",
-		"advice.title":              "Where you stand",
-		"advice.owed":               "Total owed: %s",
-		"advice.required":           "Required this month: %s",
-		"advice.budget":             "Your budget: %s",
-		"advice.why":                "Concentrating on one loan costs less than spreading the money.",
-		"advice.no_surplus":         "Your budget covers the required payments with nothing spare.",
-		"advice.set_budget":         "Set a monthly budget to get a plan.",
-		"advice.nothing":            "No active loans.",
-		"goal.cheapest":             "💸 Least interest",
-		"goal.soonest":              "🏁 Finish soonest",
-		"goal.relief":               "🌬 Ease each month",
-		"advice.compare":            "⚖️ Compare all",
-		"advice.do":                 "This month, put the surplus of %s towards “%s”.",
-		"advice.remaining":          "After that you will owe %s.",
-		"advice.months":             "Every loan is cleared in %d months.",
-		"advice.interest":           "Total interest to the end: %s.",
-		"advice.first_clear":        "“%s” is the first to clear, in month %d.",
-		"advice.frees":              "That frees %s every month.",
-		"advice.payday":             "Payday: the %dth of the month",
-		"advice.this_month":         "This month",
-		"advice.how":                "How this was worked out",
-		"advice.row":                "Clear in %d months, interest %s.",
-		"advice.row_flat":           "Monthly: %s until the end.",
-		"advice.row_relief":         "Monthly: %s, then %s from month %d.",
-		"advice.minimum":            "🐢 Minimum only",
-		"advice.ties_intro":         "Why the options coincide",
-		"advice.cheapest.head":      "Cheapest way: %d months, total interest %s.",
-		"advice.vs_minimum":         "Against paying only the minimum you save %s and finish %d months sooner.",
-		"advice.soonest.head":       "With your budget: %d months, interest %s. With more per month:",
-		"advice.ladder":             "• %s a month → %d months, interest %s",
-		"advice.budget_for":         "To be done in %d months you would need %s a month.",
-		"advice.relief.head":        "Your monthly payment drops from %s to %s from month %d.",
-		"advice.relief.none":        "The budget cannot bring relief soon: the payment stays the same until the first loan clears.",
-		"advice.relief.cost":        "Clear in %d months, total interest %s.",
-		"advice.relief.vs_cheapest": "That costs %s more than the cheapest plan, which would clear in %d months.",
-		"advice.effect.shorten":     "Assumes the instalment stays the same after an early payment and the term shortens.",
-		"advice.effect.reduce":      "Assumes the bank re-solves (lowers) the instalment after an early payment.",
-		"advice.tie.one_loan":       "One loan: the order cannot matter.",
-		"advice.tie.no_surplus":     "No surplus: every plan pays only what is required.",
-		"advice.tie.same_order":     "The highest-rate loan is also the smallest, so both well-known strategies are the same order.",
-		"advice.step_due":           "📅 %s — %s instalment on “%s”.",
-		"advice.step_extra":         "➕ %s — %s extra to “%s”.",
-		"advice.step_early":         "⚡ %s — %s extra to “%s”, before the due date: saves %s this month.",
-		"advice.evaluated":          "Checked %d ways of paying: every priority order and payment timing.",
-		"advice.evaluated_named":    "Checked %d well-known strategies.",
-		"advice.vs_avalanche":       "Cheaper than highest-rate-first by %s.",
-		"advice.vs_snowball":        "Cheaper than smallest-balance-first by %s.",
-		"advice.timing":             "Of that, %s comes only from when you pay.",
-		"advice.set_payday":         "Set your payday in the budget to see what paying early saves.",
-		"advice.rule_unknown":       "Your bank’s early-repayment rule is not confirmed, so no early-payment saving is counted.",
-		"loan.remaining":            "Payments remaining: %d",
-		"loan.no_schedule":          "A schedule is not available.",
-		"working.intro":             "Here is the calculation, step by step.",
-		"working.check":             "Compare it with your bank's schedule. If it differs, tell us — that is our mistake to fix.",
-		"working.button":            "🔍 How was this calculated: %s",
-		"reliability.yours":         "Your own figure, as of %s. It will be firmer once your bank confirms it.",
-		"budget.open":               "Open the form to set your budget.",
-		"budget.button":             "Set a budget",
-		"budget.prompt_or_type":     "How much can you put towards all your loans each month?\n\nType the amount (for example 100000) or open the form.",
-		"budget.not_a_number":       "I could not read that amount. Type just a number, for example 100000.",
+		"btn.add":        "➕ Add a loan",
+		"btn.advice":     "💡 What to do",
+		"btn.loans":      "📋 My loans",
+		"btn.budget":     "💰 Budget",
+		"btn.language":   "🌐 Language",
+		"btn.help":       "❓ How it works",
+		"btn.plan":       "💡 See my plan",
+		"btn.manage":     "✏️ Manage loans",
+		"kb.placeholder": "Choose an action",
+
+		"advice.title":    "💡 Your plan",
+		"advice.currency": "All amounts in %s",
+		"advice.owed":     "Total owed",
+		"advice.required": "Required this month",
+		"advice.budget":   "Budget",
+		"advice.payday":   "Payday: the %dth",
+
+		"goal.cheapest": "💸 Least interest",
+		"goal.soonest":  "🏁 Finish soonest",
+		"goal.relief":   "🌬 Ease each month",
+
+		"advice.this_month":  "📌 This month",
+		"advice.step_due":    "☐ %s — <code>%s</code> → “%s”",
+		"advice.step_extra":  "☐ %s — <code>%s</code> → “%s” ➕ extra",
+		"advice.step_early":  "☐ %s — <code>%s</code> → “%s” ⚡ extra, before the due date (saves %s)",
+		"advice.no_surplus":  "No surplus: only the required instalments.",
+		"advice.remaining":   "Owed at the end of the month: <code>%s</code>",
+		"advice.first_clear": "“%s” clears first, in month %d.",
+
+		"advice.result":             "📊 Result",
+		"advice.months_interest":    "Done in <code>%d</code> months · total interest <code>%s</code>",
+		"advice.vs_minimum":         "Against paying only the minimum you save <code>%s</code> and finish %d months sooner.",
+		"advice.ladder_intro":       "With a bigger budget:",
+		"advice.ladder":             "• <code>%s</code>/month → %d months, interest <code>%s</code>",
+		"advice.budget_for":         "To be done in %d months you would need <code>%s</code>/month.",
+		"advice.relief.head":        "Your monthly payment drops from <code>%s</code> to <code>%s</code> from month %d.",
+		"advice.relief.none":        "This budget brings no relief soon: the payment stays the same until the first loan clears.",
+		"advice.relief.vs_cheapest": "That costs <code>%s</code> more than the cheapest plan, which would finish in %d months.",
+
+		"advice.how":             "🔍 Why",
+		"advice.evaluated":       "Checked %d ways of paying: every priority order and timing.",
+		"advice.evaluated_named": "Checked %d well-known strategies.",
+		"advice.vs_avalanche":    "Cheaper than highest-rate-first by <code>%s</code>.",
+		"advice.vs_snowball":     "Cheaper than smallest-balance-first by <code>%s</code>.",
+		"advice.timing":          "Of that, <code>%s</code> comes only from when you pay.",
+		"advice.effect.shorten":  "Assumes the instalment stays the same after an early payment and the term shortens.",
+		"advice.effect.reduce":   "Assumes the bank re-solves (lowers) the instalment after an early payment.",
+		"advice.tie.one_loan":    "One loan: the order cannot matter.",
+		"advice.tie.no_surplus":  "No surplus: every plan pays only what is required.",
+		"advice.tie.same_order":  "The highest-rate loan is also the smallest, so both well-known strategies coincide.",
+		"advice.set_payday":      "Set your payday in the budget to see what paying early saves.",
+		"advice.rule_unknown":    "Your bank’s early-repayment rule is not confirmed, so no early-payment saving is counted.",
+		"advice.pick":            "Another goal? Pick one below.",
+
+		"advice.compare":       "⚖️ Compare",
+		"advice.compare_title": "⚖️ Comparison",
+		"advice.row":           "<code>⏱ %d months · 💸 %s</code>",
+		"advice.row_flat":      "<code>📆 %s/month to the end</code>",
+		"advice.row_relief":    "<code>📆 %s → %s from month %d</code>",
+		"advice.minimum":       "🐢 Minimum only",
+		"advice.ties_intro":    "Why the options coincide",
+		"advice.compare_pick":  "Pick a goal to see this month’s steps.",
+
+		"loans.none":               "No loans yet. Add the first one and I will tell you what to do.",
+		"advice.set_budget":        "No budget yet. Tell me how much you can put towards all your loans each month and I will build the plan.",
+		"advice.currency_mismatch": "Your budget is in %s but your loans are in %s. Set the budget in the loans’ currency.",
+		"budget.too_low": "Your budget is <code>%s</code> but the required instalments come to <code>%s</code>. " +
+			"I cannot propose a plan that puts you into arrears. Raise the budget or check the loans.",
+
+		"loans.title":       "📋 Your loans",
+		"loan.balance":      "Balance <code>%s</code> · %s%%",
+		"loan.next":         "Next instalment: %s — <code>%s</code>",
+		"loan.remaining":    "Instalments remaining: %d",
+		"loan.no_schedule":  "The repayment schedule is not available.",
+		"working.intro":     "Here is the calculation, step by step.",
+		"working.check":     "Compare it with your bank’s schedule. If it differs, tell us: that is our mistake to fix.",
+		"working.button":    "🔍 Calculation: %s",
+		"reliability.yours": "Your own figure, as of %s. It will be firmer once your bank confirms it.",
+
+		"add.open":        "Open the form to add a loan.",
+		"add.button":      "➕ Add a loan",
+		"add.saved":       "✅ Loan added.",
+		"add.invalid":     "Those details are incomplete. Check them and try again.",
+		"add.unavailable": "The form is not available right now. That is a configuration problem, not yours.",
+
+		"budget.button": "💰 Set a budget",
+		"budget.prompt_or_type": "How much can you put towards all your loans each month, required instalments included?\n\n" +
+			"Type the amount (for example 100000) or open the form.",
+		"budget.required_hint": "Required this month: <code>%s</code>.",
+		"budget.not_a_number":  "I could not read that amount. Type just a number, for example 100000.",
+		"budget.set":           "✅ Budget set: <code>%s</code>.",
+		"budget.set_surplus":   "Surplus: <code>%s</code>/month.",
+		"budget.set_low": "⚠️ Budget set to <code>%s</code>, but the required instalments come to <code>%s</code>. " +
+			"A plan needs at least that much.",
+
+		"reminder.due_soon":        "🔔 %s — <code>%s</code> for “%s”.",
+		"reminder.due_today":       "🔔 Today, %s — <code>%s</code> for “%s”.",
+		"reminder.due_soon_plain":  "🔔 %s — instalment for “%s”.",
+		"reminder.due_today_plain": "🔔 Today, %s — instalment for “%s”.",
 
 		"language.prompt": "Choose a language.",
 		"language.set":    "Language changed to English.",
 
-		"loans.none":     "You have not added a loan yet. Press /add to start.",
-		"loans.title":    "Your loans",
-		"loan.balance":   "Balance: %s",
-		"loan.next":      "Next payment: %s on %s",
-		"loan.rate":      "Rate: %s%%",
-		"loan.principal": "Principal",
-		"loan.interest":  "Interest",
-		"loan.total":     "Total",
-		"loan.schedule":  "Repayment schedule",
-
-		"add.open":        "Open the form to add a loan.",
-		"add.button":      "Add a loan",
-		"add.saved":       "Loan added.",
-		"add.invalid":     "Those details are incomplete. Check them and try again.",
-		"add.unavailable": "The form is not available right now. That is a configuration problem, not yours.",
-
-		"budget.prompt": "How much can you put towards all your loans each month?",
-		"budget.set":    "Monthly budget set to %s.",
-		"budget.too_low": "That is less than your required payments (%s). " +
-			"Marum will not propose a plan that puts you into arrears.",
-
-		"reliability.blocked": "I cannot reconstruct this balance with confidence. " +
-			"Please tell me the balance your bank reports.",
-		"reliability.stale": "This figure is based on data from %s and may be out of date.",
-
-		"error.generic":  "Something went wrong. Please try again shortly.",
-		"error.not_text": "I only understand text and commands.",
+		"error.generic": "Something went wrong. Please try again shortly.",
 	},
 }

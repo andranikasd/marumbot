@@ -3,11 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
 <title>Marum</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   /* Telegram supplies the palette. Reading it rather than choosing one means the
-     app matches whatever theme the user already has, including dark. */
+     app matches whatever theme the user already has, including dark. app.js
+     re-reads themeParams when Telegram announces a change, so a user who flips
+     theme with the app open sees it follow. */
   :root{
     --bg: var(--tg-theme-bg-color, #fff);
     --fg: var(--tg-theme-text-color, #000);
@@ -16,8 +19,11 @@
     --btn: var(--tg-theme-button-color, #2481cc);
     --btn-fg: var(--tg-theme-button-text-color, #fff);
     --field: var(--tg-theme-secondary-bg-color, #f4f4f5);
-    --danger: #d1453b;
+    --card: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #fff));
+    --accent: var(--tg-theme-accent-text-color, var(--tg-theme-link-color, #2481cc));
+    --danger: var(--tg-theme-destructive-text-color, #d1453b);
     --ok: #2e9e5b;
+    --warn: #b7791f;
     --r: 14px;
   }
   *{box-sizing:border-box}
@@ -26,46 +32,60 @@
     margin:0;background:var(--bg);color:var(--fg);
     font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     -webkit-font-smoothing:antialiased;
+    font-variant-numeric:tabular-nums;
   }
 
   /* One app, three screens, a tab bar that stays put. The webview reloads the
      whole page on navigation, and each reload is a cold start in front of the
      user -- so screens are sections that show and hide, never separate pages. */
-  .screen{display:none;padding:16px 16px 100px}
+  .screen{display:none;padding:20px 16px 110px;max-width:560px;margin:0 auto}
   .screen.on{display:block}
-  h1{font-size:22px;margin:0 0 4px;letter-spacing:-.3px}
-  p.lede{margin:0 0 20px;color:var(--hint);font-size:14px}
+  h1{font-size:24px;margin:0 0 4px;letter-spacing:-.3px;line-height:1.2}
+  p.lede{margin:0 0 22px;color:var(--hint);font-size:14.5px}
 
   nav.tabs{
-    position:fixed;left:0;right:0;bottom:0;display:flex;
-    background:var(--bg);border-top:1px solid var(--field);
+    position:fixed;left:0;right:0;bottom:0;display:flex;z-index:2;
+    background:var(--bg);border-top:1px solid rgba(128,128,128,.2);
     padding:6px 8px calc(6px + env(safe-area-inset-bottom));
   }
   nav.tabs button{
     flex:1;background:none;border:none;color:var(--hint);font:inherit;
-    font-size:11px;padding:6px 0;cursor:pointer;border-radius:10px;
+    font-size:11px;font-weight:500;padding:6px 0;cursor:pointer;border-radius:10px;
+    -webkit-tap-highlight-color:transparent;
   }
-  nav.tabs button .ic{display:block;font-size:22px;line-height:1.1;margin-bottom:2px}
-  nav.tabs button.on{color:var(--link)}
+  nav.tabs button .ic{display:block;font-size:22px;line-height:1.1;margin-bottom:2px;
+    filter:grayscale(1);opacity:.75}
+  nav.tabs button.on{color:var(--accent)}
+  nav.tabs button.on .ic{filter:none;opacity:1}
 
   label{display:block;margin:0 0 6px;font-size:14px;font-weight:600}
   .hint{font-size:13px;color:var(--hint);margin:6px 0 0}
-  .field{margin-bottom:18px}
+  .field{margin-bottom:20px}
   input,select{
     width:100%;padding:13px 14px;font-size:17px;border:none;border-radius:12px;
-    background:var(--field);color:var(--fg);appearance:none;
+    background:var(--field);color:var(--fg);appearance:none;font-variant-numeric:tabular-nums;
     /* 17px stops iOS zooming the viewport when a field is focused. */
   }
+  input::placeholder{color:var(--hint);opacity:.7}
   select{
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23707579' stroke-width='1.6' fill='none'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 14px center;padding-right:36px;
   }
-  input:focus,select:focus{outline:2px solid var(--link);outline-offset:0}
+  input:focus,select:focus{outline:2px solid var(--accent);outline-offset:0}
   input[aria-invalid="true"]{outline:2px solid var(--danger)}
   .row{display:flex;gap:10px}
-  .row>*{flex:1}
-  .row>.narrow{flex:0 0 108px}
+  .row>*{flex:1;min-width:0}
+  .row>.narrow{flex:0 0 112px}
   .error{color:var(--danger);font-size:13px;margin:6px 0 0;min-height:1.2em}
+
+  /* An input with its unit written inside it: "14 %" reads as a rate, "14"
+     reads as a number the user has to interpret. */
+  .in{position:relative}
+  .in input{padding-right:58px}
+  .in .unit{
+    position:absolute;right:14px;top:50%;transform:translateY(-50%);
+    color:var(--hint);font-size:15px;pointer-events:none;
+  }
 
   /* Segmented control for the repayment method: two options, both visible,
      which a select would hide behind a tap. */
@@ -79,26 +99,34 @@
   .summary{
     background:var(--field);border-radius:var(--r);padding:16px;margin:8px 0 0;
   }
-  .summary .big{font-size:28px;font-weight:700;letter-spacing:-.5px;
-    font-variant-numeric:tabular-nums;margin:0 0 2px}
+  .summary .big{font-size:30px;font-weight:700;letter-spacing:-.5px;line-height:1.15;margin:0 0 2px}
   .summary .big small{font-size:14px;font-weight:500;color:var(--hint);margin-left:6px}
   .summary dl{display:grid;grid-template-columns:1fr auto;gap:8px 12px;margin:12px 0 0;
     padding-top:12px;border-top:1px solid rgba(128,128,128,.18)}
+  .summary dl.bare{margin:0;padding:0;border:0}
   .summary dt{color:var(--hint);font-size:14px}
-  .summary dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;font-size:14px}
-  .summary .note{font-size:12px;color:var(--hint);margin:12px 0 0}
+  .summary dd{margin:0;text-align:right;font-size:14px;font-weight:500}
+  .summary .note{font-size:13px;color:var(--hint);margin:12px 0 0}
+  .summary .note.bad{color:var(--danger)}
+  .summary .note.good{color:var(--ok)}
+  .summary .label{font-size:13px;color:var(--hint);margin:0 0 2px;font-weight:500;
+    text-transform:uppercase;letter-spacing:.4px}
+  .summary.hero{margin:0 0 18px}
 
   .card{background:var(--field);border-radius:var(--r);padding:14px 16px;margin:0 0 12px}
-  .card h2{font-size:17px;margin:0;display:flex;justify-content:space-between;align-items:baseline}
-  .card h2 .bal{font-variant-numeric:tabular-nums;font-weight:600;font-size:16px}
-  .card .meta{color:var(--hint);font-size:13.5px;margin:4px 0 12px}
-  .card .meta .tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11.5px;
-    font-weight:600;background:var(--bg);color:var(--hint);margin-left:6px}
-  .card .tag.yours{color:#b7791f}
+  .card h2{font-size:17px;margin:0;display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .card h2 .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .card h2 .bal{font-weight:600;font-size:16px;flex-shrink:0}
+  .card .meta{color:var(--hint);font-size:13.5px;margin:4px 0 0}
+  .card .next{font-size:13.5px;margin:6px 0 12px}
+  .card .next b{font-weight:600}
+  .card .tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11.5px;
+    font-weight:600;background:var(--bg);color:var(--hint);margin-left:6px;vertical-align:1px}
+  .card .tag.yours{color:var(--warn)}
   .card .actions{display:flex;gap:8px}
   .card .actions button{
     flex:1;padding:10px;border:none;border-radius:10px;font:inherit;font-size:14.5px;
-    font-weight:500;background:var(--bg);color:var(--link);cursor:pointer;
+    font-weight:500;background:var(--bg);color:var(--accent);cursor:pointer;
   }
   .card .actions button.danger{color:var(--danger)}
   .card input{margin:0 0 8px}
@@ -109,17 +137,31 @@
   .empty{text-align:center;color:var(--hint);padding:48px 16px}
   .empty .ic{font-size:44px;margin-bottom:8px}
   .empty p{margin:0 0 16px}
+  .state{text-align:center;color:var(--hint);padding:32px 16px;font-size:14px}
+  .state button{margin-top:12px}
   .cta{
     display:inline-block;padding:12px 22px;border-radius:12px;border:none;
     background:var(--btn);color:var(--btn-fg);font:inherit;font-weight:600;cursor:pointer;
   }
+  .cta.ghost{background:var(--field);color:var(--accent)}
+
+  /* The moment after a save: say what happened and where to go next. */
+  .done{
+    display:none;background:var(--field);border-radius:var(--r);padding:16px;margin:16px 0 0;
+    border-left:4px solid var(--ok);
+  }
+  .done.show{display:block}
+  .done p{margin:0 0 12px;font-size:14.5px}
+  .done p b{font-weight:600}
+
   .toast{
     position:fixed;left:16px;right:16px;bottom:calc(72px + env(safe-area-inset-bottom));
     background:var(--fg);color:var(--bg);padding:12px 16px;border-radius:12px;
     font-size:14px;text-align:center;opacity:0;transform:translateY(8px);
-    transition:opacity .2s,transform .2s;pointer-events:none;
+    transition:opacity .2s,transform .2s;pointer-events:none;z-index:3;
   }
   .toast.show{opacity:1;transform:none}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 </style>
 </head>
 <body>
@@ -143,7 +185,7 @@
     <div class="field">
       <label for="principal" data-i18n="principal">Վարկի գումար</label>
       <div class="row">
-        <input id="principal" name="principal" inputmode="decimal" required>
+        <input id="principal" name="principal" inputmode="decimal" placeholder="0" required>
         <select id="currency" name="currency" class="narrow">
           <option value="AMD" selected>AMD ֏</option>
           <option value="USD">USD $</option>
@@ -155,13 +197,19 @@
     </div>
     <div class="field">
       <label for="balance" data-i18n="balance">Արդեն մարված գումար (ըստ ցանկության)</label>
-      <input id="balance" name="balance" inputmode="decimal">
+      <div class="in">
+        <input id="balance" name="balance" inputmode="decimal" placeholder="0">
+        <span class="unit" id="u-balance">AMD</span>
+      </div>
       <p class="hint" data-i18n="balance.hint">Եթե վարկն արդեն ընթացքի մեջ է՝ նշեք մայր գումարից մարված մասը։</p>
       <p class="error" id="e-balance"></p>
     </div>
     <div class="field">
-      <label for="rate" data-i18n="rate">Տարեկան տոկոսադրույք (%)</label>
-      <input id="rate" name="rate" inputmode="decimal" required>
+      <label for="rate" data-i18n="rate">Տարեկան տոկոսադրույք</label>
+      <div class="in">
+        <input id="rate" name="rate" inputmode="decimal" placeholder="14" required>
+        <span class="unit">%</span>
+      </div>
       <p class="error" id="e-rate"></p>
     </div>
     <div class="field">
@@ -188,11 +236,15 @@
     </div>
     <div class="field">
       <label for="day" data-i18n="day">Վճարման օրը</label>
-      <input id="day" name="day" inputmode="numeric" value="15" required>
+      <div class="in">
+        <input id="day" name="day" inputmode="numeric" value="15" required>
+        <span class="unit" data-i18n="unit.day">ամսի օր</span>
+      </div>
       <p class="hint" data-i18n="day.hint">Ամսվա այն օրը, երբ վճարումը պարտադիր է։</p>
       <p class="error" id="e-day"></p>
     </div>
     <div class="summary" id="summary" hidden>
+      <p class="label" data-i18n="sum.title">Նախնական հաշվարկ</p>
       <p class="big"><span id="s-payment">—</span><small data-i18n="sum.permonth">ամսական</small></p>
       <dl>
         <dt data-i18n="sum.count">Վճարումների թիվ</dt><dd id="s-count">—</dd>
@@ -207,8 +259,21 @@
 <!-- MY LOANS -->
 <section id="s-manage" class="screen">
   <h1 data-i18n="manage.title">Իմ վարկերը</h1>
-  <p class="lede" data-i18n="manage.lede">Փոխեք անվանումը կամ հեռացրեք վարկը։</p>
+  <p class="lede" data-i18n="manage.lede">Ընդհանուր պատկերը, և յուրաքանչյուր վարկը՝ առանձին։</p>
+  <div class="summary hero" id="manage-summary" hidden>
+    <p class="label" data-i18n="manage.owed">Ընդհանուր պարտք</p>
+    <p class="big"><span id="m-owed">—</span></p>
+    <dl>
+      <dt data-i18n="manage.required">Այս ամիս պարտադիր</dt><dd id="m-required">—</dd>
+      <dt data-i18n="manage.next">Հաջորդ վճարումը</dt><dd id="m-next">—</dd>
+    </dl>
+  </div>
   <div id="manage-list"></div>
+  <div class="state" id="manage-loading" hidden data-i18n="loading">Բեռնվում է…</div>
+  <div class="state" id="manage-error" hidden>
+    <span data-i18n="err.load">Չհաջողվեց բեռնել։</span><br>
+    <button class="cta ghost" type="button" id="manage-retry" data-i18n="retry">Փորձել նորից</button>
+  </div>
   <div class="empty" id="manage-empty" hidden>
     <div class="ic">📋</div>
     <p data-i18n="manage.empty">Դուք դեռ վարկ չեք ավելացրել։</p>
@@ -219,12 +284,12 @@
 <!-- BUDGET -->
 <section id="s-budget" class="screen">
   <h1 data-i18n="budget.title">Ամսական բյուջե</h1>
-  <p class="lede" data-i18n="budget.lede">Որքա՞ն կարող եք ամսական հատկացնել վարկերին։</p>
+  <p class="lede" data-i18n="budget.lede">Որքա՞ն կարող եք ամսական հատկացնել բոլոր վարկերին։</p>
   <form id="budget-form" novalidate>
     <div class="field">
       <label for="monthly" data-i18n="budget.monthly">Ամսական գումար</label>
       <div class="row">
-        <input id="monthly" name="monthly" inputmode="decimal" required>
+        <input id="monthly" name="monthly" inputmode="decimal" placeholder="0" required>
         <select id="budget-currency" name="budget-currency" class="narrow">
           <option value="AMD" selected>AMD ֏</option>
           <option value="USD">USD $</option>
@@ -237,16 +302,23 @@
     </div>
     <div class="field">
       <label for="payday" data-i18n="budget.payday">Աշխատավարձի օր (ըստ ցանկության)</label>
-      <input id="payday" name="payday" inputmode="numeric" min="1" max="31">
+      <div class="in">
+        <input id="payday" name="payday" inputmode="numeric" min="1" max="31" placeholder="—">
+        <span class="unit" data-i18n="unit.day">ամսի օր</span>
+      </div>
       <p class="hint" data-i18n="budget.payday.hint">Եթե գումարը ստանում եք մինչև վճարման օրը, վաղ վճարելը տոկոս է խնայում։</p>
       <p class="error" id="e-payday"></p>
     </div>
     <div class="summary" id="budget-summary" hidden>
-      <dl style="margin:0;padding:0;border:0">
+      <dl class="bare">
         <dt data-i18n="budget.required">Պարտադիր վճարումներ</dt><dd id="b-required">—</dd>
         <dt data-i18n="budget.surplus">Ավելցուկ</dt><dd id="b-surplus">—</dd>
       </dl>
       <p class="note" id="b-note"></p>
+    </div>
+    <div class="done" id="budget-done">
+      <p id="budget-done-text"></p>
+      <button class="cta" type="button" id="budget-close" data-i18n="budget.back">Վերադառնալ չաթ</button>
     </div>
   </form>
 </section>
