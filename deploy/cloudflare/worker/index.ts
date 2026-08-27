@@ -143,6 +143,18 @@ export default {
       return app(env).fetch(forwarded);
     }
 
+    // The Mini App and its API. Forwarded whole -- path, query and body -- so
+    // the Go handler sees the request the browser actually made.
+    //
+    // No service token here, deliberately. Every call the form makes carries
+    // Telegram's signed initData, which proves far more than a shared secret
+    // would: not merely that the request came through this Worker, but which
+    // Telegram user made it.
+    if (url.pathname === "/app" || url.pathname.startsWith("/app/")) {
+      return app(env).containerFetch(
+        new Request(new URL(url.pathname + url.search, "http://container"), request));
+    }
+
     if (url.pathname === "/healthz" || url.pathname === "/readyz" || url.pathname === "/status") {
       return app(env).fetch(new Request(new URL(url.pathname, "http://container"), request));
     }
