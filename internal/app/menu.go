@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/andranikasd/marumbot/internal/i18n"
 )
@@ -29,6 +30,27 @@ var commandKeys = []struct{ cmd, key string }{
 	{"budget", "menu.budget"},
 	{"language", "menu.language"},
 	{"help", "menu.help"},
+}
+
+// PublishOnce runs PublishMenus at most once per process.
+//
+// Startup is the obvious place to publish, and it is not sufficient: a
+// container only starts when a request arrives and survives across Worker
+// deploys until it sleeps, so a deploy can leave a running process that never
+// re-ran its startup path. That is exactly what happened -- the deploy
+// succeeded, the smoke test passed, and the chat still offered no commands.
+//
+// Calling this from the tick as well makes publication depend on the bot being
+// alive rather than on when it happened to start.
+func PublishOnce(ctx context.Context, once *sync.Once, p MenuPublisher, miniAppURL string) {
+	once.Do(func() {
+		if err := PublishMenus(ctx, p, miniAppURL); err != nil {
+			// Not fatal, and not retried: a bot with no command suggestions is
+			// worse to use but still works, and hammering a rate-limited
+			// endpoint on every tick would be worse than the missing menu.
+			_ = err
+		}
+	})
 }
 
 // PublishMenus tells Telegram what this bot can do, in every language it

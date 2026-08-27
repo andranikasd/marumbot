@@ -123,6 +123,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		Owner:   cfg.InstanceID,
 		Log:     log,
 		MiniApp: cfg.MiniAppURL,
+		Menus:   bot,
 	}
 	// The Mini App is served from the public listener under /app, so it shares
 	// the Worker's hostname and needs no second custom domain or certificate.
