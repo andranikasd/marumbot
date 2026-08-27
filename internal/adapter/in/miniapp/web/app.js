@@ -43,6 +43,8 @@ const STRINGS = {
     "budget.title": "Ամսական բյուջե", "budget.lede": "Որքա՞ն կարող եք ամսական հատկացնել վարկերին։",
     "budget.monthly": "Ամսական գումար", "budget.hint": "Ներառեք բոլոր պարտադիր վճարումները։",
     "budget.required": "Պարտադիր վճարումներ", "budget.surplus": "Ավելցուկ",
+    "budget.payday": "Աշխատավարձի օր (ըստ ցանկության)",
+    "budget.payday.hint": "Եթե գումարը ստանում եք մինչև վճարման օրը, վաղ վճարելը տոկոս է խնայում։",
     "budget.low": "Պակաս է պարտադիր վճարումներից։",
     "budget.ok": "Ավելցուկը կուղղվի մեկ վարկի՝ արագ մարման համար։",
     "tab.loans": "Վարկեր", "tab.add": "Ավելացնել", "tab.budget": "Բյուջե",
@@ -76,6 +78,8 @@ const STRINGS = {
     "budget.title": "Monthly budget", "budget.lede": "How much can you put towards your loans each month?",
     "budget.monthly": "Monthly amount", "budget.hint": "Include every required payment.",
     "budget.required": "Required payments", "budget.surplus": "Surplus",
+    "budget.payday": "Payday (optional)",
+    "budget.payday.hint": "If the money arrives before the due date, paying early saves interest.",
     "budget.low": "Below your required payments.",
     "budget.ok": "The surplus goes to one loan, to clear it faster.",
     "tab.loans": "Loans", "tab.add": "Add", "tab.budget": "Budget",
@@ -361,6 +365,7 @@ async function loadBudget() {
   const b = await res.json();
   if (b.monthly_major != null) $("monthly").value = String(b.monthly_major);
   if (b.currency) $("budget-currency").value = b.currency;
+  $("payday").value = b.pay_day > 0 ? String(b.pay_day) : "";
   required = b.required_major != null ? { major: b.required_major, currency: b.currency } : null;
   validateBudget();
 }
@@ -373,6 +378,11 @@ function validateBudget() {
   else if (v <= 0) err = T("err.positive");
   $("e-monthly").textContent = err;
   $("monthly").setAttribute("aria-invalid", err ? "true" : "false");
+  const pdRaw = $("payday").value.trim(), pd = pdRaw ? num(pdRaw) : 0;
+  const pdErr = pdRaw && (!Number.isInteger(pd) || pd < 1 || pd > 31) ? T("err.day") : "";
+  $("e-payday").textContent = pdErr;
+  $("payday").setAttribute("aria-invalid", pdErr ? "true" : "false");
+  if (pdErr) err = err || pdErr;
   const cur = $("budget-currency").value;
   if (!err && required && required.currency === cur) {
     const surplus = v - required.major;
@@ -383,7 +393,7 @@ function validateBudget() {
     $("budget-summary").hidden = false;
   } else $("budget-summary").hidden = true;
   if (!err) { tg?.MainButton.setText(T("save")); tg?.MainButton.show(); } else tg?.MainButton.hide();
-  return { ok: !err, v };
+  return { ok: !err, v, pd };
 }
 async function saveBudget() {
   const b = validateBudget();
@@ -392,7 +402,7 @@ async function saveBudget() {
   try {
     const res = await api("api/budget", {
       method: "POST",
-      body: JSON.stringify({ monthly_major: b.v, currency: $("budget-currency").value }),
+      body: JSON.stringify({ monthly_major: b.v, currency: $("budget-currency").value, pay_day: b.pd }),
     });
     if (!res.ok) throw new Error(String(res.status));
     tg?.HapticFeedback?.notificationOccurred("success");
@@ -406,6 +416,7 @@ async function saveBudget() {
 }
 $("monthly").addEventListener("input", validateBudget);
 $("budget-currency").addEventListener("change", validateBudget);
+$("payday").addEventListener("input", validateBudget);
 $("budget-form").addEventListener("submit", (e) => { e.preventDefault(); saveBudget(); });
 
 // One MainButton, dispatched by screen.

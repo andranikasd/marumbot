@@ -39,7 +39,7 @@ func (w *Worker) takeBudget(ctx context.Context, userID string, chat int64, l i1
 	if !ok {
 		return false, nil
 	}
-	if err := w.Budgets.SetBudget(ctx, userID, cur.Code, minor); err != nil {
+	if err := w.Budgets.SetBudget(ctx, userID, cur.Code, minor, 0); err != nil {
 		return true, fmt.Errorf("recording the budget: %w", err)
 	}
 	if err := w.Convos.ClearState(ctx, userID); err != nil {

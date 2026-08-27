@@ -122,20 +122,25 @@ func (r LoanRequest) Validate(today date.Date) (app.LoanDraft, error) {
 type BudgetRequest struct {
 	MonthlyMajor float64 `json:"monthly_major"`
 	Currency     string  `json:"currency"`
+	// PayDay is the day of the month the money arrives; 0 means not stated.
+	PayDay int `json:"pay_day"`
 }
 
-// Validate turns a posted budget into minor units.
-func (r BudgetRequest) Validate() (string, int64, error) {
+// Validate turns a posted budget into minor units and a pay day.
+func (r BudgetRequest) Validate() (string, int64, int, error) {
 	cur, err := money.Lookup(r.Currency)
 	if err != nil {
-		return "", 0, fmt.Errorf("%w: currency %q", ErrInvalid, r.Currency)
+		return "", 0, 0, fmt.Errorf("%w: currency %q", ErrInvalid, r.Currency)
 	}
 	if math.IsNaN(r.MonthlyMajor) || math.IsInf(r.MonthlyMajor, 0) || r.MonthlyMajor < 0 {
-		return "", 0, fmt.Errorf("%w: a budget cannot be negative", ErrInvalid)
+		return "", 0, 0, fmt.Errorf("%w: a budget cannot be negative", ErrInvalid)
 	}
 	minor := math.Round(r.MonthlyMajor * math.Pow10(int(cur.Exponent)))
 	if minor > float64(math.MaxInt64/1000) {
-		return "", 0, fmt.Errorf("%w: budget too large", ErrInvalid)
+		return "", 0, 0, fmt.Errorf("%w: budget too large", ErrInvalid)
 	}
-	return cur.Code, int64(minor), nil
+	if r.PayDay < 0 || r.PayDay > 31 {
+		return "", 0, 0, fmt.Errorf("%w: pay day %d out of range", ErrInvalid, r.PayDay)
+	}
+	return cur.Code, int64(minor), r.PayDay, nil
 }

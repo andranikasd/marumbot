@@ -235,6 +235,12 @@
       <p class="hint" data-i18n="budget.hint">Ներառեք բոլոր պարտադիր վճարումները։</p>
       <p class="error" id="e-monthly"></p>
     </div>
+    <div class="field">
+      <label for="payday" data-i18n="budget.payday">Աշխատավարձի օր (ըստ ցանկության)</label>
+      <input id="payday" name="payday" inputmode="numeric" min="1" max="31">
+      <p class="hint" data-i18n="budget.payday.hint">Եթե գումարը ստանում եք մինչև վճարման օրը, վաղ վճարելը տոկոս է խնայում։</p>
+      <p class="error" id="e-payday"></p>
+    </div>
     <div class="summary" id="budget-summary" hidden>
       <dl style="margin:0;padding:0;border:0">
         <dt data-i18n="budget.required">Պարտադիր վճարումներ</dt><dd id="b-required">—</dd>

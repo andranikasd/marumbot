@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/andranikasd/marumbot/internal/app"
+	"github.com/andranikasd/marumbot/pkg/core/allocation"
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
@@ -103,11 +104,15 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 			principal *int64
 			asOf      *string
 			trust     *string
+			excess    string
 		)
 		if err := rows.Scan(&l.ID, &l.Name, &l.Description, &code,
 			&rate, &repayment, &dayCount, &start, &maturity, &day,
-			&mode, &unit, &principal, &asOf, &trust); err != nil {
+			&mode, &unit, &principal, &asOf, &trust, &excess); err != nil {
 			return nil, err
+		}
+		if l.Excess, err = allocation.ParseExcessRule(excess); err != nil {
+			return nil, fmt.Errorf("loan %s: %w", l.ID, err)
 		}
 
 		cur, err := money.Lookup(code)
@@ -199,9 +204,9 @@ func roundingModeFrom(s string) money.Mode {
 }
 
 // SetBudget records the monthly amount a borrower can put towards loans.
-func (s *Store) SetBudget(ctx context.Context, userID, currency string, minor int64) error {
+func (s *Store) SetBudget(ctx context.Context, userID, currency string, minor int64, payDay int) error {
 	var got int64
-	return s.pool.QueryRow(ctx, q("SetBudget"), userID, currency, minor).Scan(&got)
+	return s.pool.QueryRow(ctx, q("SetBudget"), userID, currency, minor, payDay).Scan(&got)
 }
 
 // Budget returns the borrower's largest recorded budget, or Set=false when
@@ -210,7 +215,8 @@ func (s *Store) SetBudget(ctx context.Context, userID, currency string, minor in
 func (s *Store) Budget(ctx context.Context, userID string) (app.Budget, error) {
 	var b app.Budget
 	var minor int64
-	err := s.pool.QueryRow(ctx, q("GetBudget"), userID).Scan(&b.Currency, &minor)
+	var payDay int16
+	err := s.pool.QueryRow(ctx, q("GetBudget"), userID).Scan(&b.Currency, &minor, &payDay)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return app.Budget{}, nil
 	}
@@ -221,7 +227,7 @@ func (s *Store) Budget(ctx context.Context, userID string) (app.Budget, error) {
 	if err != nil {
 		return app.Budget{}, err
 	}
-	b.Monthly, b.Set = money.FromMinor(minor, cur), true
+	b.Monthly, b.Set, b.PayDay = money.FromMinor(minor, cur), true, int(payDay)
 	return b, nil
 }
 

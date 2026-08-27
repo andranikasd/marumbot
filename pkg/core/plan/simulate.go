@@ -3,6 +3,7 @@ package plan
 import (
 	"fmt"
 
+	"github.com/andranikasd/marumbot/pkg/core/allocation"
 	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
@@ -21,6 +22,10 @@ type Position struct {
 	Contract model.Contract
 	Balance  money.Amount
 	From     date.Date
+	// Excess is what the lender does with money paid beyond the instalment.
+	// Only ExcessReducePrincipal lets an early payment save interest; the
+	// search credits early timing for no other rule.
+	Excess allocation.ExcessRule
 }
 
 // Outcome is what following a goal actually produces.

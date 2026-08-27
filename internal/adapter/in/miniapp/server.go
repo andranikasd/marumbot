@@ -147,6 +147,7 @@ func (s *Server) getBudget() http.Handler {
 		if b, err := s.Budgets.Budget(ctx, userID); err == nil && b.Set {
 			out["currency"] = b.Currency
 			out["monthly_major"] = major(b.Monthly)
+			out["pay_day"] = b.PayDay
 		}
 		if s.Required != nil {
 			if req, cur, err := s.Required.RequiredThisMonth(ctx, userID); err == nil && req.Sign() > 0 {
@@ -196,7 +197,7 @@ func (s *Server) setBudget() http.Handler {
 			http.Error(w, `{"error":"malformed"}`, http.StatusBadRequest)
 			return
 		}
-		cur, minor, err := in.Validate()
+		cur, minor, payDay, err := in.Validate()
 		if err != nil {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 			return
@@ -207,13 +208,13 @@ func (s *Server) setBudget() http.Handler {
 			http.Error(w, `{"error":"unknown account"}`, http.StatusForbidden)
 			return
 		}
-		if err := s.Budgets.SetBudget(ctx, userID, cur, minor); err != nil {
+		if err := s.Budgets.SetBudget(ctx, userID, cur, minor, payDay); err != nil {
 			span.RecordError(err)
 			s.Log.ErrorContext(ctx, "recording the budget failed", "error", err)
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"monthly_minor": minor, "currency": cur})
+		writeJSON(w, http.StatusOK, map[string]any{"monthly_minor": minor, "currency": cur, "pay_day": payDay})
 	})
 }
 
