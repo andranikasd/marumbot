@@ -8,9 +8,12 @@
 # what lets one file serve both -- the local stack and the Cloud stack resolve
 # the binding themselves.
 #
-# gcx is the current tool for this. grafanactl is deprecated (its repository was
-# archived in June 2026) and Grizzly has been removed outright, so neither is a
-# safe thing to build on.
+# Pushing goes through Grafana's HTTP API rather than a CLI. gcx is the current
+# tool and would work, but it is one more binary to download and pin, and it
+# wants a stack ID that the API does not -- for three files with stable uids the
+# API is the smaller dependency. grafanactl and Grizzly are not options at all:
+# the first is deprecated with its repository archived in June 2026, the second
+# has been removed outright.
 
 name: Dashboards
 
@@ -77,19 +80,12 @@ jobs:
       - name: Are the Grafana credentials configured?
         id: configured
         run: |
-          if [ -n "${{ secrets.GRAFANA_TOKEN }}" ] && [ -n "${{ secrets.GRAFANA_STACK_ID }}" ]; then
+          if [ -n "${{ secrets.GRAFANA_TOKEN }}" ] && [ -n "${{ vars.GRAFANA_URL }}" ]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "GRAFANA_TOKEN or GRAFANA_STACK_ID is not set; dashboards were validated but not pushed." >> "$GITHUB_STEP_SUMMARY"
+            echo "GRAFANA_TOKEN or GRAFANA_URL is not set; dashboards were validated but not pushed." >> "$GITHUB_STEP_SUMMARY"
           fi
-
-      - name: Install gcx
-        if: steps.configured.outputs.ready == 'true' && github.event_name != 'pull_request'
-        run: |
-          curl -fsSL https://github.com/grafana/gcx/releases/latest/download/gcx_linux_amd64.tar.gz \
-            | tar -xz -C /usr/local/bin gcx
-          gcx --version
 
       # Only main pushes. A pull request validates and stops, because a
       # dashboard is shared state: pushing from a branch would change what
@@ -97,11 +93,6 @@ jobs:
       - name: Push
         if: steps.configured.outputs.ready == 'true' && github.event_name == 'push'
         env:
-          GRAFANA_SERVER: ${{ vars.GRAFANA_URL }}
-          GRAFANA_STACK_ID: ${{ secrets.GRAFANA_STACK_ID }}
+          GRAFANA_URL: ${{ vars.GRAFANA_URL }}
           GRAFANA_TOKEN: ${{ secrets.GRAFANA_TOKEN }}
-        run: |
-          for f in deploy/observability/grafana/dashboards/*.json; do
-            echo "→ $(basename "$f")"
-            gcx resources push dashboards --path "$f"
-          done
+        run: python3 deploy/observability/push-dashboards.py
