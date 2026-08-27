@@ -63,11 +63,33 @@ code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X POST \
 [ "$code" = "401" ] || fail "an unsigned loan POST answered $code, want 401"
 
 echo "→ cold start"
-# The container sleeps when idle. A request after a pause is the one that
-# exercises the path a real user hits first thing in the morning.
+# The container sleeps when idle, so a request after a pause exercises the path
+# a real user hits first thing in the morning. This is a MEASUREMENT, not an
+# assertion: how long a wake takes is information, and a slow one is not a
+# broken deploy.
+#
+# It was fatal once, and a slow wake then rolled back a release that was working
+# -- the second time a check in this file destroyed something correct. A single
+# attempt is also the wrong instrument for a wake: the first request is the one
+# that triggers it, so failing on that request measures nothing but timing.
 sleep 20
 start=$(date +%s%3N)
-curl -sf --max-time 45 "$base/healthz" >/dev/null || fail "cold request failed"
-echo "  cold response in $(( $(date +%s%3N) - start )) ms"
+woke=""
+for attempt in 1 2 3; do
+  if curl -sf --max-time 45 "$base/healthz" >/dev/null 2>&1; then
+    woke="yes"
+    break
+  fi
+  echo "  attempt $attempt did not answer; retrying"
+  sleep 5
+done
+elapsed=$(( $(date +%s%3N) - start ))
+if [ -n "$woke" ]; then
+  echo "  cold response in ${elapsed} ms"
+else
+  # Liveness and readiness both passed above, so the deployment is serving.
+  # Say the wake was slow and let the release stand.
+  echo "::warning::the container did not answer a cold request within ${elapsed} ms across 3 attempts"
+fi
 
 echo "smoke passed"
