@@ -132,9 +132,13 @@ jobs:
           WEBHOOK_PATH: ${{ secrets.WEBHOOK_PATH }}
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
           OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
+          PYROSCOPE_SERVER_ADDRESS: ${{ secrets.PYROSCOPE_SERVER_ADDRESS }}
+          PYROSCOPE_BASIC_AUTH_USER: ${{ secrets.PYROSCOPE_BASIC_AUTH_USER }}
+          PYROSCOPE_BASIC_AUTH_PASSWORD: ${{ secrets.PYROSCOPE_BASIC_AUTH_PASSWORD }}
         run: |
           jq -n '$ENV | with_entries(select(
-                 (.key | startswith("MARUM_") or startswith("OTEL_") or . == "WEBHOOK_PATH")
+                 (.key | startswith("MARUM_") or startswith("OTEL_")
+                       or startswith("PYROSCOPE_") or . == "WEBHOOK_PATH")
                  and .value != ""))' > /tmp/secrets.json
           echo "syncing: $(jq -r 'keys | join(", ")' /tmp/secrets.json)"
           npx wrangler secret bulk /tmp/secrets.json --env ${{ inputs.wrangler_env }}
@@ -211,9 +215,13 @@ jobs:
           WEBHOOK_PATH: ${{ secrets.WEBHOOK_PATH }}
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
           OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
+          PYROSCOPE_SERVER_ADDRESS: ${{ secrets.PYROSCOPE_SERVER_ADDRESS }}
+          PYROSCOPE_BASIC_AUTH_USER: ${{ secrets.PYROSCOPE_BASIC_AUTH_USER }}
+          PYROSCOPE_BASIC_AUTH_PASSWORD: ${{ secrets.PYROSCOPE_BASIC_AUTH_PASSWORD }}
         run: |
           jq -n '$ENV | with_entries(select(
-                 (.key | startswith("MARUM_") or startswith("OTEL_") or . == "WEBHOOK_PATH")
+                 (.key | startswith("MARUM_") or startswith("OTEL_")
+                       or startswith("PYROSCOPE_") or . == "WEBHOOK_PATH")
                  and .value != ""))' > /tmp/secrets.json
           echo "syncing: $(jq -r 'keys | join(", ")' /tmp/secrets.json)"
           npx wrangler secret bulk /tmp/secrets.json --env ${{ inputs.wrangler_env }}
