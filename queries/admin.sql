@@ -220,3 +220,17 @@ SELECT status, count(*) FROM telegram_commands GROUP BY status ORDER BY status;
 
 -- name: CountDeliveriesByStatus
 SELECT status, count(*) FROM notification_deliveries GROUP BY status ORDER BY status;
+
+-- name: ListCommandsForUser
+-- The latest commands one account sent, for the activity panel on its page.
+SELECT id, telegram_update_id, user_id, command_kind, status, attempts,
+       next_attempt_at, lease_owner, lease_until, received_at, completed_at, last_error_code
+  FROM telegram_commands WHERE user_id = $1
+ ORDER BY received_at DESC LIMIT $2;
+
+-- name: ListDeliveriesForUser
+-- The latest messages queued or sent to one account.
+SELECT id, user_id, delivery_kind, status, priority, scheduled_at, next_attempt_at,
+       attempts, telegram_message_id, sent_at, last_error_code
+  FROM notification_deliveries WHERE user_id = $1
+ ORDER BY scheduled_at DESC LIMIT $2;

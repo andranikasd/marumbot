@@ -1,13 +1,25 @@
+{{define "crumbs"}}<div class="crumbs"><a href="/">Overview</a><span class="sep">›</span><a href="/loans">Loans</a><span class="sep">›</span>{{.V.Loan.Name}}</div>{{end}}
+{{define "actions"}}
+<div class="actions">
+  {{if .V.Loan.ArchivedAt}}
+  <form method="post" action="/loans/{{.V.Loan.ID}}/restore?back=/loans/{{.V.Loan.ID}}"><button class="quiet">Restore</button></form>
+  {{else}}
+  <form method="post" action="/loans/{{.V.Loan.ID}}/archive?back=/loans/{{.V.Loan.ID}}"><button class="quiet danger">Archive</button></form>
+  {{end}}
+</div>
+{{end}}
 {{define "content"}}
-<div class="crumbs"><a href="/loans">Loans</a> › {{.V.Loan.Name}}</div>
-<p class="lead">
-  {{if .V.Loan.Lender}}{{.V.Loan.Lender}} · {{end}}{{.V.Loan.Currency}} ·
-  user <a class="mono" href="/users/{{.V.Loan.UserID}}">{{short .V.Loan.UserID}}</a> ·
-  <span class="mono">{{.V.Loan.ID}}</span>
-  {{if .V.Loan.ArchivedAt}} · <span class="tag t-mute">archived {{date .V.Loan.ArchivedAt}}</span>{{end}}
+<p class="subtitle">
+  {{if .V.Loan.Lender}}<span>{{.V.Loan.Lender}}</span> ·{{end}}
+  <span class="mono">{{.V.Loan.Currency}}</span> ·
+  <span>user <a class="mono" href="/users/{{.V.Loan.UserID}}" title="{{.V.Loan.UserID}}">{{short .V.Loan.UserID}}</a></span> ·
+  <span class="mono" title="{{.V.Loan.ID}}">{{short .V.Loan.ID}}</span>
+  <span>· filed {{date .V.Loan.CreatedAt}}<span class="ago">{{ago .Now .V.Loan.CreatedAt}}</span></span>
+  {{if .V.Loan.ArchivedAt}}<span class="tag t-mute">archived {{date .V.Loan.ArchivedAt}}</span>{{end}}
 </p>
 {{if .Notice}}<div class="note ok">{{.Notice}}</div>{{end}}
 
+<h2>Summary</h2>
 <div class="grid2">
   <div class="panel">
     <div class="hd">What the engine projects
@@ -22,35 +34,41 @@
         <dt>Total to pay</dt><dd class="num">{{.V.Projection.TotalPaid}}</dd>
       </dl>
     </div>
-    {{else}}<div class="empty">{{.V.ProjectionNote}}</div>{{end}}
+    {{else}}<div class="empty">{{.V.ProjectionNote}}{{if not .V.Contracts}}<a class="next" href="/engine">Try the terms in the playground →</a>{{end}}</div>{{end}}
   </div>
 
   <div class="panel">
     <div class="hd">What the borrower is told</div>
-    {{if .V.Plan}}{{template "plan" .V.Plan}}{{else}}<div class="empty">{{.V.PlanNote}}</div>{{end}}
+    {{if .V.Plan}}{{template "plan" .V.Plan}}{{else}}<div class="empty">{{.V.PlanNote}}<a class="next" href="/users/{{.V.Loan.UserID}}">Open the account →</a></div>{{end}}
   </div>
 </div>
 
-{{if .V.Projection}}
+{{if .V.Support}}
 <div class="panel">
-  <div class="hd">Schedule <span class="tools muted">{{len .V.Projection.Rows}} rows · open a row for the arithmetic</span></div>
-  <div class="scroll"><table>
-    <thead><tr><th class="num">#</th><th>Due</th><th class="num">Days</th><th class="num">Opening</th>
-      <th class="num">Interest</th><th class="num">Principal</th><th class="num">Payment</th><th class="num">Closing</th><th></th></tr></thead>
-    <tbody>{{range .V.Projection.Rows}}
-      <tr>
-        <td class="num">{{.N}}</td><td class="nowrap">{{.Due}}</td><td class="num">{{.Days}}</td>
-        <td class="num">{{.Opening}}</td><td class="num">{{.Interest}}</td><td class="num">{{.Principal}}</td>
-        <td class="num">{{.Payment}}</td><td class="num">{{.Closing}}</td>
-        <td><details><summary>why</summary><pre class="explain">{{.Explain}}</pre></details></td>
-      </tr>
-    {{end}}</tbody>
-  </table></div>
+  <div class="hd">Copy for support <span class="tools muted">plain text, select-all on click</span></div>
+  <div class="bd"><pre class="support" tabindex="0">{{.V.Support}}</pre></div>
 </div>
 {{end}}
 
+{{if .V.Projection}}
+<h2>Schedule</h2>
 <div class="panel">
-  <div class="hd">Contract versions</div>
+  <div class="hd">Schedule <span class="tools muted">{{len .V.Projection.Rows}} instalments · open a row for the arithmetic</span></div>
+  {{if .FoldSchedule}}
+  {{template "schedule" (slice .V.Projection.Rows 0 6)}}
+  <details class="fold">
+    <summary>Show all {{len .V.Projection.Rows}} instalments ({{add (len .V.Projection.Rows) -6}} more)</summary>
+    {{template "schedule" (slice .V.Projection.Rows 6)}}
+  </details>
+  {{else}}
+  {{template "schedule" .V.Projection.Rows}}
+  {{end}}
+</div>
+{{end}}
+
+<h2>Record</h2>
+<div class="panel">
+  <div class="hd">Contract versions <span class="tools muted">{{len .V.Contracts}}</span></div>
   {{if .V.Contracts}}
   <div class="scroll"><table>
     <thead><tr><th class="num">v</th><th>Effective</th><th class="num">Rate</th><th>Day count</th>
@@ -67,15 +85,15 @@
         <td class="mono">{{.RoundingMode}}/{{.RoundingUnit}}</td>
         <td class="nowrap">{{date .StartDate}}</td>
         <td class="nowrap">{{date .MaturityDate}}</td>
-        <td class="mono"><a href="/policies">{{short .PolicyVersionID}}</a></td>
+        <td class="mono"><a href="/policies" title="{{.PolicyVersionID}}">{{short .PolicyVersionID}}</a></td>
       </tr>
     {{end}}</tbody>
   </table></div>
-  {{else}}<div class="empty">No contract version recorded. The engine cannot replay this loan.</div>{{end}}
+  {{else}}<div class="empty">No contract version recorded. The engine cannot replay this loan.<a class="next" href="/engine">Model the terms in the playground →</a></div>{{end}}
 </div>
 
 <div class="panel">
-  <div class="hd">Bank snapshots — the replay anchor</div>
+  <div class="hd">Bank snapshots <span class="muted">— the replay anchor</span> <span class="tools muted">{{len .V.Snapshots}}</span></div>
   {{if .V.Snapshots}}
   <div class="scroll"><table>
     <thead><tr><th>As of</th><th>Trust</th><th class="num">Principal</th><th class="num">Accrued</th>
@@ -100,7 +118,7 @@
 </div>
 
 <div class="panel">
-  <div class="hd">Ledger — append only</div>
+  <div class="hd">Ledger <span class="muted">— append only</span> <span class="tools muted">{{len .V.Events}}</span></div>
   {{if .V.Events}}
   <div class="scroll"><table>
     <thead><tr><th class="num">Seq</th><th>Kind</th><th>Value date</th><th class="num">Amount</th>
@@ -118,20 +136,25 @@
           {{else if .Covered}}<span class="tag t-mute">in anchor</span>
           {{else}}<span class="tag t-ok">active</span>{{end}}
         </td>
-        <td class="nowrap">{{stamp .RecordedAt}}</td>
+        <td class="nowrap">{{stamp .RecordedAt}}<span class="ago">{{ago $.Now .RecordedAt}}</span></td>
       </tr>
     {{end}}</tbody>
   </table></div>
   {{else}}<div class="empty">No events recorded against this loan.</div>{{end}}
 </div>
 
-<div class="grid2">
+<h2 class="no-print">Admin actions</h2>
+<div class="grid2 no-print">
   <div class="panel">
     <div class="hd">Rename</div>
     <div class="bd">
       <form method="post" action="/loans/{{.V.Loan.ID}}/rename" class="stack">
-        <div><label for="name">Name</label><input id="name" name="name" type="text" value="{{.V.Loan.Name}}" maxlength="60" required></div>
-        <div><label for="description">Description</label><input id="description" name="description" type="text" value="{{.Description}}" maxlength="200"></div>
+        <div>
+          <label for="name">Name</label>
+          <input id="name" name="name" type="text" value="{{.TypedName}}" maxlength="60" required {{if .NameError}}aria-invalid="true" aria-describedby="name-error"{{end}}>
+          {{if .NameError}}<div class="field-error" id="name-error">{{.NameError}}</div>{{end}}
+        </div>
+        <div><label for="description">Description</label><input id="description" name="description" type="text" value="{{.TypedDescription}}" maxlength="200"></div>
         <div><button>Save</button></div>
       </form>
     </div>
@@ -140,15 +163,29 @@
     <div class="hd">Visibility</div>
     <div class="bd">
       {{if .V.Loan.ArchivedAt}}
-      <p class="muted">Archived. The borrower no longer sees it; the ledger is intact.</p>
-      <form method="post" action="/loans/{{.V.Loan.ID}}/restore"><button>Restore</button></form>
+      <p class="muted">Archived since {{date .V.Loan.ArchivedAt}}. The borrower no longer sees it; the ledger is intact.</p>
+      <form method="post" action="/loans/{{.V.Loan.ID}}/restore?back=/loans/{{.V.Loan.ID}}"><button>Restore</button></form>
       {{else}}
       <p class="muted">Archiving hides the loan from the borrower without destroying its ledger. Reversible.</p>
-      <form method="post" action="/loans/{{.V.Loan.ID}}/archive"><button class="danger">Archive</button></form>
+      <form method="post" action="/loans/{{.V.Loan.ID}}/archive?back=/loans/{{.V.Loan.ID}}"><button class="danger">Archive</button></form>
       {{end}}
     </div>
   </div>
 </div>
+{{end}}
+{{define "schedule"}}
+<div class="scroll"><table>
+  <thead><tr><th class="num">#</th><th>Due</th><th class="num">Days</th><th class="num">Opening</th>
+    <th class="num">Interest</th><th class="num">Principal</th><th class="num">Payment</th><th class="num">Closing</th><th></th></tr></thead>
+  <tbody>{{range .}}
+    <tr>
+      <td class="num">{{.N}}</td><td class="nowrap">{{.Due}}</td><td class="num">{{.Days}}</td>
+      <td class="num">{{.Opening}}</td><td class="num">{{.Interest}}</td><td class="num">{{.Principal}}</td>
+      <td class="num">{{.Payment}}</td><td class="num">{{.Closing}}</td>
+      <td><details><summary>why</summary><pre class="explain">{{.Explain}}</pre></details></td>
+    </tr>
+  {{end}}</tbody>
+</table></div>
 {{end}}
 {{define "plan"}}
 <div class="bd">

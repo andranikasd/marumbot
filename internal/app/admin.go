@@ -45,6 +45,8 @@ type AdminStore interface {
 	ConversationState(context.Context, string) (*ConvoRow, error)
 	CommandCounts(context.Context) ([]StatusCount, error)
 	DeliveryCounts(context.Context) ([]StatusCount, error)
+	CommandsForUser(ctx context.Context, userID string, limit int32) ([]CommandRow, error)
+	DeliveriesForUser(ctx context.Context, userID string, limit int32) ([]DeliveryRow, error)
 }
 
 // EngineReader is what the admin needs to run the engine over a stored loan:
@@ -192,6 +194,9 @@ type LoanView struct {
 	// Plan is what the borrower is currently advised, when a budget exists.
 	Plan     *PlanSummary
 	PlanNote string
+	// Support is the loan summarised as plain text an operator can paste to
+	// the borrower. Empty when the engine cannot read the loan.
+	Support string
 }
 
 // Loan returns one loan with its contracts, snapshots and ledger.

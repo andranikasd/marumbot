@@ -9,27 +9,33 @@
 <div class="shell">
 <aside class="side">
   <div class="brand">Marum<span>admin</span></div>
-  <a class="nav{{if eq .Nav "dashboard"}} on{{end}}" href="/"><span class="ic">◈</span>Overview</a>
+  <nav aria-label="Sections">
+  <a class="nav" {{if eq .Nav "dashboard"}}aria-current="page"{{end}} href="/"><span class="ic" aria-hidden="true">◈</span>Overview</a>
   <div class="group">Ledger</div>
-  <a class="nav{{if eq .Nav "loans"}} on{{end}}" href="/loans"><span class="ic">▤</span>Loans</a>
-  <a class="nav{{if eq .Nav "users"}} on{{end}}" href="/users"><span class="ic">◉</span>Users</a>
-  <a class="nav{{if eq .Nav "policies"}} on{{end}}" href="/policies"><span class="ic">§</span>Policies</a>
-  <a class="nav{{if eq .Nav "reconciliation"}} on{{end}}" href="/reconciliation"><span class="ic">⇄</span>Reconciliation</a>
+  <a class="nav" {{if eq .Nav "loans"}}aria-current="page"{{end}} href="/loans"><span class="ic" aria-hidden="true">▤</span>Loans</a>
+  <a class="nav" {{if eq .Nav "users"}}aria-current="page"{{end}} href="/users"><span class="ic" aria-hidden="true">◉</span>Users</a>
+  <a class="nav" {{if eq .Nav "policies"}}aria-current="page"{{end}} href="/policies"><span class="ic" aria-hidden="true">§</span>Policies</a>
+  <a class="nav" {{if eq .Nav "reconciliation"}}aria-current="page"{{end}} href="/reconciliation"><span class="ic" aria-hidden="true">⇄</span>Reconciliation</a>
   <div class="group">Engine</div>
-  <a class="nav{{if eq .Nav "engine"}} on{{end}}" href="/engine"><span class="ic">∑</span>Playground</a>
+  <a class="nav" {{if eq .Nav "engine"}}aria-current="page"{{end}} href="/engine"><span class="ic" aria-hidden="true">∑</span>Playground</a>
   <div class="group">Operations</div>
-  <a class="nav{{if eq .Nav "commands"}} on{{end}}" href="/commands"><span class="ic">⇩</span>Inbox{{if .Badges.CommandsDead}}<span class="count hot">{{.Badges.CommandsDead}}</span>{{else if .Badges.CommandsPending}}<span class="count">{{.Badges.CommandsPending}}</span>{{end}}</a>
-  <a class="nav{{if eq .Nav "deliveries"}} on{{end}}" href="/deliveries"><span class="ic">⇧</span>Outbox{{if .Badges.DeliveriesDead}}<span class="count hot">{{.Badges.DeliveriesDead}}</span>{{else if .Badges.DeliveriesPending}}<span class="count">{{.Badges.DeliveriesPending}}</span>{{end}}</a>
+  <a class="nav" {{if eq .Nav "commands"}}aria-current="page"{{end}} href="/commands"><span class="ic" aria-hidden="true">⇩</span>Inbox{{if .Badges.CommandsDead}}<span class="count hot" title="dead commands">{{.Badges.CommandsDead}}</span>{{else if .Badges.CommandsPending}}<span class="count" title="pending commands">{{.Badges.CommandsPending}}</span>{{end}}</a>
+  <a class="nav" {{if eq .Nav "deliveries"}}aria-current="page"{{end}} href="/deliveries"><span class="ic" aria-hidden="true">⇧</span>Outbox{{if .Badges.DeliveriesDead}}<span class="count hot" title="dead deliveries">{{.Badges.DeliveriesDead}}</span>{{else if .Badges.DeliveriesPending}}<span class="count" title="pending deliveries">{{.Badges.DeliveriesPending}}</span>{{end}}</a>
+  </nav>
   <div class="foot">{{.Env}} · <span class="mono">{{.Version}}</span>
     <form method="post" action="/logout" class="out"><button class="quiet">Sign out</button></form>
   </div>
 </aside>
 <div class="content">
   <header class="bar">
-    <h1>{{.Title}}</h1>
+    <div class="heading">
+      {{block "crumbs" .}}{{end}}
+      <h1>{{.Title}}</h1>
+    </div>
     <span class="env">{{.Env}}</span>
-    <form class="search" method="get" action="/search">
-      <input type="search" name="q" placeholder="Loan name, loan or user id…" value="{{.Query}}" aria-label="Search">
+    {{block "actions" .}}{{end}}
+    <form class="search" method="get" action="/search" role="search">
+      <input id="q-global" type="search" name="q" placeholder="Loan name, loan or user id…" value="{{.Query}}" aria-label="Search loans and users">
       <button class="quiet">Find</button>
     </form>
   </header>

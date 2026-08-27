@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -135,6 +136,17 @@ func (fakeStore) DeliveryCounts(context.Context) ([]app.StatusCount, error) {
 	return []app.StatusCount{{Status: "pending", N: 4}}, nil
 }
 
+func (fakeStore) CommandsForUser(context.Context, string, int32) ([]app.CommandRow, error) {
+	return []app.CommandRow{{
+		ID: "c9", UpdateID: 77, UserID: ptr(fakeUser), Kind: "callback", Status: "completed", Attempts: 1,
+		NextAttempt: stamp, ReceivedAt: stamp.Add(-3 * time.Minute), CompletedAt: ptr(stamp),
+	}}, nil
+}
+
+func (f fakeStore) DeliveriesForUser(ctx context.Context, _ string, n int32) ([]app.DeliveryRow, error) {
+	return f.ListDeliveries(ctx, n)
+}
+
 // Moderation.
 func (fakeStore) SetUserAccess(context.Context, string, string) error           { return nil }
 func (fakeStore) RequestUserDeletion(context.Context, string) error             { return nil }
@@ -199,6 +211,14 @@ func TestEveryPageRenders(t *testing.T) {
 		{"/loans/" + fakeLoan, "What the engine projects"},
 		{"/users", "of 1 users"},
 		{"/users/" + fakeUser, "Current advice"},
+		{"/users/" + fakeUser, "Sent to the bot"},
+		{"/users/" + fakeUser, "3m ago"},
+		{"/loans/" + fakeLoan, "Copy for support"},
+		{"/loans/" + fakeLoan, "Next instalments:"},
+		{"/", "aria-current=\"page\" href=\"/\""},
+		{"/", "Schema <b class=\"mono\">v6</b>"},
+		{"/", "class=\"b today\""},
+		{"/search", "Overview"},
 		{"/engine", "instalment"},
 		{"/search?q=car", "Car"},
 		{"/policies", "reduce_principal"},
@@ -273,6 +293,59 @@ func TestPlaygroundProjectsTypedTerms(t *testing.T) {
 	_ = res.Body.Close()
 	if !strings.Contains(string(body), "rate must be a percentage") {
 		t.Fatal("bad rate was not reported")
+	}
+}
+
+// postForm submits a form as the signed-in operator and returns the page.
+func postForm(t *testing.T, ts *httptest.Server, cookie *http.Cookie, path, form string) (int, string) {
+	t.Helper()
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.URL+path, strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(cookie)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	return res.StatusCode, string(body)
+}
+
+// A pasted bank schedule is compared row by row: an exact row says so, a
+// different one shows the signed gap, and the count of exact rows is shown.
+func TestPlaygroundDiffsAgainstBank(t *testing.T) {
+	ts, cookie := newTestServer(t)
+	form := "currency=AMD&principal=1000000&rate=20&method=annuity&day_count=act365&start=2026-01-15&maturity=2027-01-15&day=15&unit=10"
+	_, body := postForm(t, ts, cookie, "/engine", form)
+	// Read the engine's first instalment back off the page so the test does
+	// not pin the arithmetic, only the comparison.
+	i := strings.Index(body, `<div class="n">`)
+	if i < 0 {
+		t.Fatal("no instalment card")
+	}
+	first, _, _ := strings.Cut(body[i+len(`<div class="n">`):], "</div>")
+	first = strings.TrimSuffix(first, " AMD")
+
+	bank := url.QueryEscape(first + "\n\n" + first + "\n1")
+	_, body = postForm(t, ts, cookie, "/engine", form+"&bank="+bank)
+	for _, want := range []string{"2 / 3", "rows match the bank", ">exact<", "diff off"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("diff page lacks %q", want)
+		}
+	}
+	_, body = postForm(t, ts, cookie, "/engine", form+"&bank="+url.QueryEscape("abc"))
+	if !strings.Contains(body, "line 1:") || !strings.Contains(body, `aria-invalid="true"`) {
+		t.Error("a bad bank line was not reported beside the field")
+	}
+}
+
+// A rename with no name comes back as the same page with the complaint beside
+// the field, not an error page.
+func TestRenameValidatesInline(t *testing.T) {
+	ts, cookie := newTestServer(t)
+	code, body := postForm(t, ts, cookie, "/loans/"+fakeLoan+"/rename", "name=&description=kept")
+	if code != http.StatusOK || !strings.Contains(body, "A loan needs a name.") || !strings.Contains(body, `value="kept"`) {
+		t.Fatalf("rename validation: %d\n%s", code, body)
 	}
 }
 

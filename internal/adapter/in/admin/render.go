@@ -35,6 +35,8 @@ func funcs() template.FuncMap {
 		"pct":       formatPercent,
 		"short":     shortID,
 		"hasPrefix": strings.HasPrefix,
+		"ago":       relativeTime,
+		"add":       func(a, b int) int { return a + b },
 		// Chart helpers. Bars are pure CSS, so the height is computed here as
 		// a percentage of the tallest bar in the series.
 		"sum": func(ds []app.DayCount) int64 {
@@ -146,6 +148,41 @@ func formatStamp(t any) string {
 		return "—"
 	}
 	return v.Local().Format("2006-01-02 15:04")
+}
+
+// relativeTime says how far a timestamp is from the injected instant: "3m
+// ago", or "in 2h" for something scheduled. The absolute stamp stays beside
+// it in the page; this is the glanceable half.
+func relativeTime(now time.Time, t any) string {
+	v, ok := asTime(t)
+	if !ok {
+		return ""
+	}
+	d := now.Sub(v)
+	future := d < 0
+	if future {
+		d = -d
+	}
+	var s string
+	switch {
+	case d < time.Minute:
+		if future {
+			return "now"
+		}
+		return "just now"
+	case d < time.Hour:
+		s = fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		s = fmt.Sprintf("%dh", int(d.Hours()))
+	case d < 30*24*time.Hour:
+		s = fmt.Sprintf("%dd", int(d.Hours()/24))
+	default:
+		s = fmt.Sprintf("%dmo", int(d.Hours()/(24*30)))
+	}
+	if future {
+		return "in " + s
+	}
+	return s + " ago"
 }
 
 func asTime(t any) (time.Time, bool) {

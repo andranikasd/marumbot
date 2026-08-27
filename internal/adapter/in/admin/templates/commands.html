@@ -1,8 +1,8 @@
 {{define "content"}}
 <p class="lead">Every Telegram update becomes a durable command before Telegram is answered. Nothing here should stay pending for long.</p>
-<div class="pills">
-  {{range .Statuses}}<a class="pill{{if eq .Status $.Status}} on{{end}}" href="/commands{{if .Status}}?status={{.Status}}{{end}}">{{if .Status}}{{.Status}}{{else}}all{{end}}<span class="n">{{.N}}</span></a>{{end}}
-</div>
+<nav class="pills" aria-label="Filter by status">
+  {{range .Statuses}}<a class="pill" {{if eq .Status $.Status}}aria-current="page"{{end}} href="/commands{{if .Status}}?status={{.Status}}{{end}}">{{if .Status}}{{.Status}}{{else}}all{{end}}<span class="n">{{.N}}</span></a>{{end}}
+</nav>
 {{if .Purged}}<div class="note ok">Removed {{.Purged}} dead command{{if ne .Purged "1"}}s{{end}}.</div>{{end}}
 <div class="panel">
   <div class="hd">{{len .Rows}} shown{{if .Status}}, status {{.Status}}{{end}}
@@ -17,24 +17,27 @@
   <div class="scroll"><table>
     <thead><tr><th class="num">Update</th><th>Kind</th><th>User</th><th>Status</th><th class="num">Tries</th>
       <th>Next attempt</th><th class="num">Overdue</th><th>Lease</th><th>Received</th>
-      <th>Error</th><th></th></tr></thead>
+      <th>Error</th><th class="actions"></th></tr></thead>
     <tbody>{{range .Rows}}
       <tr>
         <td class="num mono">{{.UpdateID}}</td>
         <td>{{.Kind}}</td>
-        <td class="mono">{{if .UserID}}<a href="/users/{{.UserID}}">{{short .UserID}}</a>{{else}}—{{end}}</td>
+        <td class="mono">{{if .UserID}}<a href="/users/{{.UserID}}" title="{{.UserID}}">{{short .UserID}}</a>{{else}}—{{end}}</td>
         <td><span class="tag {{status .Status}}">{{.Status}}</span></td>
         <td class="num">{{.Attempts}}</td>
-        <td class="nowrap">{{stamp .NextAttemptAt}}</td>
+        <td class="nowrap">{{stamp .NextAttemptAt}}<span class="ago">{{ago $.Now .NextAttemptAt}}</span></td>
         <td class="num">{{if gt .DueAgeS 0}}{{duration .DueAgeS}}{{else}}—{{end}}</td>
-        <td class="mono">{{if .LeaseOwner}}{{.LeaseOwner}}{{else}}—{{end}}</td>
-        <td class="nowrap">{{stamp .ReceivedAt}}</td>
-        <td class="mono">{{if .LastError}}{{.LastError}}{{else}}—{{end}}</td>
+        <td class="mono" title="{{.LeaseOwner}}">{{if .LeaseOwner}}{{short .LeaseOwner}}{{else}}—{{end}}</td>
+        <td class="nowrap">{{stamp .ReceivedAt}}<span class="ago">{{ago $.Now .ReceivedAt}}</span></td>
+        <td class="mono err" title="{{.LastError}}">{{if .LastError}}{{.LastError}}{{else}}—{{end}}</td>
         <td class="actions">{{if ne .Status "completed"}}<form method="post" action="/commands/{{.ID}}/retry"><button class="link">retry</button></form>{{end}}</td>
       </tr>
     {{end}}</tbody>
   </table></div>
-  {{else}}<div class="empty">Nothing here.</div>{{end}}
+  {{else}}<div class="empty">
+    {{if .Status}}Nothing is {{.Status}}.<a class="next" href="/commands">Show every command →</a>
+    {{else}}Nothing has arrived yet. Commands appear the moment Telegram delivers an update.{{end}}
+  </div>{{end}}
 </div>
 {{end}}
 {{template "layout" .}}
