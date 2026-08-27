@@ -13,7 +13,7 @@ explain why the code is shaped the way it is.
 | [System overview](architecture/01-overview.md) | The whole system on one page, and the rules that shape it |
 | [Domain model](architecture/02-domain-model.md) | Contracts, snapshots, events, derived state, reliability |
 | [Ledger and replay](architecture/03-ledger-replay.md) | How a balance is derived, and the double-counting trap |
-| [Money and dates](architecture/04-money-and-dates.md) | Integer money, currencies, the 128-bit accrual, anchored schedules |
+| [Money and dates](architecture/04-money-and-dates.md) | Integer money, currencies, the 128-bit accrual, anchored schedules, and what the corpus settles about day count and rounding |
 | [Database](architecture/05-database.md) | Schema, conventions, the constraints SQL cannot express |
 | [Admin interface](architecture/06-admin-ui.md) | The private operator UI and its security model |
 | [Messaging](architecture/07-messaging.md) | Telegram in and out, delivery guarantees, scheduling |
@@ -35,6 +35,7 @@ explain why the code is shaped the way it is.
 
 | Document | Covers |
 | --- | --- |
+| [Correctness corpus](../testdata/golden/README.md) | The real lender schedules the engine is measured against, and what each one currently proves |
 | [Engineering guide](engineering-guide.md) | How code is written: structure, style, testing, the five invariants |
 | [MVP system and architecture design](design/Marum-MVP-System-and-Architecture-Design.pdf) | The formal design document |
 | [Reliable MVP design v0.3.1](design/reliable-mvp-design.md) | Long-form reference: full DDL, reliability invariants, failure analysis |

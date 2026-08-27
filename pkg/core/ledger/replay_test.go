@@ -34,7 +34,7 @@ func contract() model.Contract {
 		NominalRate:   money.RateFromPercent(18, 0),
 		DayCount:      money.Actual365, Type: model.Annuity,
 		StartDate: d("2020-01-01"), MaturityDate: d("2030-01-01"),
-		PaymentDay: 5, Rounding: money.DefaultAMDPolicy,
+		PaymentDay: 5, Rounding: money.Policy{Mode: money.HalfUp, Unit: 100},
 		AllocationPolicy: testPolicy,
 	}
 }
