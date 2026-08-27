@@ -1,12 +1,14 @@
 {{define "content"}}
 <div class="login">
-  <h1>Marum admin</h1>
-  {{if .Error}}<div class="note bad">{{.Error}}</div>{{end}}
-  <form method="post" action="/login" class="stack">
-    <div><label for="user">User</label><input id="user" name="user" type="text" autocomplete="username" autofocus></div>
-    <div><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password"></div>
-    <button type="submit">Sign in</button>
-  </form>
+  <div class="panel">
+    <h1>Marum admin</h1>
+    {{if .Error}}<div class="note bad">{{.Error}}</div>{{end}}
+    <form method="post" action="/login" class="stack">
+      <div><label for="user">User</label><input id="user" name="user" type="text" autocomplete="username" autofocus></div>
+      <div><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password"></div>
+      <button type="submit">Sign in</button>
+    </form>
+  </div>
 </div>
 {{end}}
 {{template "layout" .}}

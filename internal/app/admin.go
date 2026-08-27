@@ -36,12 +36,30 @@ type AdminStore interface {
 	ListReconciliationRuns(context.Context, int32) ([]ReconRow, error)
 	Ping(context.Context) error
 	MigrationVersion(context.Context) (int64, error)
+
+	UsersByDay(context.Context) ([]DayCount, error)
+	LoansByDay(context.Context) ([]DayCount, error)
+	GetUser(context.Context, string) (UserRow, error)
+	LoansByUser(context.Context, string) ([]LoanRow, error)
+	BudgetsForUser(context.Context, string) ([]BudgetRow, error)
+	ConversationState(context.Context, string) (*ConvoRow, error)
+	CommandCounts(context.Context) ([]StatusCount, error)
+	DeliveryCounts(context.Context) ([]StatusCount, error)
+}
+
+// EngineReader is what the admin needs to run the engine over a stored loan:
+// the same read path the bot uses, so the operator sees exactly what the
+// borrower is told.
+type EngineReader interface {
+	LoansForUser(ctx context.Context, userID string, limit int32) ([]UserLoan, error)
+	Budget(ctx context.Context, userID string) (Budget, error)
 }
 
 // Admin is the read-mostly service behind the private web interface.
 type Admin struct {
-	store AdminStore
-	mod   Moderation
+	store  AdminStore
+	mod    Moderation
+	engine EngineReader
 }
 
 // NewAdmin builds the read-mostly service behind the admin interface.
@@ -51,6 +69,10 @@ func NewAdmin(s AdminStore) *Admin { return &Admin{store: s} }
 // store so a build that only reads cannot accidentally gain the ability to
 // delete an account.
 func (a *Admin) WithModeration(m Moderation) *Admin { a.mod = m; return a }
+
+// WithEngine lets loan pages show the projection and the plan the borrower
+// would get. Without it the pages show the stored facts only.
+func (a *Admin) WithEngine(e EngineReader) *Admin { a.engine = e; return a }
 
 // The moderation actions, each a thin pass-through that exists so the inbound
 // handler never touches a store directly.
@@ -106,6 +128,16 @@ func (a *Admin) Retry(ctx context.Context, id string) error {
 	return a.mod.RetryCommand(ctx, id)
 }
 
+// CommandCounts returns the inbox split by status.
+func (a *Admin) CommandCounts(ctx context.Context) ([]StatusCount, error) {
+	return call(ctx, "CommandCounts", a.store.CommandCounts)
+}
+
+// DeliveryCounts returns the outbox split by status.
+func (a *Admin) DeliveryCounts(ctx context.Context) ([]StatusCount, error) {
+	return call(ctx, "DeliveryCounts", a.store.DeliveryCounts)
+}
+
 // Overview returns the dashboard counters.
 func (a *Admin) Overview(ctx context.Context) (Overview, error) {
 	return call(ctx, "Overview", a.store.Overview)
@@ -146,14 +178,20 @@ func (a *Admin) AddPolicy(ctx context.Context, id, key string, version int32, de
 	return a.store.InsertPolicy(ctx, id, key, version, definition, excess, source)
 }
 
-// LoanView is everything the admin interface shows about one loan: the stored
-// facts, and what they replay to.
-// LoanView is everything the interface shows about one loan.
+// LoanView is everything the interface shows about one loan: the stored
+// facts, and what the engine makes of them.
 type LoanView struct {
 	Loan      LoanDetail
 	Contracts []ContractRow
 	Snapshots []SnapshotRow
 	Events    []EventRow
+	// Projection is the schedule from the latest anchor, when the engine can
+	// build one. Nil with a reason otherwise.
+	Projection     *Projection
+	ProjectionNote string
+	// Plan is what the borrower is currently advised, when a budget exists.
+	Plan     *PlanSummary
+	PlanNote string
 }
 
 // Loan returns one loan with its contracts, snapshots and ledger.
@@ -172,10 +210,10 @@ func (a *Admin) Loan(ctx context.Context, id string) (LoanView, error) {
 	if v.Events, err = a.store.EventsForLoan(ctx, id); err != nil {
 		return v, err
 	}
+	a.enrich(ctx, &v)
 	return v, nil
 }
 
-// Health is what the status endpoint and the dashboard both report.
 // Health is what the status endpoint and the dashboard both report.
 type Health struct {
 	DatabaseOK       bool

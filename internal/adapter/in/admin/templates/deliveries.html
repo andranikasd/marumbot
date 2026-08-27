@@ -1,29 +1,32 @@
 {{define "content"}}
-<h1>Delivery outbox</h1>
 <p class="lead">
   Reminders and replies waiting to reach Telegram. Delivery is at-least-once: a message accepted by
   Telegram but not marked locally will be sent again, which is why reminder text reads correctly twice.
 </p>
+<div class="pills">
+  {{range .Statuses}}<a class="pill{{if eq .Status $.Status}} on{{end}}" href="/deliveries{{if .Status}}?status={{.Status}}{{end}}">{{if .Status}}{{.Status}}{{else}}all{{end}}<span class="n">{{.N}}</span></a>{{end}}
+</div>
 <div class="panel">
-  <div class="hd">{{len .Rows}} most recent</div>
+  <div class="hd">{{len .Rows}} shown{{if .Status}}, status {{.Status}}{{end}}</div>
   {{if .Rows}}
-  <table>
-    <thead><tr><th>Kind</th><th>Status</th><th class="num">Priority</th><th>Scheduled</th>
-      <th>Next attempt</th><th class="num">Attempts</th><th class="num">Message</th><th>Sent</th><th>Error</th></tr></thead>
+  <div class="scroll"><table>
+    <thead><tr><th>Kind</th><th>User</th><th>Status</th><th class="num">Priority</th><th>Scheduled</th>
+      <th>Next attempt</th><th class="num">Tries</th><th class="num">Message</th><th>Sent</th><th>Error</th></tr></thead>
     <tbody>{{range .Rows}}
       <tr>
         <td>{{.Kind}}</td>
+        <td class="mono"><a href="/users/{{.UserID}}">{{short .UserID}}</a></td>
         <td><span class="tag {{status .Status}}">{{.Status}}</span></td>
         <td class="num">{{.Priority}}</td>
-        <td>{{stamp .ScheduledAt}}</td>
-        <td>{{stamp .NextAttempt}}</td>
+        <td class="nowrap">{{stamp .ScheduledAt}}</td>
+        <td class="nowrap">{{stamp .NextAttempt}}</td>
         <td class="num">{{.Attempts}}</td>
         <td class="num mono">{{if .MessageID}}{{.MessageID}}{{else}}—{{end}}</td>
-        <td>{{if .SentAt}}{{stamp .SentAt}}{{else}}<span class="t-mute">—</span>{{end}}</td>
+        <td class="nowrap">{{if .SentAt}}{{stamp .SentAt}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="mono">{{if .LastError}}{{.LastError}}{{else}}—{{end}}</td>
       </tr>
     {{end}}</tbody>
-  </table>
+  </table></div>
   {{else}}<div class="empty">Nothing queued.</div>{{end}}
 </div>
 {{end}}

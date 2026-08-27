@@ -1,45 +1,73 @@
 {{define "content"}}
-<h1>Overview</h1>
-<p class="lead">Everything the system currently holds, and whether the parts that must keep moving are moving.</p>
+{{if not .D.Health.DatabaseOK}}<div class="note bad">Database unreachable: {{.D.Health.DatabaseError}}</div>{{end}}
 
-{{if not .Health.DatabaseOK}}
-<div class="note bad">Database unreachable: {{.Health.DatabaseError}}</div>
-{{end}}
-
-<h2>Ledger</h2>
 <div class="cards">
-  <div class="card"><div class="n">{{.O.Users}}</div><div class="k">users</div></div>
-  <div class="card"><div class="n">{{.O.Loans}}</div><div class="k">active loans</div></div>
-  <div class="card"><div class="n">{{.O.Events}}</div><div class="k">ledger events</div></div>
-  <div class="card"><div class="n">{{.O.Snapshots}}</div><div class="k">bank snapshots</div></div>
-  <div class="card"><div class="n">{{.O.Policies}}</div><div class="k">allocation policies</div></div>
+  <a class="card" href="/users"><div class="n">{{.D.Overview.Users}}</div><div class="k">users</div><div class="sub">{{sum .D.UsersByDay}} joined in 14 days</div></a>
+  <a class="card" href="/loans"><div class="n">{{.D.Overview.Loans}}</div><div class="k">active loans</div><div class="sub">{{sum .D.LoansByDay}} filed in 14 days</div></a>
+  <div class="card"><div class="n">{{.D.Overview.Events}}</div><div class="k">ledger events</div></div>
+  <div class="card"><div class="n">{{.D.Overview.Snapshots}}</div><div class="k">bank snapshots</div></div>
+  <a class="card" href="/policies"><div class="n">{{.D.Overview.Policies}}</div><div class="k">allocation policies</div></a>
+  <div class="card"><div class="n">{{.D.Overview.OccurrencesScheduled}}</div><div class="k">reminders scheduled</div></div>
 </div>
 
 <h2>Work in flight</h2>
 <div class="cards">
-  <div class="card {{if gt .O.CommandsPending 50}}alert{{end}}">
-    <div class="n">{{.O.CommandsPending}}</div><div class="k">commands pending</div></div>
-  <div class="card {{if gt .O.OldestCommandAgeS 120}}alert{{end}}">
-    <div class="n">{{duration .O.OldestCommandAgeS}}</div><div class="k">oldest pending command</div></div>
-  <div class="card {{if gt .O.CommandsDead 0}}alert{{end}}">
-    <div class="n">{{.O.CommandsDead}}</div><div class="k">commands dead</div></div>
-  <div class="card {{if gt .O.DeliveriesPending 200}}alert{{end}}">
-    <div class="n">{{.O.DeliveriesPending}}</div><div class="k">deliveries pending</div></div>
-  <div class="card {{if gt .O.OldestDeliveryAgeS 900}}alert{{end}}">
-    <div class="n">{{duration .O.OldestDeliveryAgeS}}</div><div class="k">oldest pending delivery</div></div>
-  <div class="card {{if gt .O.DeliveriesDead 0}}alert{{end}}">
-    <div class="n">{{.O.DeliveriesDead}}</div><div class="k">deliveries dead</div></div>
-  <div class="card"><div class="n">{{.O.OccurrencesScheduled}}</div><div class="k">reminders scheduled</div></div>
+  <a class="card {{if gt .D.Overview.CommandsPending 50}}alert{{end}}" href="/commands?status=pending">
+    <div class="n">{{.D.Overview.CommandsPending}}</div><div class="k">commands pending</div>
+    <div class="sub">oldest due {{duration .D.Overview.OldestCommandAgeS}}</div></a>
+  <a class="card {{if gt .D.Overview.CommandsDead 0}}alert{{else}}good{{end}}" href="/commands?status=dead">
+    <div class="n">{{.D.Overview.CommandsDead}}</div><div class="k">commands dead</div></a>
+  <a class="card {{if gt .D.Overview.DeliveriesPending 200}}alert{{end}}" href="/deliveries?status=pending">
+    <div class="n">{{.D.Overview.DeliveriesPending}}</div><div class="k">deliveries pending</div>
+    <div class="sub">oldest due {{duration .D.Overview.OldestDeliveryAgeS}}</div></a>
+  <a class="card {{if gt .D.Overview.DeliveriesDead 0}}alert{{else}}good{{end}}" href="/deliveries?status=dead">
+    <div class="n">{{.D.Overview.DeliveriesDead}}</div><div class="k">deliveries dead</div></a>
 </div>
 
-<h2>System</h2>
-<div class="panel"><div class="bd">
-  <dl class="kv">
-    <dt>Database</dt><dd>{{if .Health.DatabaseOK}}<span class="tag t-ok">reachable</span>{{else}}<span class="tag t-stop">unreachable</span>{{end}}</dd>
-    <dt>Schema version</dt><dd class="mono">{{.Health.MigrationVersion}}</dd>
-    <dt>Environment</dt><dd>{{.Env}}</dd>
-    <dt>Build</dt><dd class="mono">{{.Version}}</dd>
-  </dl>
-</div></div>
+<div class="grid2" style="margin-top:22px">
+  <div class="panel">
+    <div class="hd">Sign-ups, last 14 days <span class="tools chart-total">{{sum .D.UsersByDay}} total</span></div>
+    <div class="bd">{{template "bars" .D.UsersByDay}}</div>
+  </div>
+  <div class="panel">
+    <div class="hd">Loans filed, last 14 days <span class="tools chart-total">{{sum .D.LoansByDay}} total</span></div>
+    <div class="bd">{{template "bars" .D.LoansByDay}}</div>
+  </div>
+</div>
+
+<div class="grid2">
+  <div class="panel">
+    <div class="hd">Latest inbox activity <span class="tools"><a href="/commands">all →</a></span></div>
+    {{if .D.Recent}}
+    <div class="scroll"><table>
+      <thead><tr><th>Kind</th><th>Status</th><th class="num">Tries</th><th>Received</th><th>Error</th></tr></thead>
+      <tbody>{{range .D.Recent}}
+        <tr><td>{{.Kind}}</td><td><span class="tag {{status .Status}}">{{.Status}}</span></td>
+          <td class="num">{{.Attempts}}</td><td class="nowrap">{{stamp .ReceivedAt}}</td>
+          <td class="mono">{{if .LastError}}{{.LastError}}{{else}}—{{end}}</td></tr>
+      {{end}}</tbody>
+    </table></div>
+    {{else}}<div class="empty">Nothing has arrived yet.</div>{{end}}
+  </div>
+  <div class="panel">
+    <div class="hd">System</div>
+    <div class="bd">
+      <dl class="kv">
+        <dt>Database</dt><dd>{{if .D.Health.DatabaseOK}}<span class="tag t-ok">reachable</span>{{else}}<span class="tag t-stop">unreachable</span>{{end}}</dd>
+        <dt>Schema version</dt><dd class="mono">{{.D.Health.MigrationVersion}}</dd>
+        <dt>Environment</dt><dd>{{.Env}}</dd>
+        <dt>Build</dt><dd class="mono">{{.Version}}</dd>
+        <dt>Inbox by status</dt><dd>{{range .D.CommandCounts}}<span class="tag {{status .Status}}">{{.Status}} {{.N}}</span> {{end}}</dd>
+        <dt>Outbox by status</dt><dd>{{range .D.DeliveryCounts}}<span class="tag {{status .Status}}">{{.Status}} {{.N}}</span> {{end}}</dd>
+      </dl>
+    </div>
+  </div>
+</div>
+{{end}}
+{{define "bars"}}
+{{$max := maxN .}}
+<div class="bars">
+  {{range .}}<div class="b" title="{{date .Day}}: {{.N}}"><i style="height:{{barh .N $max}}%"></i><span>{{dayShort .Day}}</span></div>{{end}}
+</div>
 {{end}}
 {{template "layout" .}}

@@ -1,42 +1,37 @@
 {{define "content"}}
-<h1>Users</h1>
 <p class="lead">Internal identities only. Telegram identifiers live encrypted in a separate table and are never shown here.</p>
+<form class="filters" method="get" action="/users">
+  <div><label for="q">Search</label><input id="q" type="search" name="q" value="{{.F.Q}}" placeholder="user id"></div>
+  <div><label for="state">Access</label>
+    <select id="state" name="state"><option value="">any</option>{{range .States}}<option value="{{.}}" {{if eq . $.F.State}}selected{{end}}>{{.}}</option>{{end}}</select></div>
+  <div><label for="del">Deletion</label>
+    <select id="del" name="deletion"><option value="">any</option><option value="requested" {{if eq .F.Deletion "requested"}}selected{{end}}>requested</option><option value="none" {{if eq .F.Deletion "none"}}selected{{end}}>not requested</option></select></div>
+  <button class="quiet">Apply</button>
+</form>
 <div class="panel">
-  <div class="hd">{{len .Rows}} users</div>
+  <div class="hd">{{len .Rows}} of {{.Total}} users</div>
   {{if .Rows}}
-  <table>
+  <div class="scroll"><table>
     <thead><tr><th>ID</th><th>Access</th><th>Locale</th><th>Timezone</th>
-      <th class="num">Loans</th><th>Trial ends</th><th>Created</th><th>Deleted</th>
-      <th>Actions</th></tr></thead>
+      <th class="num">Loans</th><th>Trial ends</th><th>Joined</th><th>Deletion</th><th></th></tr></thead>
     <tbody>{{range .Rows}}
       <tr>
-        <td class="mono">{{short .ID}}</td>
+        <td class="mono"><a href="/users/{{.ID}}">{{short .ID}}</a></td>
         <td><span class="tag {{access .AccessState}}">{{.AccessState}}</span></td>
         <td>{{.Locale}}</td>
         <td>{{.Timezone}}</td>
         <td class="num">{{.LoanCount}}</td>
+        <td class="nowrap">{{date .TrialEndsAt}}</td>
+        <td class="nowrap">{{date .CreatedAt}}</td>
+        <td>{{if .DeletionRequested}}<span class="tag t-warn">requested</span>{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="actions">
-          {{if eq .AccessState "paused"}}
-          <form method="post" action="/users/{{.ID}}/restore"><button class="link">restore</button></form>
-          {{else}}
-          <form method="post" action="/users/{{.ID}}/pause"><button class="link">pause</button></form>
-          {{end}}
-          {{if .DeletionRequested}}
-          <form method="post" action="/users/{{.ID}}/erase">
-            <input type="hidden" name="confirm" value="erase">
-            <button class="link danger">erase permanently</button>
-          </form>
-          {{else}}
-          <form method="post" action="/users/{{.ID}}/erase"><button class="link">request deletion</button></form>
-          {{end}}
+          {{if eq .AccessState "paused"}}<form method="post" action="/users/{{.ID}}/restore"><button class="link">restore</button></form>
+          {{else}}<form method="post" action="/users/{{.ID}}/pause"><button class="link">pause</button></form>{{end}}
         </td>
-        <td>{{date .TrialEndsAt}}</td>
-        <td>{{date .CreatedAt}}</td>
-        <td>{{if .DeletedAt}}<span class="tag t-stop">{{date .DeletedAt}}</span>{{else}}<span class="t-mute">—</span>{{end}}</td>
       </tr>
     {{end}}</tbody>
-  </table>
-  {{else}}<div class="empty">No users yet.</div>{{end}}
+  </table></div>
+  {{else}}<div class="empty">No user matches.</div>{{end}}
 </div>
 {{end}}
 {{template "layout" .}}

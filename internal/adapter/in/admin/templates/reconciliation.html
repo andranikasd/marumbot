@@ -1,5 +1,4 @@
 {{define "content"}}
-<h1>Reconciliation</h1>
 <p class="lead">
   Drift between Marum's reconstruction and the lender's own figure, measured at every new confirmed
   snapshot. Repeated drift on one policy version means the policy is wrong, not the arithmetic.
@@ -7,7 +6,7 @@
 <div class="panel">
   <div class="hd">{{len .Rows}} runs</div>
   {{if .Rows}}
-  <table>
+  <div class="scroll"><table>
     <thead><tr><th>Loan</th><th class="num">Principal drift</th><th class="num">Interest drift</th>
       <th class="num">Fee drift</th><th class="num">Penalty drift</th><th>Engine</th><th>When</th></tr></thead>
     <tbody>{{range .Rows}}
@@ -18,11 +17,11 @@
         <td class="num">{{drift .FeeMinor}}</td>
         <td class="num">{{drift .PenaltyMinor}}</td>
         <td class="mono">{{.EngineVersion}}</td>
-        <td>{{stamp .CreatedAt}}</td>
+        <td class="nowrap">{{stamp .CreatedAt}}</td>
       </tr>
     {{end}}</tbody>
-  </table>
-  {{else}}<div class="empty">No reconciliation has run yet.</div>{{end}}
+  </table></div>
+  {{else}}<div class="empty">No reconciliation has run yet. Runs appear when a confirmed snapshot lands on a loan with ledger events.</div>{{end}}
 </div>
 {{end}}
 {{template "layout" .}}
