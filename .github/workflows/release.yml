@@ -97,8 +97,19 @@ jobs:
             exit 0
           fi
           echo "checking $prev against the schema from $GITHUB_REF_NAME"
-          git checkout "$prev" -- ./pkg ./internal ./queries ./cmd
-          go test -count=1 ./... || { echo "::error::the previous release fails against this schema"; exit 1; }
+          # A clean tree of the previous release, not an overlay onto this one.
+          # `git checkout $prev -- ./pkg ...` copies old files over new but
+          # leaves any file that did not exist at $prev in place -- so a test
+          # added since then survives and references symbols the old code
+          # never had, and the check compiles a chimera that is neither
+          # release. It passed for two tags only because no test file had
+          # ever been added between them; the first one that was broke it.
+          git worktree add --detach /tmp/prev "$prev"
+          (
+            cd /tmp/prev
+            go test -count=1 ./... \
+              || { echo "::error::the previous release ($prev) fails against this schema"; exit 1; }
+          )
 
   image:
     name: Build and publish the image
