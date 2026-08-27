@@ -6,6 +6,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -19,9 +20,13 @@ import (
 	"time"
 
 	"github.com/andranikasd/marumbot/internal/adapter/in/admin"
+	"github.com/andranikasd/marumbot/internal/adapter/in/telegram"
 	"github.com/andranikasd/marumbot/internal/adapter/out/postgres"
+	"github.com/andranikasd/marumbot/internal/adapter/out/sysclock"
+	"github.com/andranikasd/marumbot/internal/adapter/out/telegramclient"
 	"github.com/andranikasd/marumbot/internal/app"
 	"github.com/andranikasd/marumbot/internal/config"
+	"github.com/andranikasd/marumbot/internal/identity"
 	"github.com/andranikasd/marumbot/internal/obs"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -99,9 +104,33 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 
 	adminSvc := app.NewAdmin(store)
 
+	// Identifiers are sealed before they reach the database, so the key is built
+	// here and the store never sees it. A bad key is fatal: running without one
+	// would mean writing Telegram ids in the clear.
+	cipher, err := identity.New(cfg.IdentityKey)
+	if err != nil {
+		return fmt.Errorf("identity key: %w", err)
+	}
+
+	bot := telegramclient.New(cfg.BotToken)
+	worker := &app.Worker{
+		Inbox: store, Users: store,
+		Chats:   postgres.ChatLookup{Store: store, Cipher: cipher},
+		Send:    bot,
+		Clock:   sysclock.New(),
+		Owner:   cfg.InstanceID,
+		Log:     log,
+		MiniApp: cfg.MiniAppURL,
+	}
+	hook := &telegram.Webhook{
+		Inbox: store, Users: store, Cipher: cipher,
+		ServiceToken: cfg.ServiceToken, Timezone: cfg.DefaultTimezone,
+		Clock: sysclock.New(), Log: log,
+	}
+
 	public := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           otelhttp.NewHandler(publicRoutes(adminSvc), "marum", otelhttp.WithFilter(notHealthCheck)),
+		Handler:           otelhttp.NewHandler(publicRoutes(adminSvc, hook, worker, cfg.ServiceToken, log), "marum", otelhttp.WithFilter(notHealthCheck)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	servers := []*http.Server{public}
@@ -154,8 +183,19 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	return nil
 }
 
-func publicRoutes(a *app.Admin) http.Handler {
+func publicRoutes(a *app.Admin, hook *telegram.Webhook, w *app.Worker,
+	serviceToken string, log *slog.Logger,
+) http.Handler {
 	mux := http.NewServeMux()
+
+	// The Worker forwards verified Telegram updates here. It has already checked
+	// Telegram's secret token; the service token proves the call came from the
+	// Worker rather than from anyone who found the container.
+	mux.Handle("POST /tg/update", hook.Handler())
+
+	// The scheduler tick. Idempotent and safe to run concurrently, so a
+	// duplicate costs nothing and a missed one is caught by the next.
+	mux.Handle("POST /internal/tick", tickHandler(w, serviceToken, log))
 
 	// Liveness performs no database call: a probe that depends on Postgres
 	// turns a database blip into a restart loop.
@@ -191,6 +231,31 @@ func publicRoutes(a *app.Admin) http.Handler {
 		writeJSON(w, http.StatusOK, body)
 	})
 	return mux
+}
+
+// tickHandler drains the command inbox. It is bounded rather than looping until
+// empty: a tick that runs forever holds a Worker request open past its limit,
+// and the next tick is only minutes away.
+func tickHandler(w *app.Worker, serviceToken string, log *slog.Logger) http.Handler {
+	const batch = 25
+	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if serviceToken != "" &&
+			subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Marum-Service-Token")), []byte(serviceToken)) != 1 {
+			rw.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		ctx, span := obs.ComponentScheduler.Enter(r.Context(), "tick")
+		defer span.End()
+
+		n, err := w.Drain(ctx, batch)
+		if err != nil {
+			span.RecordError(err)
+			log.ErrorContext(ctx, "tick failed", "error", err)
+			writeJSON(rw, http.StatusInternalServerError, map[string]any{"error": "tick failed"})
+			return
+		}
+		writeJSON(rw, http.StatusOK, map[string]any{"handled": n})
+	})
 }
 
 func writeJSON(w http.ResponseWriter, code int, body any) {

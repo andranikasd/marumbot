@@ -21,6 +21,9 @@ type Config struct {
 	DatabaseURL     string
 	BotToken        string
 	WebhookSecret   string
+	ServiceToken    string // proves a request came from the Worker, not the internet
+	IdentityKey     string // base64 32 bytes; seals Telegram identifiers at rest
+	MiniAppURL      string // absolute https URL of the loan form
 	DefaultCurrency string
 	DefaultTimezone string
 	TickInterval    time.Duration
@@ -44,6 +47,9 @@ func Load() (Config, error) {
 		DatabaseURL:     str("MARUM_DATABASE_URL", ""),
 		BotToken:        str("MARUM_BOT_TOKEN", ""),
 		WebhookSecret:   str("MARUM_WEBHOOK_SECRET", ""),
+		ServiceToken:    str("MARUM_SERVICE_TOKEN", ""),
+		IdentityKey:     str("MARUM_IDENTITY_KEY", ""),
+		MiniAppURL:      str("MARUM_MINIAPP_URL", ""),
 		DefaultCurrency: str("MARUM_DEFAULT_CURRENCY", "AMD"),
 		DefaultTimezone: str("MARUM_DEFAULT_TZ", "Asia/Yerevan"),
 		TickInterval:    dur("MARUM_TICK_INTERVAL", 60*time.Second),
@@ -68,6 +74,11 @@ func (c Config) validate() error {
 	}
 	if c.Mode == "webhook" && c.WebhookSecret == "" {
 		missing = append(missing, "MARUM_WEBHOOK_SECRET (required in webhook mode)")
+	}
+	// Without a key the service would store Telegram identifiers in the clear,
+	// which is worse than refusing to start: the damage is silent and permanent.
+	if c.IdentityKey == "" {
+		missing = append(missing, "MARUM_IDENTITY_KEY")
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("%w: %s", ErrMissing, strings.Join(missing, ", "))
