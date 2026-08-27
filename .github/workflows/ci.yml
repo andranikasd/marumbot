@@ -51,6 +51,23 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with: { go-version: "${{ env.GO_VERSION }}", cache: true }
+      # Downloading modules is a network operation and the proxy is not always
+      # well. A failed zip fetch aborted the whole run with "stream error:
+      # INTERNAL_ERROR; received from peer" and reported it as eight failing
+      # packages, which reads as a broken branch rather than a bad minute.
+      #
+      # Retried here so the flake is absorbed where it happens, and so a real
+      # dependency problem still fails after three honest attempts.
+      - name: Download modules
+        run: |
+          for attempt in 1 2 3; do
+            go mod download && exit 0
+            echo "module download attempt $attempt failed; retrying"
+            sleep 5
+          done
+          echo "::error::could not download modules after 3 attempts"
+          exit 1
+
       # -race always: a data race that only appears in production is a race
       # nobody can reproduce.
       - run: go test -race -count=1 ./...
