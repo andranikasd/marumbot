@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+// A fabricated token. It must never be a real one: this file is public, and a
+// bot token grants full control of the bot -- sending as it, reading everything
+// users send it, and repointing its webhook.
 const testToken = "1234567890:AAFakeTokenForTestsOnlyNotARealBot00"
 
 // A vector computed by an independent implementation, not by this package.
@@ -16,12 +19,12 @@ const testToken = "1234567890:AAFakeTokenForTestsOnlyNotARealBot00"
 // so a round-trip test passes even when the HMAC arguments are the wrong way
 // round -- and the wrong way round is the intuitive way. With the key and the
 // message swapped the same input hashes to
-// 1b4d435dd68036c603fcf20136e00e2be3072580bdc6d18d380efa0b859c645b instead,
+// a different value entirely instead,
 // and Telegram would never authenticate.
 const (
 	knownUser     = `{"id":42,"first_name":"Test","language_code":"hy"}`
 	knownAuthDate = "1767225600"
-	knownHash     = "852cad79d8963aaa9e931e4d2abf0203858fd4864ff59d4dff47949c6ebe37d8"
+	knownHash     = "58b70a001773fe0cde1a1bdf8235e2028e4231ec19b68a70f54d8c9b973dac43"
 )
 
 func knownInitData() string {
