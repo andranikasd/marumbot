@@ -11,6 +11,34 @@ tg?.ready();
 tg?.expand();
 
 // ---------------------------------------------------------------------------
+// Theme. The CSS reads Telegram's variables directly; this keeps the chrome
+// (header, background) and the colour scheme in step when the theme changes
+// while the app is open, and copies any params the CSS variables miss.
+// ---------------------------------------------------------------------------
+function applyTheme() {
+  if (!tg) return;
+  const p = tg.themeParams || {};
+  const root = document.documentElement.style;
+  const map = {
+    bg_color: "--bg", text_color: "--fg", hint_color: "--hint", link_color: "--link",
+    button_color: "--btn", button_text_color: "--btn-fg", secondary_bg_color: "--field",
+    section_bg_color: "--card", accent_text_color: "--accent", destructive_text_color: "--danger",
+  };
+  for (const [k, v] of Object.entries(map)) if (p[k]) root.setProperty(v, p[k]);
+  document.documentElement.style.colorScheme = tg.colorScheme || "light";
+  try { tg.setHeaderColor?.("bg_color"); tg.setBackgroundColor?.("bg_color"); } catch { /* older clients */ }
+}
+applyTheme();
+tg?.onEvent?.("themeChanged", applyTheme);
+
+const haptic = {
+  tap: () => tg?.HapticFeedback?.impactOccurred?.("light"),
+  pick: () => tg?.HapticFeedback?.selectionChanged?.(),
+  ok: () => tg?.HapticFeedback?.notificationOccurred?.("success"),
+  bad: () => tg?.HapticFeedback?.notificationOccurred?.("error"),
+};
+
+// ---------------------------------------------------------------------------
 // Language. Anything Marum does not speak is Armenian.
 // ---------------------------------------------------------------------------
 const STRINGS = {
@@ -20,33 +48,38 @@ const STRINGS = {
     description: "Նշում (ըստ ցանկության)", "description.hint": "Բանկի անուն կամ հաշվեհամար պետք չէ։",
     principal: "Վարկի գումար", balance: "Արդեն մարված գումար (ըստ ցանկության)",
     "balance.hint": "Եթե վարկն արդեն ընթացքի մեջ է՝ նշեք մայր գումարից մարված մասը։",
-    "err.balance": "Պետք է լինի վարկի գումարից փոքր", rate: "Տարեկան տոկոսադրույք (%)", method: "Մարման եղանակ",
+    "err.balance": "Պետք է լինի վարկի գումարից փոքր", rate: "Տարեկան տոկոսադրույք", method: "Մարման եղանակ",
     "method.annuity": "Անուիտետային", "method.declining": "Դիֆերենցված",
     "method.hint": "Անուիտետի դեպքում ամսական վճարը նույնն է։",
     "method.hint.declining": "Դիֆերենցվածի դեպքում վճարը սկզբում մեծ է, հետո նվազում է։",
-    start: "Սկիզբ", maturity: "Ավարտ", day: "Վճարման օրը",
+    start: "Սկիզբ", maturity: "Ավարտ", day: "Վճարման օրը", "unit.day": "ամսի օր",
     "day.hint": "Ամսվա այն օրը, երբ վճարումը պարտադիր է։",
-    "sum.permonth": "ամսական", "sum.count": "Վճարումների թիվ",
+    "sum.title": "Նախնական հաշվարկ", "sum.permonth": "ամսական", "sum.count": "Վճարումների թիվ",
     "sum.interest": "Ընդհանուր տոկոս", "sum.total": "Ընդամենը",
     "sum.note": "Հաշվարկը մոտավոր է մինչև բանկի հաստատումը։",
     save: "Պահպանել", saving: "Պահպանվում է…", saved: "Պահպանված է",
+    loading: "Բեռնվում է…", retry: "Փորձել նորից",
     "err.required": "Պարտադիր դաշտ", "err.number": "Մուտքագրեք թիվ",
     "err.positive": "Պետք է լինի զրոյից մեծ", "err.day": "1-ից 31",
     "err.order": "Ավարտը պետք է լինի սկզբից հետո", "err.rate": "0-ից 200 միջակայքում",
-    "err.save": "Չհաջողվեց պահպանել։ Փորձեք նորից։",
-    "manage.title": "Իմ վարկերը", "manage.lede": "Փոխեք անվանումը կամ հեռացրեք վարկը։",
+    "err.save": "Չհաջողվեց պահպանել։ Փորձեք նորից։", "err.load": "Չհաջողվեց բեռնել։",
+    "manage.title": "Իմ վարկերը", "manage.lede": "Ընդհանուր պատկերը, և յուրաքանչյուր վարկը՝ առանձին։",
+    "manage.owed": "Ընդհանուր պարտք", "manage.required": "Այս ամիս պարտադիր", "manage.next": "Հաջորդ վճարումը",
     "manage.empty": "Դուք դեռ վարկ չեք ավելացրել։", "manage.add_first": "Ավելացնել առաջինը",
     "manage.edit": "Փոխել", "manage.remove": "Հեռացնել",
     "manage.save": "Պահպանել", "manage.cancel": "Չեղարկել",
     "manage.confirm": "Հեռացնե՞լ այս վարկը։ Հաշվարկները կպահպանվեն։",
-    "manage.yours": "ձեր թիվը", "manage.until": "մինչև",
-    "budget.title": "Ամսական բյուջե", "budget.lede": "Որքա՞ն կարող եք ամսական հատկացնել վարկերին։",
+    "manage.yours": "ձեր թիվը", "manage.until": "մինչև", "manage.nextpay": "Հաջորդը՝",
+    "budget.title": "Ամսական բյուջե", "budget.lede": "Որքա՞ն կարող եք ամսական հատկացնել բոլոր վարկերին։",
     "budget.monthly": "Ամսական գումար", "budget.hint": "Ներառեք բոլոր պարտադիր վճարումները։",
     "budget.required": "Պարտադիր վճարումներ", "budget.surplus": "Ավելցուկ",
     "budget.payday": "Աշխատավարձի օր (ըստ ցանկության)",
     "budget.payday.hint": "Եթե գումարը ստանում եք մինչև վճարման օրը, վաղ վճարելը տոկոս է խնայում։",
-    "budget.low": "Պակաս է պարտադիր վճարումներից։",
-    "budget.ok": "Ավելցուկը կուղղվի մեկ վարկի՝ արագ մարման համար։",
+    "budget.low": "Պակաս է պարտադիր վճարումներից՝ պլան չի ստացվի։",
+    "budget.ok": "Ավելցուկն ամեն ամիս կուղղվի մեկ վարկի՝ ավելի շուտ փակելու համար։",
+    "budget.exact": "Ծածկում է պարտադիրը՝ առանց ավելցուկի։",
+    "budget.done": "Բյուջեն պահպանված է։ Պլանը տեսնելու համար չաթում սեղմեք <b>«💡 Ի՞նչ անել»</b>։",
+    "budget.back": "Վերադառնալ չաթ",
     "tab.loans": "Վարկեր", "tab.add": "Ավելացնել", "tab.budget": "Բյուջե",
   },
   en: {
@@ -55,33 +88,38 @@ const STRINGS = {
     description: "Note (optional)", "description.hint": "No bank name or account number needed.",
     principal: "Loan amount", balance: "Already repaid (optional)",
     "balance.hint": "If the loan is already running, enter the principal you have repaid so far.",
-    "err.balance": "Must be less than the loan amount", rate: "Annual interest rate (%)", method: "Repayment method",
+    "err.balance": "Must be less than the loan amount", rate: "Annual interest rate", method: "Repayment method",
     "method.annuity": "Annuity", "method.declining": "Declining",
-    "method.hint": "An annuity keeps the monthly payment the same.",
+    "method.hint": "An annuity keeps the monthly instalment the same.",
     "method.hint.declining": "Declining starts higher and falls every month.",
-    start: "Start", maturity: "Maturity", day: "Payment day",
-    "day.hint": "The day of the month the payment falls due.",
-    "sum.permonth": "per month", "sum.count": "Payments",
+    start: "Start", maturity: "Maturity", day: "Payment day", "unit.day": "of the month",
+    "day.hint": "The day of the month the instalment falls due.",
+    "sum.title": "Estimate", "sum.permonth": "per month", "sum.count": "Instalments",
     "sum.interest": "Total interest", "sum.total": "Total",
     "sum.note": "An estimate until your bank confirms it.",
     save: "Save", saving: "Saving…", saved: "Saved",
+    loading: "Loading…", retry: "Try again",
     "err.required": "Required", "err.number": "Enter a number",
     "err.positive": "Must be above zero", "err.day": "Between 1 and 31",
     "err.order": "Maturity must be after the start", "err.rate": "Between 0 and 200",
-    "err.save": "Could not save. Please try again.",
-    "manage.title": "My loans", "manage.lede": "Rename a loan or remove it.",
+    "err.save": "Could not save. Please try again.", "err.load": "Could not load.",
+    "manage.title": "My loans", "manage.lede": "The whole picture, then each loan on its own.",
+    "manage.owed": "Total owed", "manage.required": "Required this month", "manage.next": "Next instalment",
     "manage.empty": "You have not added a loan yet.", "manage.add_first": "Add the first one",
     "manage.edit": "Edit", "manage.remove": "Remove",
     "manage.save": "Save", "manage.cancel": "Cancel",
     "manage.confirm": "Remove this loan? Its calculations are kept.",
-    "manage.yours": "your figure", "manage.until": "until",
-    "budget.title": "Monthly budget", "budget.lede": "How much can you put towards your loans each month?",
-    "budget.monthly": "Monthly amount", "budget.hint": "Include every required payment.",
-    "budget.required": "Required payments", "budget.surplus": "Surplus",
+    "manage.yours": "your figure", "manage.until": "until", "manage.nextpay": "Next:",
+    "budget.title": "Monthly budget", "budget.lede": "How much can you put towards all your loans each month?",
+    "budget.monthly": "Monthly amount", "budget.hint": "Include every required instalment.",
+    "budget.required": "Required instalments", "budget.surplus": "Surplus",
     "budget.payday": "Payday (optional)",
     "budget.payday.hint": "If the money arrives before the due date, paying early saves interest.",
-    "budget.low": "Below your required payments.",
-    "budget.ok": "The surplus goes to one loan, to clear it faster.",
+    "budget.low": "Below your required instalments: no plan is possible.",
+    "budget.ok": "The surplus goes to one loan every month, to clear it sooner.",
+    "budget.exact": "Covers the required instalments with nothing spare.",
+    "budget.done": "Budget saved. To see your plan, tap <b>“💡 What to do”</b> in the chat.",
+    "budget.back": "Back to chat",
     "tab.loans": "Loans", "tab.add": "Add", "tab.budget": "Budget",
   },
 };
@@ -93,6 +131,11 @@ for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = T(el
 const $ = (id) => document.getElementById(id);
 const fmtMoney = (n, cur) => new Intl.NumberFormat(lang === "en" ? "en-US" : "hy-AM",
   { style: "currency", currency: cur, maximumFractionDigits: 0 }).format(n);
+const fmtDate = (iso) => {
+  const d = new Date(iso + "T00:00:00");
+  return Number.isNaN(d.getTime()) ? iso
+    : new Intl.DateTimeFormat(lang === "en" ? "en-GB" : "hy-AM", { day: "numeric", month: "short" }).format(d);
+};
 
 // ---------------------------------------------------------------------------
 // Transport. initData goes in a header, never in the body: it is a credential,
@@ -131,18 +174,23 @@ function go(name) {
   window.scrollTo(0, 0);
   if (name === "loan") estimate();
   if (name === "manage") loadLoans();
-  if (name === "budget") loadBudget();
+  if (name === "budget") { $("budget-done").classList.remove("show"); loadBudget(); }
 }
-for (const b of document.querySelectorAll("[data-go]")) b.addEventListener("click", () => go(b.dataset.go));
+for (const b of document.querySelectorAll("[data-go]")) {
+  b.addEventListener("click", () => { haptic.tap(); go(b.dataset.go); });
+}
 
 // ---------------------------------------------------------------------------
 // Add a loan.
 // ---------------------------------------------------------------------------
 const today = new Date();
 const iso = (d) => d.toISOString().slice(0, 10);
-$("start").value = iso(today);
-$("maturity").value = iso(new Date(today.getFullYear() + 3, today.getMonth(), today.getDate()));
-$("day").value = String(today.getDate());
+function resetDates() {
+  $("start").value = iso(today);
+  $("maturity").value = iso(new Date(today.getFullYear() + 3, today.getMonth(), today.getDate()));
+  $("day").value = String(today.getDate());
+}
+resetDates();
 
 const num = (s) => {
   const cleaned = String(s).replace(/\s/g, "").replace(/,/g, ".");
@@ -173,11 +221,15 @@ function validate() {
   if (s && m && m <= s) errs.maturity = T("err.order");
   for (const f of ["title", "principal", "balance", "rate", "day", "start", "maturity"]) {
     const box = $("e-" + f);
-    if (box) box.textContent = errs[f] || "";
-    $(f).setAttribute("aria-invalid", errs[f] ? "true" : "false");
+    // An error is shown once the field has been touched, so an empty form does
+    // not open covered in red; a submit shows everything.
+    const touched = $(f).dataset.touched === "1" || submitted;
+    if (box) box.textContent = touched && errs[f] ? errs[f] : "";
+    $(f).setAttribute("aria-invalid", touched && errs[f] ? "true" : "false");
   }
   return { ok: Object.keys(errs).length === 0, p, r, d, paid };
 }
+let submitted = false;
 
 function occurrences(start, day, maturity) {
   const out = [], s = new Date(start), end = new Date(maturity);
@@ -195,6 +247,7 @@ function occurrences(start, day, maturity) {
 function estimate() {
   if (current !== "loan") return;
   $("method-hint").textContent = T(method() === "declining" ? "method.hint.declining" : "method.hint");
+  $("u-balance").textContent = $("currency").value;
   const v = validate();
   if (!v.ok) { $("summary").hidden = true; tg?.MainButton.hide(); return; }
   const dates = occurrences($("start").value, v.d, $("maturity").value);
@@ -245,13 +298,19 @@ function estimate() {
   tg?.MainButton.show();
 }
 for (const el of $("f").querySelectorAll("input,select")) {
-  el.addEventListener("input", estimate);
-  el.addEventListener("change", estimate);
+  el.addEventListener("input", () => { el.dataset.touched = "1"; estimate(); });
+  el.addEventListener("change", () => { el.dataset.touched = "1"; estimate(); });
+  el.addEventListener("blur", () => { el.dataset.touched = "1"; estimate(); });
 }
+for (const el of document.querySelectorAll('input[name="method"]')) el.addEventListener("change", haptic.pick);
 
+let busy = false;
 async function saveLoan() {
+  if (busy) return;
+  submitted = true;
   const v = validate();
-  if (!v.ok) { tg?.HapticFeedback?.notificationOccurred("error"); return; }
+  if (!v.ok) { haptic.bad(); return; }
+  busy = true;
   tg?.MainButton.showProgress();
   tg?.MainButton.setText(T("saving"));
   try {
@@ -266,18 +325,20 @@ async function saveLoan() {
       }),
     });
     if (!res.ok) throw new Error(String(res.status));
-    tg?.HapticFeedback?.notificationOccurred("success");
+    haptic.ok();
     $("f").reset();
-    $("start").value = iso(today);
-    $("maturity").value = iso(new Date(today.getFullYear() + 3, today.getMonth(), today.getDate()));
-    $("day").value = String(today.getDate());
+    for (const el of $("f").querySelectorAll("input,select")) delete el.dataset.touched;
+    submitted = false;
+    resetDates();
     toast(T("saved"));
     go("manage");
   } catch {
+    haptic.bad();
+    $("e-title").textContent = T("err.save");
+  } finally {
+    busy = false;
     tg?.MainButton.hideProgress();
     tg?.MainButton.setText(T("save"));
-    tg?.HapticFeedback?.notificationOccurred("error");
-    $("e-title").textContent = T("err.save");
   }
 }
 $("f").addEventListener("submit", (e) => { e.preventDefault(); saveLoan(); });
@@ -293,32 +354,39 @@ function loanCard(loan) {
 
   const view = document.createElement("div"); view.className = "view";
   const h = document.createElement("h2");
-  const name = document.createElement("span"); name.textContent = loan.name;
+  const name = document.createElement("span"); name.className = "name"; name.textContent = loan.name;
   const bal = document.createElement("span"); bal.className = "bal"; bal.textContent = loan.balance;
   h.append(name, bal);
   const meta = document.createElement("p"); meta.className = "meta";
-  meta.textContent = (loan.description ? loan.description + " · " : "") + T("manage.until") + " " + loan.maturity;
+  const metaText = () => (loan.description ? loan.description + " · " : "") + T("manage.until") + " " + fmtDate(loan.maturity);
+  meta.append(document.createTextNode(metaText()));
   if (!loan.confirmed) {
     const tag = document.createElement("span"); tag.className = "tag yours"; tag.textContent = T("manage.yours");
     meta.append(tag);
   }
+  const next = document.createElement("p"); next.className = "next";
+  if (loan.next_due && loan.next_payment_major != null) {
+    const b = document.createElement("b"); b.textContent = fmtMoney(loan.next_payment_major, loan.currency);
+    next.append(document.createTextNode(T("manage.nextpay") + " "), b, document.createTextNode(" · " + fmtDate(loan.next_due)));
+  } else next.style.margin = "0 0 12px";
   const actions = document.createElement("div"); actions.className = "actions";
   const edit = document.createElement("button"); edit.type = "button"; edit.textContent = T("manage.edit");
-  edit.onclick = () => el.classList.add("editing");
+  edit.onclick = () => { haptic.tap(); el.classList.add("editing"); };
   const remove = document.createElement("button"); remove.type = "button"; remove.className = "danger";
   remove.textContent = T("manage.remove");
   remove.onclick = async () => {
+    haptic.tap();
     const ok = await new Promise((resolve) => {
       if (tg?.showConfirm) tg.showConfirm(T("manage.confirm"), resolve);
       else resolve(window.confirm(T("manage.confirm")));
     });
     if (!ok) return;
     const res = await api("api/loans/" + encodeURIComponent(loan.id), { method: "DELETE" });
-    if (res.ok) { el.remove(); refreshEmpty(); tg?.HapticFeedback?.notificationOccurred("success"); }
-    else tg?.HapticFeedback?.notificationOccurred("error");
+    if (res.ok) { el.remove(); haptic.ok(); loadLoans(); }
+    else haptic.bad();
   };
   actions.append(edit, remove);
-  view.append(h, meta, actions);
+  view.append(h, meta, next, actions);
 
   const form = document.createElement("div"); form.className = "edit";
   const nameIn = document.createElement("input"); nameIn.value = loan.name; nameIn.maxLength = 60;
@@ -327,16 +395,19 @@ function loanCard(loan) {
   const row = document.createElement("div"); row.className = "actions";
   const save = document.createElement("button"); save.type = "button"; save.textContent = T("manage.save");
   save.onclick = async () => {
-    if (!nameIn.value.trim()) { nameIn.setAttribute("aria-invalid", "true"); return; }
+    if (!nameIn.value.trim()) { nameIn.setAttribute("aria-invalid", "true"); haptic.bad(); return; }
+    save.disabled = true;
     const res = await api("api/loans/" + encodeURIComponent(loan.id), {
       method: "PATCH",
       body: JSON.stringify({ name: nameIn.value.trim(), description: descIn.value.trim() }),
     });
-    if (!res.ok) { tg?.HapticFeedback?.notificationOccurred("error"); return; }
+    save.disabled = false;
+    if (!res.ok) { haptic.bad(); return; }
     loan.name = nameIn.value.trim(); loan.description = descIn.value.trim();
     name.textContent = loan.name;
-    meta.firstChild.textContent = (loan.description ? loan.description + " · " : "") + T("manage.until") + " " + loan.maturity;
+    meta.firstChild.textContent = metaText();
     el.classList.remove("editing");
+    haptic.ok();
     toast(T("saved"));
   };
   const cancel = document.createElement("button"); cancel.type = "button"; cancel.textContent = T("manage.cancel");
@@ -346,19 +417,59 @@ function loanCard(loan) {
   el.append(view, form);
   return el;
 }
-function refreshEmpty() { $("manage-empty").hidden = $("manage-list").children.length > 0; }
-async function loadLoans() {
-  const res = await api("api/loans");
-  const list = $("manage-list"); list.textContent = "";
-  if (res.ok) { const { loans } = await res.json(); for (const l of loans) list.append(loanCard(l)); }
-  refreshEmpty();
+
+// summarise totals the loans in the first loan's currency: total owed, what
+// this month requires, and the earliest due date. A loan in another currency
+// is left out of the sums rather than added as if it were the same money.
+function summarise(loans) {
+  const box = $("manage-summary");
+  const live = loans.filter((l) => l.balance_major > 0);
+  if (live.length === 0) { box.hidden = true; return; }
+  const cur = live[0].currency;
+  let owed = 0, required = 0, next = null;
+  for (const l of live) {
+    if (l.currency !== cur) continue;
+    owed += l.balance_major;
+    if (l.next_payment_major != null) required += l.next_payment_major;
+    if (l.next_due && (!next || l.next_due < next.next_due)) next = l;
+  }
+  $("m-owed").textContent = fmtMoney(owed, cur);
+  $("m-required").textContent = required > 0 ? fmtMoney(required, cur) : "—";
+  $("m-next").textContent = next ? fmtDate(next.next_due) + " · " + next.name : "—";
+  box.hidden = false;
 }
+
+let loansReq = 0;
+async function loadLoans() {
+  const seq = ++loansReq;
+  const list = $("manage-list");
+  $("manage-error").hidden = true;
+  $("manage-empty").hidden = true;
+  $("manage-loading").hidden = list.children.length > 0; // silent refresh when something is on screen
+  try {
+    const res = await api("api/loans");
+    if (seq !== loansReq) return;
+    if (!res.ok) throw new Error(String(res.status));
+    const { loans } = await res.json();
+    list.textContent = "";
+    for (const l of loans) list.append(loanCard(l));
+    summarise(loans);
+    $("manage-empty").hidden = loans.length > 0;
+  } catch {
+    if (seq !== loansReq) return;
+    $("manage-summary").hidden = true;
+    $("manage-error").hidden = false;
+  } finally {
+    if (seq === loansReq) $("manage-loading").hidden = true;
+  }
+}
+$("manage-retry").addEventListener("click", () => { haptic.tap(); loadLoans(); });
 
 // ---------------------------------------------------------------------------
 // Budget. Shows what the loans require this month beside what is entered, so
 // the number is chosen against a fact rather than a guess.
 // ---------------------------------------------------------------------------
-let required = null; // { amount_minor, currency, exponent }
+let required = null; // { major, currency }
 async function loadBudget() {
   const res = await api("api/budget");
   if (!res.ok) return;
@@ -371,33 +482,39 @@ async function loadBudget() {
 }
 function validateBudget() {
   if (current !== "budget") return { ok: false };
-  const v = num($("monthly").value);
+  const raw = $("monthly").value.trim(), v = num(raw);
   let err = "";
-  if (!$("monthly").value.trim()) err = T("err.required");
+  if (!raw) err = T("err.required");
   else if (Number.isNaN(v)) err = T("err.number");
   else if (v <= 0) err = T("err.positive");
-  $("e-monthly").textContent = err;
-  $("monthly").setAttribute("aria-invalid", err ? "true" : "false");
+  // Only complain once there is something to complain about.
+  $("e-monthly").textContent = raw ? err : "";
+  $("monthly").setAttribute("aria-invalid", raw && err ? "true" : "false");
   const pdRaw = $("payday").value.trim(), pd = pdRaw ? num(pdRaw) : 0;
   const pdErr = pdRaw && (!Number.isInteger(pd) || pd < 1 || pd > 31) ? T("err.day") : "";
   $("e-payday").textContent = pdErr;
   $("payday").setAttribute("aria-invalid", pdErr ? "true" : "false");
   if (pdErr) err = err || pdErr;
   const cur = $("budget-currency").value;
-  if (!err && required && required.currency === cur) {
-    const surplus = v - required.major;
+  if (required && required.currency === cur) {
+    const surplus = Number.isNaN(v) ? -required.major : v - required.major;
     $("b-required").textContent = fmtMoney(required.major, cur);
-    $("b-surplus").textContent = fmtMoney(Math.max(0, surplus), cur);
-    $("b-note").textContent = surplus < 0 ? T("budget.low") : T("budget.ok");
-    $("b-note").style.color = surplus < 0 ? "var(--danger)" : "";
+    $("b-surplus").textContent = raw && !Number.isNaN(v) ? fmtMoney(Math.max(0, surplus), cur) : "—";
+    const note = $("b-note");
+    if (!raw || Number.isNaN(v)) { note.textContent = ""; note.className = "note"; }
+    else if (surplus < 0) { note.textContent = T("budget.low"); note.className = "note bad"; }
+    else if (surplus === 0) { note.textContent = T("budget.exact"); note.className = "note"; }
+    else { note.textContent = T("budget.ok"); note.className = "note good"; }
     $("budget-summary").hidden = false;
   } else $("budget-summary").hidden = true;
   if (!err) { tg?.MainButton.setText(T("save")); tg?.MainButton.show(); } else tg?.MainButton.hide();
   return { ok: !err, v, pd };
 }
 async function saveBudget() {
+  if (busy) return;
   const b = validateBudget();
-  if (!b.ok) { tg?.HapticFeedback?.notificationOccurred("error"); return; }
+  if (!b.ok) { haptic.bad(); return; }
+  busy = true;
   tg?.MainButton.showProgress(); tg?.MainButton.setText(T("saving"));
   try {
     const res = await api("api/budget", {
@@ -405,19 +522,25 @@ async function saveBudget() {
       body: JSON.stringify({ monthly_major: b.v, currency: $("budget-currency").value, pay_day: b.pd }),
     });
     if (!res.ok) throw new Error(String(res.status));
-    tg?.HapticFeedback?.notificationOccurred("success");
-    tg?.MainButton.hideProgress(); tg?.MainButton.setText(T("save"));
+    haptic.ok();
     toast(T("saved"));
+    // The hint carries markup of its own, never user text.
+    $("budget-done-text").innerHTML = T("budget.done");
+    $("budget-done").classList.add("show");
+    $("budget-done").scrollIntoView({ behavior: "smooth", block: "nearest" });
   } catch {
-    tg?.MainButton.hideProgress(); tg?.MainButton.setText(T("save"));
-    tg?.HapticFeedback?.notificationOccurred("error");
+    haptic.bad();
     $("e-monthly").textContent = T("err.save");
+  } finally {
+    busy = false;
+    tg?.MainButton.hideProgress(); tg?.MainButton.setText(T("save"));
   }
 }
-$("monthly").addEventListener("input", validateBudget);
+$("monthly").addEventListener("input", () => { $("budget-done").classList.remove("show"); validateBudget(); });
 $("budget-currency").addEventListener("change", validateBudget);
 $("payday").addEventListener("input", validateBudget);
 $("budget-form").addEventListener("submit", (e) => { e.preventDefault(); saveBudget(); });
+$("budget-close").addEventListener("click", () => { haptic.tap(); if (tg?.close) tg.close(); });
 
 // One MainButton, dispatched by screen.
 tg?.MainButton.onClick(() => { if (current === "loan") saveLoan(); else if (current === "budget") saveBudget(); });

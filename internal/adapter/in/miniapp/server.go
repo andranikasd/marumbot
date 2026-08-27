@@ -14,6 +14,7 @@ import (
 
 	"github.com/andranikasd/marumbot/internal/app"
 	"github.com/andranikasd/marumbot/internal/obs"
+	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/money"
 )
@@ -258,12 +259,21 @@ func (s *Server) listLoans() http.Handler {
 		}
 		out := make([]map[string]any, 0, len(loans))
 		for _, l := range loans {
-			out = append(out, map[string]any{
+			row := map[string]any{
 				"id": l.ID, "name": l.Name, "description": l.Description,
-				"balance": l.Balance.String(), "currency": l.Contract.Currency.Code,
+				"balance": l.Balance.String(), "balance_major": major(l.Balance),
+				"currency":  l.Contract.Currency.Code,
 				"maturity":  l.Contract.MaturityDate.String(),
 				"confirmed": l.Confirmed(),
-			})
+			}
+			// The next instalment, projected the same way the bot projects it,
+			// so the summary card and the chat cannot disagree. Absent when the
+			// schedule cannot be built; the card then shows a dash, not a zero.
+			if s, err := amortisation.Build(l.Contract, l.Balance, l.AsOf); err == nil && len(s.Rows) > 0 {
+				row["next_due"] = s.Rows[0].Due.String()
+				row["next_payment_major"] = major(s.Rows[0].Payment)
+			}
+			out = append(out, row)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"loans": out})
 	})

@@ -202,8 +202,7 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 
 	switch c.Kind {
 	case KindStart:
-		return w.Send.SendMessage(ctx, chat,
-			i18n.T(l, "start.greeting")+"\n\n"+i18n.T(l, "start.no_ai"), w.mainMenu(l))
+		return w.Send.SendMessage(ctx, chat, w.startText(l), w.mainMenu(l))
 
 	case KindHelp:
 		return w.Send.SendMessage(ctx, chat, w.helpText(l), w.mainMenu(l))
@@ -216,7 +215,7 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 			w.Log.ErrorContext(ctx, "the mini app url is not configured; /add cannot offer a form")
 			return w.Send.SendMessage(ctx, chat, i18n.T(l, "add.unavailable"), w.mainMenu(l))
 		}
-		return w.Send.SendMessage(ctx, chat, i18n.T(l, "add.open"), w.addButton(l))
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "add.open"), w.addMarkup(l))
 
 	case KindLoans:
 		return w.listLoans(ctx, c.UserID, chat, l)
@@ -281,7 +280,7 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 		return fmt.Errorf("listing loans: %w", err)
 	}
 	if len(loans) == 0 {
-		return w.Send.SendMessage(ctx, chat, i18n.T(l, "loans.none"), w.mainMenu(l))
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "loans.none"), w.addMarkup(l))
 	}
 
 	var b strings.Builder
@@ -292,12 +291,10 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 		if ln.Description != "" {
 			b.WriteString("<i>" + html.EscapeString(ln.Description) + "</i>\n")
 		}
-		b.WriteString(i18n.T(l, "loan.balance", ln.Balance.String()) + "\n")
-		b.WriteString(i18n.T(l, "loan.rate", percent(ln.Contract.NominalRate)) + "\n")
+		b.WriteString(i18n.T(l, "loan.balance", ln.Balance.String(), percent(ln.Contract.NominalRate)) + "\n")
 
 		if s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf); err == nil && len(s.Rows) > 0 {
-			b.WriteString(i18n.T(l, "loan.next",
-				s.Rows[0].Payment.String(), s.Rows[0].Due.String()) + "\n")
+			b.WriteString(i18n.T(l, "loan.next", s.Rows[0].Due.String(), s.Rows[0].Payment.String()) + "\n")
 			b.WriteString(i18n.T(l, "loan.remaining", len(s.Rows)) + "\n")
 		} else if err != nil {
 			// Say the schedule is unavailable rather than omitting the line: a
@@ -314,11 +311,20 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 			keyCallback: "work:" + ln.ID,
 		}})
 	}
-	markup := w.mainMenu(l)
-	if len(rows) > 0 {
-		markup = map[string]any{keyInline: rows}
+
+	// The totals the plan is built on, so the list and the plan agree.
+	if _, owed, required, _, err := w.positions(ctx, loans); err == nil && owed.Sign() > 0 {
+		b.WriteString("\n" + i18n.T(l, "advice.owed") + ": <code>" + owed.String() + "</code>\n")
+		b.WriteString(i18n.T(l, "advice.required") + ": <code>" + required.String() + "</code>\n")
 	}
-	return w.Send.SendMessage(ctx, chat, b.String(), markup)
+
+	if w.MiniApp != "" {
+		rows = append(rows, []map[string]any{
+			webAppButton(i18n.T(l, "btn.manage"), w.MiniApp+"?screen=manage"),
+		})
+	}
+	rows = append(rows, []map[string]any{{keyText: i18n.T(l, "btn.plan"), keyCallback: "goal:cheapest"}})
+	return w.Send.SendMessage(ctx, chat, b.String(), map[string]any{keyInline: rows})
 }
 
 // percent renders a rate the way a borrower reads it. The engine holds parts
@@ -420,13 +426,35 @@ func (w *Worker) showWorking(ctx context.Context, userID string, chat int64, l i
 	return w.Send.SendMessage(ctx, chat, b.String(), w.mainMenu(l))
 }
 
+// startText is the whole pitch in three numbered lines, one next action, and
+// a way to switch language. The language hint is written in the other
+// language on purpose: it is the one line a reader who landed in the wrong
+// locale needs to be able to read.
+func (w *Worker) startText(l i18n.Locale) string {
+	return i18n.T(l, "start.greeting") + "\n\n" +
+		i18n.T(l, "start.next") + "\n" +
+		i18n.T(l, "start.language") + "\n\n" +
+		"<i>" + i18n.T(l, "start.no_ai") + "</i>"
+}
+
+// helpText explains the three goals in plain words before it lists commands:
+// a borrower who understands what "least interest" trades against "finish
+// soonest" can choose; one who only knows the command names cannot.
 func (w *Worker) helpText(l i18n.Locale) string {
-	return i18n.T(l, "help.title") + "\n\n" +
+	return "<b>" + i18n.T(l, "help.title") + "</b>\n\n" +
+		i18n.T(l, "help.intro") + "\n\n" +
+		i18n.T(l, "help.goals") + "\n" +
+		i18n.T(l, "help.goal.cheapest") + "\n" +
+		i18n.T(l, "help.goal.soonest") + "\n" +
+		i18n.T(l, "help.goal.relief") + "\n\n" +
+		i18n.T(l, "help.commands") + "\n" +
 		i18n.T(l, "help.add") + "\n" +
+		i18n.T(l, "help.advice") + "\n" +
 		i18n.T(l, "help.loans") + "\n" +
 		i18n.T(l, "help.budget") + "\n" +
 		i18n.T(l, "help.language") + "\n" +
-		i18n.T(l, "help.help")
+		i18n.T(l, "help.help") + "\n\n" +
+		"<i>" + i18n.T(l, "start.no_ai") + "</i>"
 }
 
 // mainMenu is the persistent keyboard under the message box.
@@ -457,9 +485,25 @@ func (w *Worker) mainMenu(l i18n.Locale) any {
 	}
 }
 
-func (w *Worker) addButton(l i18n.Locale) any {
+// addMarkup is the one-tap way out of "no loans": the form, if there is one,
+// else the ordinary keyboard.
+func (w *Worker) addMarkup(l i18n.Locale) any {
+	if w.MiniApp == "" {
+		return w.mainMenu(l)
+	}
 	return map[string]any{keyInline: [][]map[string]any{{
 		webAppButton(i18n.T(l, "add.button"), w.MiniApp),
+	}}}
+}
+
+// budgetMarkup is the same for "no budget" and "budget too low": the budget
+// screen, opened on the field that needs changing.
+func (w *Worker) budgetMarkup(l i18n.Locale) any {
+	if w.MiniApp == "" {
+		return w.mainMenu(l)
+	}
+	return map[string]any{keyInline: [][]map[string]any{{
+		webAppButton(i18n.T(l, "budget.button"), w.MiniApp+"?screen=budget"),
 	}}}
 }
 

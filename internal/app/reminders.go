@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"html"
 	"time"
 
 	"github.com/andranikasd/marumbot/internal/i18n"
@@ -93,11 +94,7 @@ func (w *Worker) SendDueReminders(ctx context.Context, limit int32) (int, error)
 		}
 		l := i18n.Locale(locale)
 
-		key := "reminder.due_today"
-		if d.OffsetDays < 0 {
-			key = "reminder.due_soon"
-		}
-		text := i18n.T(l, key, d.LoanName, d.DueDate)
+		text := w.reminderText(ctx, l, d)
 
 		if err := w.Send.SendMessage(ctx, chat, text, w.mainMenu(l)); err != nil {
 			// Left scheduled, so the next tick tries again. A reminder that
@@ -114,4 +111,43 @@ func (w *Worker) SendDueReminders(ctx context.Context, limit int32) (int, error)
 		sent++
 	}
 	return sent, nil
+}
+
+// reminderText is the whole reminder: date, amount, loan. The amount is the
+// instalment the schedule puts on that date; when it cannot be projected the
+// reminder still goes out, without a figure, because a late reminder with a
+// number is worse than a timely one without.
+func (w *Worker) reminderText(ctx context.Context, l i18n.Locale, d DueReminder) string {
+	name := html.EscapeString(d.LoanName)
+	if amount, ok := w.instalmentOn(ctx, d); ok {
+		if d.OffsetDays < 0 {
+			return i18n.T(l, "reminder.due_soon", d.DueDate, amount, name)
+		}
+		return i18n.T(l, "reminder.due_today", d.DueDate, amount, name)
+	}
+	if d.OffsetDays < 0 {
+		return i18n.T(l, "reminder.due_soon_plain", d.DueDate, name)
+	}
+	return i18n.T(l, "reminder.due_today_plain", d.DueDate, name)
+}
+
+// instalmentOn finds the scheduled payment falling on the reminder's date.
+func (w *Worker) instalmentOn(ctx context.Context, d DueReminder) (string, bool) {
+	if w.Editor == nil {
+		return "", false
+	}
+	ln, err := w.Editor.LoanForUser(ctx, d.LoanID, d.UserID)
+	if err != nil {
+		return "", false
+	}
+	s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
+	if err != nil {
+		return "", false
+	}
+	for _, r := range s.Rows {
+		if r.Due.String() == d.DueDate {
+			return r.Payment.String(), true
+		}
+	}
+	return "", false
 }
