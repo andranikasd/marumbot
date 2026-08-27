@@ -116,3 +116,53 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
          WHERE sn.loan_id = l.id ORDER BY sn.as_of DESC, sn.captured_at DESC LIMIT 1
        ) s ON true
  WHERE l.id = $1 AND l.user_id = $2 AND l.archived_at IS NULL;
+
+-- name: EnsureDefaultReminders
+-- Every loan gets reminders when it is filed. Three days before, and on the
+-- day: enough warning to move money, and a nudge when it is actually due.
+--
+-- The unique key on (loan_id, offset_days) makes this idempotent, so running it
+-- again for a loan that already has rules changes nothing.
+INSERT INTO reminder_rules (id, loan_id, offset_days, send_at_local)
+VALUES (gen_random_uuid(), $1, -3, '10:00'),
+       (gen_random_uuid(), $1,  0, '10:00')
+ON CONFLICT (loan_id, offset_days) DO NOTHING;
+
+-- name: ScheduleReminders
+-- Generates the occurrences due in the next fortnight.
+--
+-- The idempotency key is the loan, the due date and the offset, so a tick that
+-- runs twice -- or two ticks racing -- produce one occurrence rather than two
+-- reminders about the same payment. That property lives in the schema rather
+-- than in the scheduler's memory, which is what makes it survive a restart.
+INSERT INTO reminder_occurrences (
+    id, user_id, loan_id, due_date, offset_days, target_send_at, idempotency_key
+)
+SELECT gen_random_uuid(), l.user_id, l.id, $1::date, r.offset_days,
+       (($1::date + r.offset_days * interval '1 day')
+         + r.send_at_local) AT TIME ZONE u.timezone,
+       l.id::text || ':' || $1::text || ':' || r.offset_days::text
+  FROM loans l
+  JOIN users u ON u.id = l.user_id
+  JOIN reminder_rules r ON r.loan_id = l.id AND r.enabled
+ WHERE l.id = $2 AND l.archived_at IS NULL AND u.deleted_at IS NULL
+ON CONFLICT (idempotency_key) DO NOTHING;
+
+-- name: DueReminders
+-- Occurrences whose moment has arrived and that nothing has taken yet.
+SELECT o.id, o.user_id, o.loan_id, o.due_date::text, o.offset_days,
+       l.name, l.currency
+  FROM reminder_occurrences o
+  JOIN loans l ON l.id = o.loan_id
+ WHERE o.status = 'scheduled' AND o.target_send_at <= now()
+   AND l.archived_at IS NULL
+ ORDER BY o.target_send_at
+ LIMIT $1;
+
+-- name: MarkReminderSatisfied
+UPDATE reminder_occurrences SET status = 'satisfied'
+ WHERE id = $1 AND status = 'scheduled' RETURNING id;
+
+-- name: CancelRemindersForLoan
+UPDATE reminder_occurrences SET status = 'canceled'
+ WHERE loan_id = $1 AND status = 'scheduled' RETURNING id;
