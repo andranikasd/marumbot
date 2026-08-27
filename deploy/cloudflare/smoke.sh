@@ -19,6 +19,37 @@ deadline_s="${SMOKE_DEADLINE_S:-240}"
 
 fail() { echo "::error::$*"; exit 1; }
 
+# get retries a GET until it succeeds or the attempts run out, printing the body.
+#
+# Syncing secrets creates a new Worker version, which restarts the container, so
+# a request issued immediately after can arrive mid-restart. Every assertion
+# here has to tolerate that: a single-shot curl against a restarting container
+# measures timing, not correctness -- which is the same mistake the cold start
+# check made, and it cost a working deploy both times.
+get() {
+  local url="$1" attempt
+  for attempt in 1 2 3 4 5; do
+    if body=$(curl -sf --max-time 20 "$url" 2>/dev/null); then
+      printf '%s' "$body"
+      return 0
+    fi
+    sleep 4
+  done
+  return 1
+}
+
+# status retries until it sees the expected code, for the same reason.
+status() {
+  local url="$1" want="$2" method="${3:-GET}" attempt code
+  for attempt in 1 2 3 4 5; do
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X "$method" \
+      "$url" -H 'Content-Type: application/json' -d '{}' 2>/dev/null)
+    [ "$code" = "$want" ] && { printf '%s' "$code"; return 0; }
+    sleep 4
+  done
+  printf '%s' "$code"
+}
+
 echo "→ liveness (waiting up to ${deadline_s}s for the container to start)"
 started=$(date +%s)
 attempt=0
@@ -37,7 +68,7 @@ done
 echo "  live after $(( $(date +%s) - started ))s"
 
 echo "→ readiness"
-ready=$(curl -sf --max-time 20 "$base/readyz") || fail "readyz did not answer"
+ready=$(get "$base/readyz") || fail "readyz did not answer"
 echo "$ready" | grep -q '"database":true' || fail "database unreachable: $ready"
 
 echo "→ schema version"
@@ -46,28 +77,26 @@ version=$(echo "$ready" | sed -n 's/.*"migration_version":\([0-9]*\).*/\1/p')
 echo "  schema at version $version"
 
 echo "→ status endpoint"
-status=$(curl -sf --max-time 20 "$base/status") || fail "status did not answer"
-echo "$status" | grep -q 'oldest_pending_command_s' || fail "status is incomplete: $status"
+state=$(get "$base/status") || fail "status did not answer"
+echo "$state" | grep -q 'oldest_pending_command_s' || fail "status is incomplete: $state"
 
 # The Mini App must be served by the container, not by the Worker's fallback.
 # Checking only the status code would have passed while /app/ answered with the
 # placeholder body -- which is exactly what happened the first time it shipped.
 echo "→ mini app"
-page=$(curl -sf --max-time 20 "$base/app/") || fail "the mini app did not answer"
+page=$(get "$base/app/") || fail "the mini app did not answer"
 echo "$page" | grep -q 'telegram-web-app.js' || \
   fail "$base/app/ did not serve the form; got: $(echo "$page" | head -c 80)"
 
 echo "→ budget form"
-budget=$(curl -sf --max-time 20 "$base/app/?screen=budget") || fail "the budget screen did not answer"
+budget=$(get "$base/app/?screen=budget") || fail "the budget screen did not answer"
 echo "$budget" | grep -q 'budget-form' || fail "the budget screen did not serve its form"
 
 echo "→ mini app rejects an unsigned call"
-code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X POST \
-  "$base/app/api/loans" -H 'Content-Type: application/json' -d '{}')
+code=$(status "$base/app/api/loans" 401 POST)
 [ "$code" = "401" ] || fail "an unsigned loan POST answered $code, want 401"
 
-code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X POST \
-  "$base/app/api/budget" -H 'Content-Type: application/json' -d '{}')
+code=$(status "$base/app/api/budget" 401 POST)
 [ "$code" = "401" ] || fail "an unsigned budget POST answered $code, want 401"
 
 echo "→ cold start"
