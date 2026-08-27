@@ -70,7 +70,7 @@ func (s *Store) CreateLoan(ctx context.Context, d app.LoanDraft) (string, error)
 		c.NominalRate.String(), dayCountName(c.DayCount), repaymentTypeName(c.Type),
 		c.MaturityDate.String(), c.PaymentDay,
 		roundingModeName(c.Rounding.Mode), c.Rounding.Unit,
-		uuid.NewString(), d.Principal.Minor(),
+		uuid.NewString(), d.Balance.Minor(), d.AsOf.String(),
 	).Scan(&got)
 	return got, err
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
 )
@@ -17,7 +18,7 @@ func good() LoanRequest {
 }
 
 func TestValidateAcceptsAWellFormedLoan(t *testing.T) {
-	d, err := good().Validate()
+	d, err := good().Validate(date.MustNew(2026, 8, 27))
 	if err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
@@ -37,7 +38,7 @@ func TestValidateAcceptsAWellFormedLoan(t *testing.T) {
 func TestValidateAcceptsDeclining(t *testing.T) {
 	r := good()
 	r.Method = "declining"
-	d, err := r.Validate()
+	d, err := r.Validate(date.MustNew(2026, 8, 27))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +69,7 @@ func TestValidateRejects(t *testing.T) {
 	for name, mutate := range cases {
 		r := good()
 		mutate(&r)
-		if _, err := r.Validate(); !errors.Is(err, ErrInvalid) {
+		if _, err := r.Validate(date.MustNew(2026, 8, 27)); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: got %v, want ErrInvalid", name, err)
 		}
 	}
@@ -84,12 +85,12 @@ func TestValidateRejectsNonFiniteNumbers(t *testing.T) {
 	for name, v := range map[string]float64{"inf": inf, "-inf": -inf, "nan": inf - inf} {
 		r := good()
 		r.PrincipalMajor = v
-		if _, err := r.Validate(); !errors.Is(err, ErrInvalid) {
+		if _, err := r.Validate(date.MustNew(2026, 8, 27)); !errors.Is(err, ErrInvalid) {
 			t.Errorf("principal %s: accepted", name)
 		}
 		r = good()
 		r.RatePercent = v
-		if _, err := r.Validate(); !errors.Is(err, ErrInvalid) {
+		if _, err := r.Validate(date.MustNew(2026, 8, 27)); !errors.Is(err, ErrInvalid) {
 			t.Errorf("rate %s: accepted", name)
 		}
 	}
@@ -104,7 +105,7 @@ func TestTitleIsTruncated(t *testing.T) {
 		long += "x"
 	}
 	r.Title = long
-	d, err := r.Validate()
+	d, err := r.Validate(date.MustNew(2026, 8, 27))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +117,7 @@ func TestTitleIsTruncated(t *testing.T) {
 // The default day count is ACT/365 on the actual balance: not prescribed by
 // Armenian law, but what the Central Bank's own worked examples use.
 func TestDefaultsMatchArmenianPractice(t *testing.T) {
-	d, err := good().Validate()
+	d, err := good().Validate(date.MustNew(2026, 8, 27))
 	if err != nil {
 		t.Fatal(err)
 	}

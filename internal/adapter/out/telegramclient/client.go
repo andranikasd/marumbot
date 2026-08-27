@@ -154,15 +154,34 @@ func (c *Client) SetMyCommands(ctx context.Context, lang string, cmds []app.BotC
 // This is the difference between a form a user can find and one they cannot.
 // An inline button only exists inside the message that carried it, and scrolls
 // away; the menu button sits beside the message box permanently.
+// menuTypeWebApp is the Bot API menu-button type that opens a Mini App.
+const menuTypeWebApp = "web_app"
+
 func (c *Client) SetChatMenuButton(ctx context.Context, text, url string) error {
 	ctx, span := obs.ComponentSender.CallService(ctx, "telegram", "setChatMenuButton")
 	defer span.End()
 
 	return c.call(ctx, "setChatMenuButton", map[string]any{
 		"menu_button": map[string]any{
-			"type":    "web_app",
-			"text":    text,
-			"web_app": map[string]any{"url": url},
+			"type":         menuTypeWebApp,
+			"text":         text,
+			menuTypeWebApp: map[string]any{"url": url},
+		},
+	})
+}
+
+// SetChatMenuButtonFor sets the menu button for ONE chat, in that user's
+// language. The global button is per-bot and cannot be localised, which is why
+// it was Armenian for everyone; per-chat overrides can.
+func (c *Client) SetChatMenuButtonFor(ctx context.Context, chatID int64, text, url string) error {
+	ctx, span := obs.ComponentSender.CallService(ctx, "telegram", "setChatMenuButton")
+	defer span.End()
+	return c.call(ctx, "setChatMenuButton", map[string]any{
+		"chat_id": chatID,
+		"menu_button": map[string]any{
+			"type":         menuTypeWebApp,
+			"text":         text,
+			menuTypeWebApp: map[string]any{"url": url},
 		},
 	})
 }

@@ -19,7 +19,7 @@ const maxTermYears = 40
 // Every rule here is also in the browser. The browser's copy exists to tell the
 // user quickly; this one exists because the browser belongs to whoever is using
 // it and its checks can simply be deleted.
-func (r LoanRequest) Validate() (app.LoanDraft, error) {
+func (r LoanRequest) Validate(today date.Date) (app.LoanDraft, error) {
 	title := trimTo(r.Title, 60)
 	if title == "" {
 		return app.LoanDraft{}, fmt.Errorf("%w: no title", ErrInvalid)
@@ -43,6 +43,22 @@ func (r LoanRequest) Validate() (app.LoanDraft, error) {
 		return app.LoanDraft{}, fmt.Errorf("%w: principal too large", ErrInvalid)
 	}
 	principal := money.FromMinor(int64(minor), cur)
+
+	// A loan that has been running is filed with what is owed now, not what
+	// was borrowed. That figure becomes the anchor the schedule projects from;
+	// the contract keeps its original dates so the instalment still solves
+	// correctly. Zero means "not yet paid down" and falls back to principal.
+	balance := principal
+	if r.BalanceMajor > 0 {
+		if math.IsNaN(r.BalanceMajor) || math.IsInf(r.BalanceMajor, 0) {
+			return app.LoanDraft{}, fmt.Errorf("%w: balance", ErrInvalid)
+		}
+		bm := math.Round(r.BalanceMajor * scale)
+		if bm > minor {
+			return app.LoanDraft{}, fmt.Errorf("%w: balance cannot exceed the principal", ErrInvalid)
+		}
+		balance = money.FromMinor(int64(bm), cur)
+	}
 
 	if math.IsNaN(r.RatePercent) || r.RatePercent < 0 || r.RatePercent > 200 {
 		return app.LoanDraft{}, fmt.Errorf("%w: rate must be between 0 and 200", ErrInvalid)
@@ -82,6 +98,8 @@ func (r LoanRequest) Validate() (app.LoanDraft, error) {
 		Title:       title,
 		Description: description,
 		Principal:   principal,
+		Balance:     balance,
+		AsOf:        today,
 		Contract: model.Contract{
 			Version:     1,
 			Currency:    cur,
