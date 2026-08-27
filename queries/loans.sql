@@ -68,3 +68,18 @@ SELECT l.id, l.name, coalesce(l.lender, ''), l.currency,
  WHERE l.user_id = $1 AND l.archived_at IS NULL
  ORDER BY l.created_at DESC
  LIMIT $2;
+
+-- name: SetBudget
+-- One budget per user per currency. Allocating a dram budget across a dollar
+-- loan needs an exchange rate and there is no validated source for one, so the
+-- currency is part of the key rather than a conversion.
+INSERT INTO budgets (user_id, currency, monthly_amount_minor, overrides_schema_version)
+VALUES ($1, $2, $3, 1)
+ON CONFLICT (user_id, currency) DO UPDATE
+   SET monthly_amount_minor = EXCLUDED.monthly_amount_minor,
+       updated_at = now()
+RETURNING monthly_amount_minor;
+
+-- name: GetBudget
+SELECT currency, monthly_amount_minor FROM budgets
+ WHERE user_id = $1 ORDER BY monthly_amount_minor DESC LIMIT 1;

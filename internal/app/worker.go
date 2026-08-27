@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,8 @@ import (
 
 	"github.com/andranikasd/marumbot/internal/i18n"
 	"github.com/andranikasd/marumbot/internal/obs"
+	"github.com/andranikasd/marumbot/pkg/core/amortisation"
+	"github.com/andranikasd/marumbot/pkg/core/money"
 )
 
 // Command kinds, mirrored from the inbound adapter so this package does not
@@ -27,6 +30,7 @@ const (
 	KindAdd      = "add"
 	KindBudget   = "budget"
 	KindLanguage = "language"
+	KindAdvice   = "advice"
 	KindText     = "text"
 	KindCallback = "callback"
 	KindIgnore   = "ignore"
@@ -53,6 +57,7 @@ type Worker struct {
 	Inbox   InboxStore
 	Users   UserStore
 	Loans   LoanReader
+	Budgets BudgetStore
 	Chats   ChatResolver
 	Send    Sender
 	Clock   Clock
@@ -196,8 +201,20 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 	case KindLoans:
 		return w.listLoans(ctx, c.UserID, chat, l)
 
+	case KindAdvice:
+		return w.advise(ctx, c.UserID, chat, l)
+
 	case KindBudget:
-		return w.Send.SendMessage(ctx, chat, i18n.T(l, "budget.prompt"), w.mainMenu(l))
+		// A budget is a number with a currency, which is a form rather than a
+		// sentence. Typing it as free text left the answer unhandled and the
+		// bot replying with help, which reads as the bot ignoring you.
+		if w.MiniApp == "" {
+			return w.Send.SendMessage(ctx, chat, i18n.T(l, "add.unavailable"), w.mainMenu(l))
+		}
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "budget.open"),
+			map[string]any{"inline_keyboard": [][]map[string]any{{
+				webAppButton(i18n.T(l, "budget.button"), w.MiniApp+"?screen=budget"),
+			}}})
 
 	case KindLanguage:
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "language.prompt"), languageMenu())
@@ -218,12 +235,17 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 	return fmt.Errorf("unknown command kind %q", c.Kind)
 }
 
-// listLoans renders the borrower's loans.
+// listLoans renders the borrower's loans, each with the instalment the engine
+// derives from its contract.
 //
-// Each figure carries how it was established. A balance the borrower typed is
-// shown as indicative, because only a lender-confirmed one resets drift -- and
-// a planner that presents a guess with the same confidence as a bank statement
-// is the thing this product exists not to be.
+// The payment is projected here rather than stored. A schedule is a function of
+// the terms and the anchor; keeping one would create a second source of truth
+// that can disagree with replay.
+//
+// Every figure carries how its balance was established. A balance the borrower
+// typed is marked as their own figure, because only a lender-confirmed one
+// resets drift -- and a planner that shows a guess with the same confidence as
+// a bank statement is the thing this product exists not to be.
 func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18n.Locale) error {
 	loans, err := w.Loans.LoansForUser(ctx, userID, 25)
 	if err != nil {
@@ -238,12 +260,39 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 	for _, ln := range loans {
 		b.WriteString("\n<b>" + html.EscapeString(ln.Name) + "</b>\n")
 		b.WriteString(i18n.T(l, "loan.balance", ln.Balance.String()) + "\n")
-		b.WriteString(i18n.T(l, "loan.rate", ln.Rate) + "\n")
-		if ln.Trust == "user_entered" {
-			b.WriteString("<i>" + i18n.T(l, "reliability.stale", ln.MaturityDate) + "</i>\n")
+		b.WriteString(i18n.T(l, "loan.rate", percent(ln.Contract.NominalRate)) + "\n")
+
+		if s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf); err == nil && len(s.Rows) > 0 {
+			b.WriteString(i18n.T(l, "loan.next",
+				s.Rows[0].Payment.String(), s.Rows[0].Due.String()) + "\n")
+			b.WriteString(i18n.T(l, "loan.remaining", len(s.Rows)) + "\n")
+		} else if err != nil {
+			// Say the schedule is unavailable rather than omitting the line: a
+			// silently missing number reads as a number of zero.
+			w.Log.WarnContext(ctx, "projecting a loan failed", "loan", ln.ID, "error", err)
+			b.WriteString(i18n.T(l, "loan.no_schedule") + "\n")
+		}
+
+		if !ln.Confirmed() {
+			b.WriteString("<i>" + i18n.T(l, "reliability.yours", ln.AsOf.String()) + "</i>\n")
 		}
 	}
 	return w.Send.SendMessage(ctx, chat, b.String(), w.mainMenu(l))
+}
+
+// percent renders a rate the way a borrower reads it. The engine holds parts
+// per billion of a year, and the column stores the fraction, so 14 per cent is
+// 0.140000000 -- which rendered directly said "Rate: 0.140000000%".
+func percent(r money.Rate) string {
+	hundredths := (int64(r)*10000 + 500_000_000) / 1_000_000_000
+	whole, frac := hundredths/100, hundredths%100
+	if frac == 0 {
+		return strconv.FormatInt(whole, 10)
+	}
+	if frac%10 == 0 {
+		return fmt.Sprintf("%d.%d", whole, frac/10)
+	}
+	return fmt.Sprintf("%d.%02d", whole, frac)
 }
 
 func (w *Worker) callback(ctx context.Context, userID string, chat int64, data string) error {
@@ -288,6 +337,7 @@ func (w *Worker) mainMenu(l i18n.Locale) any {
 		rows = append(rows, []map[string]any{webAppButton(i18n.Button(l, KindAdd), w.MiniApp)})
 	}
 	rows = append(rows,
+		[]map[string]any{button(i18n.Button(l, KindAdvice))},
 		[]map[string]any{button(i18n.Button(l, KindLoans)), button(i18n.Button(l, KindBudget))},
 		[]map[string]any{button(i18n.Button(l, KindLanguage)), button(i18n.Button(l, KindHelp))},
 	)

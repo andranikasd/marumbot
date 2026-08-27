@@ -26,6 +26,7 @@ type BotCommand struct {
 // first to what they need rarely.
 var commandKeys = []struct{ cmd, key string }{
 	{"add", "menu.add"},
+	{"advice", "menu.advice"},
 	{"loans", "menu.loans"},
 	{"budget", "menu.budget"},
 	{"language", "menu.language"},

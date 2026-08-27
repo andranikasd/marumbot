@@ -29,7 +29,11 @@ const STRINGS = {
     "sum.payment": "Ամսական վճար", "sum.count": "Վճարումների թիվ",
     "sum.interest": "Ընդհանուր տոկոս", "sum.total": "Ընդամենը",
     "sum.note": "Հաշվարկը մոտավոր է մինչև բանկի հաստատումը։",
-    save: "Պահպանել", saving: "Պահպանվում է…",
+      save: "Պահպանել", saving: "Պահպանվում է…",
+    "budget.title": "Ամսական բյուջե",
+    "budget.lede": "Որքա՞ն կարող եք ամսական հատկացնել վարկերին։",
+    "budget.monthly": "Ամսական գումար",
+    "budget.hint": "Ներառեք բոլոր պարտադիր վճարումները։",
     "err.required": "Պարտադիր դաշտ", "err.number": "Մուտքագրեք թիվ",
     "err.positive": "Պետք է լինի զրոյից մեծ", "err.day": "1-ից 31",
     "err.order": "Ավարտը պետք է լինի սկզբից հետո", "err.rate": "0-ից 200 միջակայքում",
@@ -48,6 +52,10 @@ const STRINGS = {
     "sum.interest": "Total interest", "sum.total": "Total",
     "sum.note": "An estimate until your bank confirms it.",
     save: "Save", saving: "Saving…",
+    "budget.title": "Monthly budget",
+    "budget.lede": "How much can you put towards your loans each month?",
+    "budget.monthly": "Monthly amount",
+    "budget.hint": "Include every required payment.",
     "err.required": "Required", "err.number": "Enter a number",
     "err.positive": "Must be above zero", "err.day": "Between 1 and 31",
     "err.order": "Maturity must be after the start", "err.rate": "Between 0 and 200",
@@ -58,6 +66,14 @@ const lang = (tg?.initDataUnsafe?.user?.language_code || "hy").slice(0, 2) === "
 const T = (k) => STRINGS[lang][k] ?? k;
 document.documentElement.lang = lang;
 for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = T(el.dataset.i18n);
+
+// ---------------------------------------------------------------------------
+// Which screen. One page with two forms rather than two pages: the Telegram
+// webview reloads the whole app on navigation, and a second load is a second
+// cold start in front of the user.
+// ---------------------------------------------------------------------------
+const SCREEN = new URLSearchParams(location.search).get("screen") === "budget"
+  ? "budget" : "loan";
 
 // ---------------------------------------------------------------------------
 // Sensible defaults, so the form opens mostly filled in.
@@ -231,6 +247,62 @@ async function save() {
   }
 }
 
-tg?.MainButton.onClick(save);
-$("f").addEventListener("submit", (e) => { e.preventDefault(); save(); });
-estimate();
+// ---------------------------------------------------------------------------
+// Budget screen.
+// ---------------------------------------------------------------------------
+function validateBudget() {
+  const v = num($("monthly").value);
+  let err = "";
+  if (!$("monthly").value.trim()) err = T("err.required");
+  else if (Number.isNaN(v)) err = T("err.number");
+  else if (v <= 0) err = T("err.positive");
+  $("e-monthly").textContent = err;
+  $("monthly").setAttribute("aria-invalid", err ? "true" : "false");
+  if (!err) { tg?.MainButton.setText(T("save")); tg?.MainButton.show(); }
+  else tg?.MainButton.hide();
+  return { ok: !err, v };
+}
+
+async function saveBudget() {
+  const b = validateBudget();
+  if (!b.ok) { tg?.HapticFeedback?.notificationOccurred("error"); return; }
+  tg?.MainButton.showProgress();
+  tg?.MainButton.setText(T("saving"));
+  try {
+    const res = await fetch("api/budget", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Telegram-Init-Data": tg?.initData || "",
+      },
+      body: JSON.stringify({
+        monthly_major: b.v,
+        currency: $("budget-currency").value,
+      }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    tg?.HapticFeedback?.notificationOccurred("success");
+    tg?.close();
+  } catch {
+    tg?.MainButton.hideProgress();
+    tg?.MainButton.setText(T("save"));
+    tg?.HapticFeedback?.notificationOccurred("error");
+    $("e-monthly").textContent = T("err.save");
+  }
+}
+
+if (SCREEN === "budget") {
+  $("f").hidden = true;
+  $("budget-form").hidden = false;
+  document.querySelector("h1").textContent = T("budget.title");
+  document.querySelector("p.lede").textContent = T("budget.lede");
+  $("monthly").addEventListener("input", validateBudget);
+  $("budget-currency").addEventListener("change", validateBudget);
+  tg?.MainButton.onClick(saveBudget);
+  $("budget-form").addEventListener("submit", (e) => { e.preventDefault(); saveBudget(); });
+  validateBudget();
+} else {
+  tg?.MainButton.onClick(save);
+  $("f").addEventListener("submit", (e) => { e.preventDefault(); save(); });
+  estimate();
+}
