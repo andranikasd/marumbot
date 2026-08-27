@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/propagation"
@@ -16,6 +17,9 @@ import (
 	"github.com/andranikasd/marumbot/internal/identity"
 	"github.com/andranikasd/marumbot/internal/obs"
 )
+
+// DrainFunc processes pending commands. It returns how many it handled.
+type DrainFunc func(ctx context.Context, n int) (int, error)
 
 // maxBody caps what the handler will read. Telegram updates are small; an
 // unbounded read is a way to be knocked over by one large request.
@@ -29,7 +33,10 @@ type Webhook struct {
 	ServiceToken string
 	Timezone     string
 	Clock        app.Clock
-	Log          *slog.Logger
+	// Drain processes the command that was just recorded, before the webhook
+	// answers. See accept for why this is synchronous.
+	Drain DrainFunc
+	Log   *slog.Logger
 }
 
 // Handler returns the route Cloudflare's Worker forwards to.
@@ -108,9 +115,36 @@ func (h *Webhook) accept(ctx context.Context, u Update) error {
 		// A repeat. Telegram retries until acknowledged, so this is ordinary
 		// traffic and the only correct response is to do nothing again.
 		h.Log.DebugContext(ctx, "duplicate update ignored", "update_id", u.UpdateID)
+		return nil
+	}
+
+	// Answer now, not on the next tick.
+	//
+	// The inbox exists so a crash cannot lose an update, and that property comes
+	// from writing the row BEFORE doing the work -- not from deferring the work
+	// to a scheduler. Draining here keeps the durability and removes the wait: a
+	// person who types /start gets a reply in the time it takes to send one,
+	// rather than whenever the cron next fires.
+	//
+	// A failure here is not returned. The command is already recorded, so the
+	// tick will retry it; turning a send failure into a 500 would make Telegram
+	// redeliver an update that is safely stored, which is how one slow reply
+	// becomes four.
+	if h.Drain != nil {
+		drainCtx, cancel := context.WithTimeout(ctx, drainBudget)
+		defer cancel()
+		if _, err := h.Drain(drainCtx, 1); err != nil {
+			h.Log.WarnContext(ctx, "immediate drain failed; the tick will retry",
+				"error", err, "update_id", u.UpdateID)
+		}
 	}
 	return nil
 }
+
+// drainBudget bounds the inline work. Telegram gives a webhook far longer than
+// this, but a reply that takes ten seconds is already a bad reply, and the tick
+// is a better place to be slow than the request path.
+const drainBudget = 10 * time.Second
 
 func (h *Webhook) resolve(ctx context.Context, n Normalised) (app.Account, error) {
 	ctx, span := obs.ComponentWebhook.Call(ctx, obs.ComponentStore, "upsert_user")

@@ -78,3 +78,45 @@ func TestDefaultLocaleIsPopulated(t *testing.T) {
 		t.Fatalf("default locale %s is not valid", Default)
 	}
 }
+
+// A tapped keyboard button arrives as ordinary text, so every button label must
+// map back to the command it stands for -- in EVERY locale, not just the
+// current one. A user who switches language still has the old keyboard on
+// screen until they tap something.
+func TestEveryButtonLabelMatchesBack(t *testing.T) {
+	for _, l := range Supported() {
+		for kind := range buttonKeys {
+			label := Button(l, kind)
+			got, ok := MatchButton(label)
+			if !ok {
+				t.Errorf("%s button %q (%s) does not match back", l, label, kind)
+				continue
+			}
+			if got != kind {
+				t.Errorf("%s button %q matched %q, want %q", l, label, got, kind)
+			}
+		}
+	}
+}
+
+// Labels must be unique across languages, or a tap is ambiguous.
+func TestButtonLabelsAreUnambiguous(t *testing.T) {
+	seen := map[string]string{}
+	for _, l := range Supported() {
+		for kind := range buttonKeys {
+			label := Button(l, kind)
+			if prev, dup := seen[label]; dup && prev != kind {
+				t.Errorf("label %q means both %q and %q", label, prev, kind)
+			}
+			seen[label] = kind
+		}
+	}
+}
+
+func TestMatchButtonIgnoresOrdinaryText(t *testing.T) {
+	for _, s := range []string{"", "   ", "hello", "/loans", "150000"} {
+		if kind, ok := MatchButton(s); ok {
+			t.Errorf("MatchButton(%q) matched %q; ordinary text must not", s, kind)
+		}
+	}
+}

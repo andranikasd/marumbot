@@ -98,3 +98,42 @@ func Keys() []string {
 	sort.Strings(out)
 	return out
 }
+
+// buttonKeys maps a command kind to the catalogue key labelling its button.
+var buttonKeys = map[string]string{
+	"add":      "btn.add",
+	"loans":    "btn.loans",
+	"budget":   "btn.budget",
+	"language": "btn.language",
+	"help":     "btn.help",
+}
+
+// Button returns the label for a command in a locale.
+func Button(l Locale, kind string) string {
+	if k, ok := buttonKeys[kind]; ok {
+		return T(l, k)
+	}
+	return kind
+}
+
+// MatchButton maps a tapped button back to the command it stands for.
+//
+// A reply-keyboard button sends its own label as an ordinary message, so the
+// bot receives "Իմ վարկերը" rather than "/loans". Matching across EVERY locale,
+// not just the user's current one, matters: someone who switches language
+// mid-conversation still has the old keyboard on screen until they tap
+// something, and the tap that arrives will carry the old label.
+func MatchButton(text string) (kind string, ok bool) {
+	t := strings.TrimSpace(text)
+	if t == "" {
+		return "", false
+	}
+	for _, l := range Supported() {
+		for k := range buttonKeys {
+			if T(l, buttonKeys[k]) == t {
+				return k, true
+			}
+		}
+	}
+	return "", false
+}

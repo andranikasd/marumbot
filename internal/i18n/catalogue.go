@@ -27,6 +27,23 @@ var catalogue = map[Locale]map[string]string{
 		"help.language": "/language — լեզուն",
 		"help.help":     "/help — այս ցանկը",
 
+		// Command descriptions, shown by Telegram in the "/" menu. Kept short:
+		// the client truncates them, and a description that needs a comma is
+		// describing too much.
+		"menu.add":      "Ավելացնել վարկ",
+		"menu.loans":    "Իմ վարկերը",
+		"menu.budget":   "Ամսական բյուջե",
+		"menu.language": "Լեզուն / Language",
+		"menu.help":     "Օգնություն",
+
+		// Keyboard buttons. Short enough to sit two to a row on a phone.
+		"btn.add":        "➕ Ավելացնել վարկ",
+		"btn.loans":      "📋 Իմ վարկերը",
+		"btn.budget":     "💰 Բյուջե",
+		"btn.language":   "🌐 Լեզուն",
+		"btn.help":       "❓ Օգնություն",
+		"kb.placeholder": "Ընտրեք կամ գրեք հրաման",
+
 		// --- language ---
 		"language.prompt": "Ընտրեք լեզուն։",
 		"language.set":    "Լեզուն փոխված է հայերենի։",
@@ -43,10 +60,11 @@ var catalogue = map[Locale]map[string]string{
 		"loan.schedule":  "Մարման գրաֆիկ",
 
 		// --- adding a loan ---
-		"add.open":    "Բացեք ձևը՝ վարկն ավելացնելու համար։",
-		"add.button":  "Ավելացնել վարկ",
-		"add.saved":   "Վարկն ավելացված է։",
-		"add.invalid": "Այս տվյալները ամբողջական չեն։ Ստուգեք և փորձեք նորից։",
+		"add.open":        "Բացեք ձևը՝ վարկն ավելացնելու համար։",
+		"add.button":      "Ավելացնել վարկ",
+		"add.saved":       "Վարկն ավելացված է։",
+		"add.invalid":     "Այս տվյալները ամբողջական չեն։ Ստուգեք և փորձեք նորից։",
+		"add.unavailable": "Ձևը հասանելի չէ այս պահին։ Դա կարգավորման խնդիր է, ոչ թե ձեր։",
 
 		// --- budget ---
 		"budget.prompt": "Որքա՞ն կարող եք ամսական հատկացնել բոլոր վարկերին։",
@@ -78,6 +96,19 @@ var catalogue = map[Locale]map[string]string{
 		"help.language": "/language — change language",
 		"help.help":     "/help — this list",
 
+		"menu.add":      "Add a loan",
+		"menu.loans":    "My loans",
+		"menu.budget":   "Monthly budget",
+		"menu.language": "Language / Լեզուն",
+		"menu.help":     "Help",
+
+		"btn.add":        "➕ Add a loan",
+		"btn.loans":      "📋 My loans",
+		"btn.budget":     "💰 Budget",
+		"btn.language":   "🌐 Language",
+		"btn.help":       "❓ Help",
+		"kb.placeholder": "Choose an option or type a command",
+
 		"language.prompt": "Choose a language.",
 		"language.set":    "Language changed to English.",
 
@@ -91,10 +122,11 @@ var catalogue = map[Locale]map[string]string{
 		"loan.total":     "Total",
 		"loan.schedule":  "Repayment schedule",
 
-		"add.open":    "Open the form to add a loan.",
-		"add.button":  "Add a loan",
-		"add.saved":   "Loan added.",
-		"add.invalid": "Those details are incomplete. Check them and try again.",
+		"add.open":        "Open the form to add a loan.",
+		"add.button":      "Add a loan",
+		"add.saved":       "Loan added.",
+		"add.invalid":     "Those details are incomplete. Check them and try again.",
+		"add.unavailable": "The form is not available right now. That is a configuration problem, not yours.",
 
 		"budget.prompt": "How much can you put towards all your loans each month?",
 		"budget.set":    "Monthly budget set to %s.",
