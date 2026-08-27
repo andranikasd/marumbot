@@ -31,6 +31,57 @@ func (r RepaymentType) String() string {
 	return "annuity"
 }
 
+// PrepaymentEffect is what a partial early repayment does to the schedule.
+//
+// Armenian lenders offer both readings and usually let the borrower choose
+// at the counter. The difference matters to a plan: keeping the instalment
+// shortens the loan, lowering the instalment keeps the term and frees cash.
+type PrepaymentEffect uint8
+
+const (
+	// PrepayBorrowerChooses is the default: the contract does not fix the
+	// effect, so the planner considers both and says which it assumed.
+	PrepayBorrowerChooses PrepaymentEffect = iota
+	// PrepayShortenTerm keeps the instalment; the loan ends sooner.
+	PrepayShortenTerm
+	// PrepayReduceInstalment keeps the maturity; the instalment is re-solved
+	// on the lower balance.
+	PrepayReduceInstalment
+)
+
+func (e PrepaymentEffect) String() string {
+	switch e {
+	case PrepayShortenTerm:
+		return "shorten_term"
+	case PrepayReduceInstalment:
+		return "reduce_instalment"
+	default:
+		return "borrower_chooses"
+	}
+}
+
+// ParsePrepaymentEffect reads a persisted effect. An empty string is the
+// default, not an error: contracts filed before the field existed have it.
+func ParsePrepaymentEffect(s string) (PrepaymentEffect, error) {
+	switch s {
+	case "", "borrower_chooses":
+		return PrepayBorrowerChooses, nil
+	case "shorten_term":
+		return PrepayShortenTerm, nil
+	case "reduce_instalment":
+		return PrepayReduceInstalment, nil
+	}
+	return PrepayBorrowerChooses, fmt.Errorf("%w: unknown prepayment effect %q", ErrInvalid, s)
+}
+
+// Prepayment is the contract's terms for paying early.
+type Prepayment struct {
+	Effect PrepaymentEffect
+	// FeeBP is a fee on the prepaid amount, in basis points. Consumer credit
+	// carries none by law; mortgages sometimes do in the first years.
+	FeeBP int
+}
+
 // Contract is what the loan agreement says. It is immutable: a restructuring,
 // a rate change or a maturity change creates a new version, and every event
 // records the version under which it was interpreted.
@@ -56,6 +107,9 @@ type Contract struct {
 	HasScheduled     bool
 
 	Rounding money.Policy
+
+	// Prepayment is what an early payment does to the schedule and costs.
+	Prepayment Prepayment
 
 	// AllocationPolicy identifies how this lender applies a payment across
 	// buckets. The zero value is the unknown policy, which makes the engine

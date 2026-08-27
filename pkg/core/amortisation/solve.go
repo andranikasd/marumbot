@@ -37,7 +37,7 @@ func Solve(c model.Contract, principal money.Amount, from date.Date) (money.Amou
 
 	// Upper bound: settle the whole loan on the first instalment. Nothing larger
 	// can be required, because that clears the balance outright.
-	dates, err := PaymentDates(c)
+	dates, err := RemainingDates(c, from)
 	if err != nil {
 		return money.Amount{}, err
 	}

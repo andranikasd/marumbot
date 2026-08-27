@@ -94,6 +94,32 @@ func PaymentDates(c model.Contract) ([]date.Date, error) {
 	return out, nil
 }
 
+// RemainingDates returns the instalment dates still ahead of from: strictly
+// after it, because a date equal to from is the instalment just paid, and a
+// row for it would accrue zero days and then swallow a whole instalment as
+// principal. A zero from means the drawdown, and every date remains.
+//
+// Every projection goes through this, so a loan anchored on a mid-life
+// balance — the normal case for a loan filed months after it was taken —
+// projects from its next instalment rather than failing on its first.
+func RemainingDates(c model.Contract, from date.Date) ([]date.Date, error) {
+	dates, err := PaymentDates(c)
+	if err != nil {
+		return nil, err
+	}
+	if from.IsZero() {
+		return dates, nil
+	}
+	i := 0
+	for i < len(dates) && !dates[i].After(from) {
+		i++
+	}
+	if i == len(dates) {
+		return nil, fmt.Errorf("%w: no instalment falls after %s", ErrUnsolvable, from)
+	}
+	return dates[i:], nil
+}
+
 // Project runs the schedule for a given instalment and returns every row.
 //
 // The final row is not the level instalment. Rounding each period to the
@@ -112,7 +138,7 @@ func Project(c model.Contract, principal money.Amount, instalment money.Amount, 
 		return Schedule{}, fmt.Errorf("%w: principal in %s, instalment in %s",
 			ErrUnsolvable, principal.Currency(), instalment.Currency())
 	}
-	dates, err := PaymentDates(c)
+	dates, err := RemainingDates(c, from)
 	if err != nil {
 		return Schedule{}, err
 	}

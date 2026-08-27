@@ -229,3 +229,24 @@ func TestZeroRateDividesEvenly(t *testing.T) {
 		t.Errorf("paid %s for a %s zero-rate loan", s.TotalPaid, principal)
 	}
 }
+
+// A projection anchored on a payment date must start at the next one. The
+// date itself is the instalment just paid; a row for it would accrue zero
+// days and then treat a whole instalment as principal.
+func TestRemainingDatesSkipTheAnchor(t *testing.T) {
+	c, _ := amd5m()
+	all, err := amortisation.PaymentDates(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rest, err := amortisation.RemainingDates(c, all[2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rest) != len(all)-3 || !rest[0].Equal(all[3]) {
+		t.Fatalf("from %s got %d dates starting %s, want %d starting %s", all[2], len(rest), rest[0], len(all)-3, all[3])
+	}
+	if _, err := amortisation.RemainingDates(c, c.MaturityDate); err == nil {
+		t.Fatal("no dates after maturity, yet no error")
+	}
+}
