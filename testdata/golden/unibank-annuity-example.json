@@ -1,0 +1,102 @@
+{
+  "source": "Unibank \u2014 annuity calculation method, worked schedule (anuitet.pdf)",
+  "url": "https://www.unibank.am/hy/about/anuitet.pdf",
+  "contract": "unibank-annuity-example",
+  "note": "A second lender, and a second CONVENTION. Unibank sets the level instalment by the textbook formula with r = annual/12 -- 90,258.31 reproduces to the luma that way, and the dated solve gives 90,269.17. The interest column is nonetheless dated ACT/365 on the declining balance: 1,000,000 \u00d7 15% \u00d7 30/365 = 12,328.77 for the first row. So the instalment is a stated figure and the accrual is daily, which is the HasScheduled path. This is why a contract carries the lender's instalment rather than always solving for one.",
+  "currency": "AMD",
+  "nominal_rate_percent": 15,
+  "repayment_type": "annuity",
+  "instalment_method": "textbook_rate_over_12",
+  "accrual": {
+    "day_count": "act/365",
+    "quantum_minor": 1,
+    "rounding": "half_up",
+    "note": "Figures are printed to the luma; no coarser unit is evident."
+  },
+  "anchor": {
+    "as_of": "2012-06-20",
+    "principal_minor": 100000000,
+    "note": "Disbursement inferred: the first row accrues 30 days to 20/07/2012."
+  },
+  "instalment_minor": 9025831,
+  "payment_day": 20,
+  "maturity": "2013-06-20",
+  "totals": {
+    "principal_minor": 99986042,
+    "interest_minor": 8323932
+  },
+  "published_totals": {
+    "principal_minor": 99986042,
+    "interest_minor": 8323932,
+    "note": "The bank's printed principal column sums to 999,860.42, not 1,000,000.00 -- a defect in their PDF, recorded here rather than corrected. The engine is measured against the interest column and the per-row split, both of which are internally consistent."
+  },
+  "fidelity": {
+    "exact_rows": 8,
+    "total_rows": 12,
+    "tolerance_minor": 1,
+    "final_row_absorbs_drift": true,
+    "note": "8 of 11 non-final rows reproduce to the luma; the other 3 differ by exactly one luma, which is the bank rounding from more internal precision than it prints. The final row matches to the luma. exact_rows is a ratchet: lowering it means the engine agrees with this lender less often."
+  },
+  "rows": [
+    {
+      "due": "2012-07-20",
+      "principal_minor": 7792955,
+      "interest_minor": 1232877
+    },
+    {
+      "due": "2012-08-20",
+      "principal_minor": 7851139,
+      "interest_minor": 1174692
+    },
+    {
+      "due": "2012-09-20",
+      "principal_minor": 7951160,
+      "interest_minor": 1074671
+    },
+    {
+      "due": "2012-10-20",
+      "principal_minor": 8083855,
+      "interest_minor": 941976
+    },
+    {
+      "due": "2012-11-20",
+      "principal_minor": 8155442,
+      "interest_minor": 870389
+    },
+    {
+      "due": "2012-12-20",
+      "principal_minor": 8284065,
+      "interest_minor": 741766
+    },
+    {
+      "due": "2013-01-20",
+      "principal_minor": 8364877,
+      "interest_minor": 660955
+    },
+    {
+      "due": "2013-02-20",
+      "principal_minor": 8471443,
+      "interest_minor": 554388
+    },
+    {
+      "due": "2013-03-20",
+      "principal_minor": 8622573,
+      "interest_minor": 403258
+    },
+    {
+      "due": "2013-04-20",
+      "principal_minor": 8689216,
+      "interest_minor": 336615
+    },
+    {
+      "due": "2013-05-20",
+      "principal_minor": 8807202,
+      "interest_minor": 218629
+    },
+    {
+      "due": "2013-06-20",
+      "principal_minor": 8912115,
+      "interest_minor": 113716
+    }
+  ]
+}
