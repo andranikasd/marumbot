@@ -22,7 +22,7 @@ func (w *Worker) askBudget(ctx context.Context, userID string, chat int64, l i18
 	}
 	markup := w.mainMenu(l)
 	if w.MiniApp != "" {
-		markup = map[string]any{"inline_keyboard": [][]map[string]any{{
+		markup = map[string]any{keyInline: [][]map[string]any{{
 			webAppButton(i18n.T(l, "budget.button"), w.MiniApp+"?screen=budget"),
 		}}}
 	}

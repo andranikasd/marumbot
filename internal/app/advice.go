@@ -156,14 +156,14 @@ func goalKey(g plan.Goal) string {
 
 // goalMenu lets the reader change the question rather than accept the answer.
 func goalMenu(l i18n.Locale) any {
-	return map[string]any{"inline_keyboard": [][]map[string]any{
+	return map[string]any{keyInline: [][]map[string]any{
 		{
-			{keyText: i18n.T(l, "goal.cheapest"), "callback_data": "goal:cheapest"},
-			{keyText: i18n.T(l, "goal.soonest"), "callback_data": "goal:soonest"},
+			{keyText: i18n.T(l, "goal.cheapest"), keyCallback: "goal:cheapest"},
+			{keyText: i18n.T(l, "goal.soonest"), keyCallback: "goal:soonest"},
 		},
 		{
-			{keyText: i18n.T(l, "goal.relief"), "callback_data": "goal:relief"},
-			{keyText: i18n.T(l, "advice.compare"), "callback_data": "goal:compare"},
+			{keyText: i18n.T(l, "goal.relief"), keyCallback: "goal:relief"},
+			{keyText: i18n.T(l, "advice.compare"), keyCallback: "goal:compare"},
 		},
 	}}
 }
