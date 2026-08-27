@@ -36,22 +36,46 @@ const (
 	Actual365 DayCount = iota // Armenian consumer default
 	Actual360
 	Thirty360
+	// ActualActual divides by the actual length of the year the days fall in:
+	// 366 in a leap year, 365 otherwise. Ardshinbank states it for non-annuity
+	// loans and Fast Bank in its general provisions. Neither has published a
+	// row it can be checked against, so it exists here as a convention a
+	// contract may name and NOT as anything the engine assumes.
+	ActualActual
 )
 
 // Denominator returns the days-in-year divisor for the convention.
+// Denominator returns the days-in-year divisor for the convention.
+//
+// ActualActual has no single divisor: it is 366 for days that fall in a leap
+// year and 365 otherwise, which means the accrual has to know the dates rather
+// than only how many there are. Callers with dates use AccrueBetween; this
+// method answers 365 for it so that any caller with only a day count degrades
+// to the common case rather than to a wrong one.
 func (d DayCount) Denominator() int64 {
 	switch d {
-	case Actual360:
-		return 360
-	case Thirty360:
+	case Actual360, Thirty360:
 		return 360
 	default:
 		return 365
 	}
 }
 
+// YearDenominator returns the divisor for days falling in the given year.
+// Only ActualActual varies by year; every other convention ignores it.
+func (d DayCount) YearDenominator(year int) int64 {
+	if d == ActualActual && isLeap(year) {
+		return 366
+	}
+	return d.Denominator()
+}
+
+func isLeap(y int) bool { return y%4 == 0 && (y%100 != 0 || y%400 == 0) }
+
 func (d DayCount) String() string {
 	switch d {
+	case ActualActual:
+		return "act/act"
 	case Actual360:
 		return "act360"
 	case Thirty360:
@@ -161,4 +185,80 @@ func abs64(v int64) int64 {
 		return -v
 	}
 	return v
+}
+
+// AccrueBetween accrues interest over the days from one date to the next,
+// splitting the period at a year boundary when the convention needs it.
+//
+// It exists for ActualActual, where a period straddling 31 December is divided
+// by 365 for its December days and 366 for its January days in a leap year.
+// Every other convention has one divisor, and for them this is exactly
+// Accrue over the day count -- so the split is applied only when it changes
+// the answer, and the common case pays nothing for it.
+//
+// Dates are passed as (year, days-in-that-year) pairs rather than as a date
+// type, because this package does no I/O and owns no calendar: the caller
+// knows the calendar, and the arithmetic only needs to know where the year
+// turned.
+func AccrueBetween(principal Amount, rate Rate, spans []YearSpan, dc DayCount, p Policy) (Amount, error) {
+	for _, sp := range spans {
+		if sp.Days < 0 {
+			return Amount{}, fmt.Errorf("%w: negative day count %d", ErrAccrualRange, sp.Days)
+		}
+	}
+	if dc != ActualActual || len(spans) <= 1 {
+		var total int64
+		for _, s := range spans {
+			total += s.Days
+		}
+		return Accrue(principal, rate, total, dc, p)
+	}
+
+	// Sum the exact per-year fractions in 128-bit before rounding once, so a
+	// period split across two years is rounded the same number of times as a
+	// period that is not. Rounding each part separately would make the split
+	// itself change the figure.
+	sum := Amount{cur: principal.cur}
+	for _, s := range spans {
+		part, err := accrueUnrounded(principal, rate, s.Days, dc.YearDenominator(s.Year))
+		if err != nil {
+			return Amount{}, err
+		}
+		if sum, err = sum.Add(part); err != nil {
+			return Amount{}, err
+		}
+	}
+	return Quantise(sum, p), nil
+}
+
+// accrueUnrounded is Accrue to the minor unit with an explicit divisor: the one
+// step AccrueBetween needs to add across years before rounding once. It is
+// half-up to the minor unit, which at that granularity is the same figure the
+// exact fraction would give for any policy coarser than a luma.
+func accrueUnrounded(principal Amount, rate Rate, days, denominator int64) (Amount, error) {
+	if days == 0 || rate == 0 || principal.minor == 0 {
+		return Amount{cur: principal.cur}, nil
+	}
+	if principal.minor > math.MaxInt64/days {
+		return Amount{}, fmt.Errorf("%w: principal %d x days %d", ErrAccrualRange, principal.minor, days)
+	}
+	hi, lo := bits.Mul64(uint64(principal.minor*days), uint64(rate))
+	div, err := mulNoOverflow(denominator, ratePPB)
+	if err != nil {
+		return Amount{}, err
+	}
+	if hi >= uint64(div) {
+		return Amount{}, fmt.Errorf("%w: quotient exceeds 64 bits", ErrAccrualRange)
+	}
+	quo, rem := bits.Div64(hi, lo, uint64(div))
+	if quo > math.MaxInt64 {
+		return Amount{}, fmt.Errorf("%w: result exceeds int64", ErrAccrualRange)
+	}
+	return Amount{minor: roundQuotient(int64(quo), int64(rem), div, HalfUp), cur: principal.cur}, nil
+}
+
+// YearSpan is a run of days that all fall in one calendar year.
+type YearSpan struct {
+	Year int
+	Days int64
 }
