@@ -5,8 +5,16 @@
   {{range .Statuses}}<a class="filter{{if eq . $.Status}} on{{end}}"
      href="/commands{{if .}}?status={{.}}{{end}}">{{if .}}{{.}}{{else}}all{{end}}</a> {{end}}
 </p>
+{{if .Purged}}<p class="lead">Removed {{.Purged}} dead command{{if ne .Purged "1"}}s{{end}}.</p>{{end}}
 <div class="panel">
-  <div class="hd">{{len .Rows}} shown{{if .Status}}, status {{.Status}}{{end}}</div>
+  <div class="hd">{{len .Rows}} shown{{if .Status}}, status {{.Status}}{{end}}
+    {{if eq .Status "dead"}}{{if .Rows}}
+    <form method="post" action="/commands/purge-dead" style="display:inline;margin-left:12px"
+          onsubmit="return confirm('Delete every dead command? This removes the record of what those users sent.')">
+      <button class="link danger">purge all dead</button>
+    </form>
+    {{end}}{{end}}
+  </div>
   {{if .Rows}}
   <table>
     <thead><tr><th class="num">Update</th><th>Kind</th><th>Status</th><th class="num">Attempts</th>

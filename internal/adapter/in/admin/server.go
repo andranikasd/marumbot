@@ -117,6 +117,7 @@ func (s *Server) Handler() http.Handler {
 		"POST /policies":            s.addPolicy,
 		"GET /commands":             s.commands,
 		"POST /commands/{id}/retry": s.retryCommand,
+		"POST /commands/purge-dead": s.purgeDead,
 		"POST /users/{id}/pause":    s.pauseUser,
 		"POST /users/{id}/restore":  s.restoreUser,
 		"POST /users/{id}/erase":    s.eraseUser,
@@ -248,6 +249,18 @@ func (s *Server) restoreLoan(w http.ResponseWriter, r *http.Request) {
 	s.act(w, r, "/loans", func(id string) error { return s.admin.RestoreLoan(r.Context(), id) })
 }
 
+// purgeDead is the one bulk deletion in the admin. It touches only rows already
+// marked dead, and the count removed is shown on the redirect so the operator
+// sees what happened rather than a page that merely reloaded.
+func (s *Server) purgeDead(w http.ResponseWriter, r *http.Request) {
+	n, err := s.admin.PurgeDead(r.Context())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/commands?purged=%d", n), http.StatusSeeOther)
+}
+
 func (s *Server) retryCommand(w http.ResponseWriter, r *http.Request) {
 	s.act(w, r, "/commands", func(id string) error { return s.admin.Retry(r.Context(), id) })
 }
@@ -362,6 +375,7 @@ func (s *Server) commands(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "commands.html", map[string]any{
 		keyTitle: "Command inbox", keyNav: "commands", keyRows: rows,
 		"Status": status, "Statuses": []string{"", "pending", "leased", "completed", "dead"},
+		"Purged": r.URL.Query().Get("purged"),
 	})
 }
 

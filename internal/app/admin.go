@@ -95,6 +95,12 @@ func (a *Admin) Queue(ctx context.Context, status string) ([]CommandDetail, erro
 	return a.mod.CommandsDetailed(ctx, status, 100)
 }
 
+// PurgeDead deletes every command that has exhausted its retries, returning
+// how many. An operator's decision, taken once the evidence has been read.
+func (a *Admin) PurgeDead(ctx context.Context) (int64, error) {
+	return a.mod.PurgeDeadCommands(ctx)
+}
+
 // Retry puts a command back in the queue with a fresh attempt budget.
 func (a *Admin) Retry(ctx context.Context, id string) error {
 	return a.mod.RetryCommand(ctx, id)
@@ -204,6 +210,7 @@ type Moderation interface {
 	RenameLoanAdmin(ctx context.Context, loanID, name, description string) error
 	CommandsDetailed(ctx context.Context, status string, limit int32) ([]CommandDetail, error)
 	RetryCommand(ctx context.Context, id string) error
+	PurgeDeadCommands(ctx context.Context) (int64, error)
 }
 
 // CommandDetail is one queue entry with enough context to explain a stuck one.
