@@ -8,6 +8,7 @@ import (
 	"html"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/propagation"
@@ -58,6 +59,11 @@ type Worker struct {
 	Owner   string
 	Log     *slog.Logger
 	MiniApp string // absolute URL of the loan form, empty if not deployed
+
+	// Menus is the Telegram surface used to publish the command list. Optional:
+	// without it the bot works and simply suggests nothing.
+	Menus     MenuPublisher
+	menusOnce sync.Once
 }
 
 // LeaseFor is how long a worker holds a command.
@@ -70,6 +76,12 @@ const LeaseFor = 2 * time.Minute
 // Drain leases up to n commands and processes them. It returns the number
 // handled, so a caller can decide whether to go round again.
 func (w *Worker) Drain(ctx context.Context, n int) (int, error) {
+	// Publish the command list the first time this process does any work. See
+	// PublishOnce for why startup alone is not enough.
+	if w.Menus != nil {
+		PublishOnce(ctx, &w.menusOnce, w.Menus, w.MiniApp)
+	}
+
 	leases, err := w.Inbox.Lease(ctx, w.Owner, n, w.Clock.Now().Add(LeaseFor))
 	if err != nil {
 		return 0, fmt.Errorf("leasing: %w", err)
