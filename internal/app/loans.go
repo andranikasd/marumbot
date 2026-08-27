@@ -76,3 +76,20 @@ type BudgetStore interface {
 	SetBudget(ctx context.Context, userID, currency string, minor int64) error
 	Budget(ctx context.Context, userID string) (Budget, error)
 }
+
+// Conversation states. Stored, so they are part of the schema: renaming one
+// strands every row that used it.
+const (
+	StateAwaitingBudget = "awaiting_budget"
+)
+
+// ConversationStore remembers what the bot is waiting for.
+//
+// A bot that asks a question and cannot receive the answer is worse than one
+// that never asks: the user replies, nothing happens, and they conclude it is
+// broken. That is exactly what /budget did.
+type ConversationStore interface {
+	SetState(ctx context.Context, userID, state string) error
+	State(ctx context.Context, userID string) (string, error)
+	ClearState(ctx context.Context, userID string) error
+}

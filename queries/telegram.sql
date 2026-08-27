@@ -125,3 +125,24 @@ UPDATE telegram_commands c
 RETURNING c.id, c.telegram_update_id, coalesce(c.user_id::text, ''), c.command_kind,
           c.command_payload, coalesce(c.trace_context, ''), c.attempts,
           c.received_at, c.lease_token, c.lease_until;
+
+-- name: SetConversationState
+-- What the bot is waiting for from this user. One row per user: a bot that is
+-- waiting for two things at once cannot know which answer it just received.
+INSERT INTO conversation_states (user_id, state_name, collected, collected_schema_version)
+VALUES ($1, $2, '{}'::jsonb, 1)
+ON CONFLICT (user_id) DO UPDATE
+   SET state_name = EXCLUDED.state_name,
+       state_version = conversation_states.state_version + 1,
+       updated_at = now()
+RETURNING state_name;
+
+-- name: GetConversationState
+-- Stale states are ignored rather than deleted. A user who was asked for a
+-- budget an hour ago and now types an unrelated number should not have it
+-- silently taken as an answer.
+SELECT state_name FROM conversation_states
+ WHERE user_id = $1 AND updated_at > now() - interval '30 minutes';
+
+-- name: ClearConversationState
+DELETE FROM conversation_states WHERE user_id = $1 RETURNING user_id;

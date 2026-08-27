@@ -30,6 +30,7 @@ import (
 	"github.com/andranikasd/marumbot/internal/i18n"
 	"github.com/andranikasd/marumbot/internal/identity"
 	"github.com/andranikasd/marumbot/internal/obs"
+	"github.com/andranikasd/marumbot/pkg/core/money"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
@@ -116,14 +117,15 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 
 	bot := telegramclient.New(cfg.BotToken)
 	worker := &app.Worker{
-		Inbox: store, Users: store, Loans: store, Budgets: store,
-		Chats:   postgres.ChatLookup{Store: store, Cipher: cipher},
-		Send:    bot,
-		Clock:   sysclock.New(),
-		Owner:   cfg.InstanceID,
-		Log:     log,
-		MiniApp: cfg.MiniAppURL,
-		Menus:   bot,
+		Inbox: store, Users: store, Loans: store, Budgets: store, Convos: store,
+		Chats:           postgres.ChatLookup{Store: store, Cipher: cipher},
+		Send:            bot,
+		Clock:           sysclock.New(),
+		Owner:           cfg.InstanceID,
+		Log:             log,
+		MiniApp:         cfg.MiniAppURL,
+		Menus:           bot,
+		DefaultCurrency: money.MustLookup(cfg.DefaultCurrency),
 	}
 	// The Mini App is served from the public listener under /app, so it shares
 	// the Worker's hostname and needs no second custom domain or certificate.
