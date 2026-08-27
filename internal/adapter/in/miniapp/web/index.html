@@ -6,160 +6,245 @@
 <title>Marum</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-  /* Telegram supplies the palette. Reading it rather than choosing one means
-     the form matches whatever theme the user already has, including dark. */
+  /* Telegram supplies the palette. Reading it rather than choosing one means the
+     app matches whatever theme the user already has, including dark. */
   :root{
     --bg: var(--tg-theme-bg-color, #fff);
     --fg: var(--tg-theme-text-color, #000);
     --hint: var(--tg-theme-hint-color, #707579);
     --link: var(--tg-theme-link-color, #2481cc);
+    --btn: var(--tg-theme-button-color, #2481cc);
+    --btn-fg: var(--tg-theme-button-text-color, #fff);
     --field: var(--tg-theme-secondary-bg-color, #f4f4f5);
     --danger: #d1453b;
+    --ok: #2e9e5b;
+    --r: 14px;
   }
   *{box-sizing:border-box}
+  html,body{height:100%}
   body{
-    margin:0;padding:16px 16px 96px;background:var(--bg);color:var(--fg);
+    margin:0;background:var(--bg);color:var(--fg);
     font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
   }
-  h1{font-size:20px;margin:0 0 4px}
+
+  /* One app, three screens, a tab bar that stays put. The webview reloads the
+     whole page on navigation, and each reload is a cold start in front of the
+     user -- so screens are sections that show and hide, never separate pages. */
+  .screen{display:none;padding:16px 16px 100px}
+  .screen.on{display:block}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:-.3px}
   p.lede{margin:0 0 20px;color:var(--hint);font-size:14px}
-  label{display:block;margin:0 0 4px;font-size:14px;font-weight:600}
-  .hint{font-size:13px;color:var(--hint);margin:4px 0 0}
+
+  nav.tabs{
+    position:fixed;left:0;right:0;bottom:0;display:flex;
+    background:var(--bg);border-top:1px solid var(--field);
+    padding:6px 8px calc(6px + env(safe-area-inset-bottom));
+  }
+  nav.tabs button{
+    flex:1;background:none;border:none;color:var(--hint);font:inherit;
+    font-size:11px;padding:6px 0;cursor:pointer;border-radius:10px;
+  }
+  nav.tabs button .ic{display:block;font-size:22px;line-height:1.1;margin-bottom:2px}
+  nav.tabs button.on{color:var(--link)}
+
+  label{display:block;margin:0 0 6px;font-size:14px;font-weight:600}
+  .hint{font-size:13px;color:var(--hint);margin:6px 0 0}
   .field{margin-bottom:18px}
   input,select{
-    width:100%;padding:12px;font-size:17px;border:none;border-radius:10px;
-    background:var(--field);color:var(--fg);
-    /* 17px keeps iOS from zooming the viewport when a field is focused. */
+    width:100%;padding:13px 14px;font-size:17px;border:none;border-radius:12px;
+    background:var(--field);color:var(--fg);appearance:none;
+    /* 17px stops iOS zooming the viewport when a field is focused. */
   }
-  input:focus,select:focus{outline:2px solid var(--link)}
+  select{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23707579' stroke-width='1.6' fill='none'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 14px center;padding-right:36px;
+  }
+  input:focus,select:focus{outline:2px solid var(--link);outline-offset:0}
   input[aria-invalid="true"]{outline:2px solid var(--danger)}
-  .row{display:flex;gap:12px}
+  .row{display:flex;gap:10px}
   .row>*{flex:1}
-  .error{color:var(--danger);font-size:13px;margin:4px 0 0;min-height:1em}
+  .row>.narrow{flex:0 0 108px}
+  .error{color:var(--danger);font-size:13px;margin:6px 0 0;min-height:1.2em}
+
+  /* Segmented control for the repayment method: two options, both visible,
+     which a select would hide behind a tap. */
+  .seg{display:flex;background:var(--field);border-radius:12px;padding:4px;gap:4px}
+  .seg label{flex:1;margin:0;text-align:center;padding:9px 6px;border-radius:9px;
+    font-size:14px;font-weight:500;cursor:pointer;color:var(--hint)}
+  .seg input{display:none}
+  .seg input:checked+label{background:var(--bg);color:var(--fg);font-weight:600;
+    box-shadow:0 1px 3px rgba(0,0,0,.12)}
+
   .summary{
-    background:var(--field);border-radius:12px;padding:14px;margin:20px 0 0;
-    font-size:15px;
+    background:var(--field);border-radius:var(--r);padding:16px;margin:8px 0 0;
   }
-  .summary dl{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:0}
-  .summary dt{color:var(--hint)}
-  .summary dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
-  .summary .total{font-weight:700}
-  .card{
-    background:var(--field);border-radius:12px;padding:14px;margin:0 0 12px;
-  }
-  .card h2{font-size:17px;margin:0 0 2px}
-  .card .meta{color:var(--hint);font-size:14px;margin:0 0 10px}
+  .summary .big{font-size:28px;font-weight:700;letter-spacing:-.5px;
+    font-variant-numeric:tabular-nums;margin:0 0 2px}
+  .summary .big small{font-size:14px;font-weight:500;color:var(--hint);margin-left:6px}
+  .summary dl{display:grid;grid-template-columns:1fr auto;gap:8px 12px;margin:12px 0 0;
+    padding-top:12px;border-top:1px solid rgba(128,128,128,.18)}
+  .summary dt{color:var(--hint);font-size:14px}
+  .summary dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;font-size:14px}
+  .summary .note{font-size:12px;color:var(--hint);margin:12px 0 0}
+
+  .card{background:var(--field);border-radius:var(--r);padding:14px 16px;margin:0 0 12px}
+  .card h2{font-size:17px;margin:0;display:flex;justify-content:space-between;align-items:baseline}
+  .card h2 .bal{font-variant-numeric:tabular-nums;font-weight:600;font-size:16px}
+  .card .meta{color:var(--hint);font-size:13.5px;margin:4px 0 12px}
+  .card .meta .tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11.5px;
+    font-weight:600;background:var(--bg);color:var(--hint);margin-left:6px}
+  .card .tag.yours{color:#b7791f}
   .card .actions{display:flex;gap:8px}
-  .card button{
-    flex:1;padding:10px;border:none;border-radius:8px;font-size:15px;
-    background:var(--bg);color:var(--link);cursor:pointer;
+  .card .actions button{
+    flex:1;padding:10px;border:none;border-radius:10px;font:inherit;font-size:14.5px;
+    font-weight:500;background:var(--bg);color:var(--link);cursor:pointer;
   }
-  .card button.danger{color:var(--danger)}
+  .card .actions button.danger{color:var(--danger)}
   .card input{margin:0 0 8px}
   .edit{display:none}
   .card.editing .edit{display:block}
   .card.editing .view{display:none}
+
+  .empty{text-align:center;color:var(--hint);padding:48px 16px}
+  .empty .ic{font-size:44px;margin-bottom:8px}
+  .empty p{margin:0 0 16px}
+  .cta{
+    display:inline-block;padding:12px 22px;border-radius:12px;border:none;
+    background:var(--btn);color:var(--btn-fg);font:inherit;font-weight:600;cursor:pointer;
+  }
+  .toast{
+    position:fixed;left:16px;right:16px;bottom:calc(72px + env(safe-area-inset-bottom));
+    background:var(--fg);color:var(--bg);padding:12px 16px;border-radius:12px;
+    font-size:14px;text-align:center;opacity:0;transform:translateY(8px);
+    transition:opacity .2s,transform .2s;pointer-events:none;
+  }
+  .toast.show{opacity:1;transform:none}
 </style>
 </head>
 <body>
-<h1 data-i18n="title">Ավելացնել վարկ</h1>
-<p class="lede" data-i18n="lede">Մուտքագրեք վարկի պայմանագրի տվյալները։</p>
 
-<div id="manage" hidden>
-  <p class="lede" id="manage-empty" hidden data-i18n="manage.empty">Դուք դեռ վարկ չեք ավելացրել։</p>
+<!-- ADD -->
+<section id="s-loan" class="screen">
+  <h1 data-i18n="title">Ավելացնել վարկ</h1>
+  <p class="lede" data-i18n="lede">Մուտքագրեք վարկի պայմանագրի տվյալները։</p>
+  <form id="f" novalidate>
+    <div class="field">
+      <label for="title" data-i18n="title.field">Անվանում</label>
+      <input id="title" name="title" autocomplete="off" maxlength="60" required>
+      <p class="hint" data-i18n="title.hint">Ինչպե՞ս եք անվանում այս վարկը։</p>
+      <p class="error" id="e-title"></p>
+    </div>
+    <div class="field">
+      <label for="description" data-i18n="description">Նշում (ըստ ցանկության)</label>
+      <input id="description" name="description" autocomplete="off" maxlength="200">
+      <p class="hint" data-i18n="description.hint">Բանկի անուն կամ հաշվեհամար պետք չէ։</p>
+    </div>
+    <div class="field">
+      <label for="principal" data-i18n="principal">Վարկի գումար</label>
+      <div class="row">
+        <input id="principal" name="principal" inputmode="decimal" required>
+        <select id="currency" name="currency" class="narrow">
+          <option value="AMD" selected>AMD ֏</option>
+          <option value="USD">USD $</option>
+          <option value="EUR">EUR €</option>
+          <option value="RUB">RUB ₽</option>
+        </select>
+      </div>
+      <p class="error" id="e-principal"></p>
+    </div>
+    <div class="field">
+      <label for="rate" data-i18n="rate">Տարեկան տոկոսադրույք (%)</label>
+      <input id="rate" name="rate" inputmode="decimal" required>
+      <p class="error" id="e-rate"></p>
+    </div>
+    <div class="field">
+      <label data-i18n="method">Մարման եղանակ</label>
+      <div class="seg">
+        <input type="radio" name="method" id="m-annuity" value="annuity" checked>
+        <label for="m-annuity" data-i18n="method.annuity">Անուիտետային</label>
+        <input type="radio" name="method" id="m-declining" value="declining">
+        <label for="m-declining" data-i18n="method.declining">Դիֆերենցված</label>
+      </div>
+      <p class="hint" id="method-hint" data-i18n="method.hint">Անուիտետի դեպքում ամսական վճարը նույնն է։</p>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="start" data-i18n="start">Սկիզբ</label>
+        <input id="start" name="start" type="date" required>
+        <p class="error" id="e-start"></p>
+      </div>
+      <div class="field">
+        <label for="maturity" data-i18n="maturity">Ավարտ</label>
+        <input id="maturity" name="maturity" type="date" required>
+        <p class="error" id="e-maturity"></p>
+      </div>
+    </div>
+    <div class="field">
+      <label for="day" data-i18n="day">Վճարման օրը</label>
+      <input id="day" name="day" inputmode="numeric" value="15" required>
+      <p class="hint" data-i18n="day.hint">Ամսվա այն օրը, երբ վճարումը պարտադիր է։</p>
+      <p class="error" id="e-day"></p>
+    </div>
+    <div class="summary" id="summary" hidden>
+      <p class="big"><span id="s-payment">—</span><small data-i18n="sum.permonth">ամսական</small></p>
+      <dl>
+        <dt data-i18n="sum.count">Վճարումների թիվ</dt><dd id="s-count">—</dd>
+        <dt data-i18n="sum.interest">Ընդհանուր տոկոս</dt><dd id="s-interest">—</dd>
+        <dt data-i18n="sum.total">Ընդամենը</dt><dd id="s-total">—</dd>
+      </dl>
+      <p class="note" data-i18n="sum.note">Հաշվարկը մոտավոր է մինչև բանկի հաստատումը։</p>
+    </div>
+  </form>
+</section>
+
+<!-- MY LOANS -->
+<section id="s-manage" class="screen">
+  <h1 data-i18n="manage.title">Իմ վարկերը</h1>
+  <p class="lede" data-i18n="manage.lede">Փոխեք անվանումը կամ հեռացրեք վարկը։</p>
   <div id="manage-list"></div>
-</div>
-
-<form id="budget-form" novalidate hidden>
-  <div class="field">
-    <label for="monthly" data-i18n="budget.monthly">Ամսական գումար</label>
-    <div class="row">
-      <input id="monthly" name="monthly" inputmode="decimal" required>
-      <select id="budget-currency" name="budget-currency" style="flex:0 0 96px">
-        <option value="AMD" selected>AMD</option>
-        <option value="USD">USD</option>
-        <option value="EUR">EUR</option>
-        <option value="RUB">RUB</option>
-      </select>
-    </div>
-    <p class="hint" data-i18n="budget.hint">Որքա՞ն կարող եք ամսական հատկացնել բոլոր վարկերին։</p>
-    <p class="error" id="e-monthly"></p>
+  <div class="empty" id="manage-empty" hidden>
+    <div class="ic">📋</div>
+    <p data-i18n="manage.empty">Դուք դեռ վարկ չեք ավելացրել։</p>
+    <button class="cta" type="button" data-go="loan" data-i18n="manage.add_first">Ավելացնել առաջինը</button>
   </div>
-</form>
+</section>
 
-<form id="f" novalidate>
-  <div class="field">
-    <label for="title" data-i18n="title.field">Անվանում</label>
-    <input id="title" name="title" autocomplete="off" maxlength="60" required>
-    <p class="hint" data-i18n="title.hint">Ինչպե՞ս եք անվանում այս վարկը։</p>
-    <p class="error" id="e-title"></p>
-  </div>
-
-  <div class="field">
-    <label for="description" data-i18n="description">Նշում (ըստ ցանկության)</label>
-    <input id="description" name="description" autocomplete="off" maxlength="200">
-    <p class="hint" data-i18n="description.hint">Բանկի անուն կամ հաշվեհամար պետք չէ։</p>
-  </div>
-
-  <div class="field">
-    <label for="principal" data-i18n="principal">Վարկի գումար</label>
-    <div class="row">
-      <input id="principal" name="principal" inputmode="decimal" required>
-      <select id="currency" name="currency" style="flex:0 0 96px">
-        <option value="AMD" selected>AMD</option>
-        <option value="USD">USD</option>
-        <option value="EUR">EUR</option>
-        <option value="RUB">RUB</option>
-      </select>
-    </div>
-    <p class="error" id="e-principal"></p>
-  </div>
-
-  <div class="field">
-    <label for="rate" data-i18n="rate">Տարեկան տոկոսադրույք (%)</label>
-    <input id="rate" name="rate" inputmode="decimal" required>
-    <p class="error" id="e-rate"></p>
-  </div>
-
-  <div class="field">
-    <label for="method" data-i18n="method">Մարման եղանակ</label>
-    <select id="method" name="method">
-      <option value="annuity" selected data-i18n="method.annuity">Անուիտետային (հավասար վճար)</option>
-      <option value="declining" data-i18n="method.declining">Դիֆերենցված (նվազող վճար)</option>
-    </select>
-    <p class="hint" data-i18n="method.hint">Անուիտետի դեպքում ամսական վճարը նույնն է։</p>
-  </div>
-
-  <div class="row">
+<!-- BUDGET -->
+<section id="s-budget" class="screen">
+  <h1 data-i18n="budget.title">Ամսական բյուջե</h1>
+  <p class="lede" data-i18n="budget.lede">Որքա՞ն կարող եք ամսական հատկացնել վարկերին։</p>
+  <form id="budget-form" novalidate>
     <div class="field">
-      <label for="start" data-i18n="start">Սկիզբ</label>
-      <input id="start" name="start" type="date" required>
-      <p class="error" id="e-start"></p>
+      <label for="monthly" data-i18n="budget.monthly">Ամսական գումար</label>
+      <div class="row">
+        <input id="monthly" name="monthly" inputmode="decimal" required>
+        <select id="budget-currency" name="budget-currency" class="narrow">
+          <option value="AMD" selected>AMD ֏</option>
+          <option value="USD">USD $</option>
+          <option value="EUR">EUR €</option>
+          <option value="RUB">RUB ₽</option>
+        </select>
+      </div>
+      <p class="hint" data-i18n="budget.hint">Ներառեք բոլոր պարտադիր վճարումները։</p>
+      <p class="error" id="e-monthly"></p>
     </div>
-    <div class="field">
-      <label for="maturity" data-i18n="maturity">Ավարտ</label>
-      <input id="maturity" name="maturity" type="date" required>
-      <p class="error" id="e-maturity"></p>
+    <div class="summary" id="budget-summary" hidden>
+      <dl style="margin:0;padding:0;border:0">
+        <dt data-i18n="budget.required">Պարտադիր վճարումներ</dt><dd id="b-required">—</dd>
+        <dt data-i18n="budget.surplus">Ավելցուկ</dt><dd id="b-surplus">—</dd>
+      </dl>
+      <p class="note" id="b-note"></p>
     </div>
-  </div>
+  </form>
+</section>
 
-  <div class="field">
-    <label for="day" data-i18n="day">Վճարման օրը</label>
-    <input id="day" name="day" inputmode="numeric" value="15" required>
-    <p class="hint" data-i18n="day.hint">Ամսվա այն օրը, երբ վճարումը պարտադիր է։</p>
-    <p class="error" id="e-day"></p>
-  </div>
-
-  <div class="summary" id="summary" hidden>
-    <dl>
-      <dt data-i18n="sum.payment">Ամսական վճար</dt><dd id="s-payment">—</dd>
-      <dt data-i18n="sum.count">Վճարումների թիվ</dt><dd id="s-count">—</dd>
-      <dt data-i18n="sum.interest">Ընդհանուր տոկոս</dt><dd id="s-interest">—</dd>
-      <dt class="total" data-i18n="sum.total">Ընդամենը</dt><dd class="total" id="s-total">—</dd>
-    </dl>
-    <p class="hint" data-i18n="sum.note">Հաշվարկը մոտավոր է մինչև բանկի հաստատումը։</p>
-  </div>
-</form>
+<nav class="tabs">
+  <button type="button" data-go="manage"><span class="ic">📋</span><span data-i18n="tab.loans">Վարկեր</span></button>
+  <button type="button" data-go="loan"><span class="ic">➕</span><span data-i18n="tab.add">Ավելացնել</span></button>
+  <button type="button" data-go="budget"><span class="ic">💰</span><span data-i18n="tab.budget">Բյուջե</span></button>
+</nav>
+<div class="toast" id="toast"></div>
 
 <script src="app.js"></script>
 </body>

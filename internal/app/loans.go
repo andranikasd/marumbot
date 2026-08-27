@@ -110,3 +110,10 @@ type LoanEditor interface {
 // caller. Deliberately the same error for both: telling someone a loan exists
 // but is not theirs is telling them something about another account.
 var ErrNotFound = errors.New("app: not found")
+
+// RequiredReader reports what a borrower's loans contractually require this
+// month. The Mini App shows it beside the budget so the figure is chosen
+// against a fact.
+type RequiredReader interface {
+	RequiredThisMonth(ctx context.Context, userID string) (money.Amount, money.Currency, error)
+}

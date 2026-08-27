@@ -13,6 +13,7 @@ import (
 
 	"github.com/andranikasd/marumbot/internal/app"
 	"github.com/andranikasd/marumbot/internal/obs"
+	"github.com/andranikasd/marumbot/pkg/core/money"
 )
 
 //go:embed web
@@ -25,6 +26,7 @@ type Server struct {
 	Editor   app.LoanEditor
 	Reader   app.LoanReader
 	Budgets  app.BudgetStore
+	Required app.RequiredReader
 	Users    app.UserStore
 	Cipher   TagCipher
 	Clock    app.Clock
@@ -50,6 +52,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/loans", s.createLoan())
 	mux.Handle("POST /api/budget", s.setBudget())
+	mux.Handle("GET /api/budget", s.getBudget())
 	mux.Handle("GET /api/loans", s.listLoans())
 	mux.Handle("PATCH /api/loans/{id}", s.updateLoan())
 	mux.Handle("DELETE /api/loans/{id}", s.deleteLoan())
@@ -127,6 +130,45 @@ func (s *Server) createLoan() http.Handler {
 		}
 		writeJSON(w, http.StatusCreated, map[string]string{"id": id})
 	})
+}
+
+// getBudget returns the saved budget beside what the loans require this month,
+// so the screen can show the number against a fact rather than leave the user
+// to guess whether it covers the minimums.
+func (s *Server) getBudget() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, userID, ok := s.authed(w, r)
+		if !ok {
+			return
+		}
+		out := map[string]any{}
+		if b, err := s.Budgets.Budget(ctx, userID); err == nil && b.Set {
+			out["currency"] = b.Currency
+			out["monthly_major"] = major(b.Monthly)
+		}
+		if s.Required != nil {
+			if req, cur, err := s.Required.RequiredThisMonth(ctx, userID); err == nil && req.Sign() > 0 {
+				if out["currency"] == nil {
+					out["currency"] = cur.Code
+				}
+				if out["currency"] == cur.Code {
+					out["required_major"] = major(req)
+				}
+			}
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+}
+
+// major renders an amount as a decimal number of major units for the form.
+// The form takes major units back and the server converts once, so this is
+// the one place a money figure becomes a float, and it is display only.
+func major(a money.Amount) float64 {
+	scale := 1.0
+	for i := uint8(0); i < a.Currency().Exponent; i++ {
+		scale *= 10
+	}
+	return float64(a.Minor()) / scale
 }
 
 // setBudget records how much a borrower can put towards loans each month.

@@ -115,3 +115,24 @@ button:hover { filter: brightness(1.06); }
 .login { max-width: 350px; margin: 12vh auto; }
 .login h1 { text-align: center; margin-bottom: 22px; }
 footer { color: var(--muted); font-size: 12.5px; text-align: center; padding: 26px 0; }
+
+/* Moderation controls. Inline forms inside table cells, styled as quiet
+   text actions so the table stays a table and the dangerous one stands out
+   only by colour. */
+td.actions { white-space: nowrap; }
+td.actions form { display: inline; }
+td.actions form + form { margin-left: 8px; }
+button.link {
+  background: none; border: none; padding: 0; font: inherit; font-size: 13px;
+  color: var(--accent); cursor: pointer; text-decoration: none;
+}
+button.link:hover { text-decoration: underline; }
+button.link.danger { color: var(--stop); }
+
+/* Status filters above the command inbox: pills, like the main nav. */
+a.filter {
+  display: inline-block; padding: 3px 10px; border-radius: 999px;
+  font-size: 13px; color: var(--muted); margin-right: 4px;
+}
+a.filter:hover { background: var(--accent-soft); text-decoration: none; }
+a.filter.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
