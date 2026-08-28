@@ -221,7 +221,7 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 		return w.listLoans(ctx, c.UserID, chat, l)
 
 	case KindAdvice:
-		return w.advise(ctx, c.UserID, chat, l, plan.PayLeastInterest, false)
+		return w.advise(ctx, c.UserID, chat, l, plan.Goal{Kind: plan.LeastInterest}, false)
 
 	case KindBudget:
 		return w.askBudget(ctx, c.UserID, chat, l)
@@ -245,9 +245,10 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 		// is broken.
 		if w.Convos != nil {
 			state, err := w.Convos.State(ctx, c.UserID)
-			if err != nil {
+			switch {
+			case err != nil:
 				w.Log.WarnContext(ctx, "reading the conversation state failed", "error", err)
-			} else if state == StateAwaitingBudget {
+			case state == StateAwaitingBudget:
 				taken, err := w.takeBudget(ctx, c.UserID, chat, l, p.Text)
 				if err != nil {
 					return err
@@ -256,6 +257,15 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 					return nil
 				}
 				return w.Send.SendMessage(ctx, chat, i18n.T(l, "budget.not_a_number"), w.mainMenu(l))
+			case state == StateAwaitingReliefCap:
+				taken, err := w.takeReliefCap(ctx, c.UserID, chat, l, p.Text)
+				if err != nil {
+					return err
+				}
+				if taken {
+					return nil
+				}
+				return w.Send.SendMessage(ctx, chat, i18n.T(l, "relief.not_a_number"), w.mainMenu(l))
 			}
 		}
 		return w.Send.SendMessage(ctx, chat, w.helpText(l), w.mainMenu(l))
@@ -275,7 +285,7 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 // resets drift -- and a planner that shows a guess with the same confidence as
 // a bank statement is the thing this product exists not to be.
 func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18n.Locale) error {
-	loans, err := w.Loans.LoansForUser(ctx, userID, 25)
+	loans, err := w.Loans.LoansForUser(ctx, userID, plan.MaxLoans+1)
 	if err != nil {
 		return fmt.Errorf("listing loans: %w", err)
 	}
@@ -362,13 +372,15 @@ func (w *Worker) callback(ctx context.Context, userID string, chat int64, data s
 		l := i18n.Locale(locale)
 		switch data[5:] {
 		case "soonest":
-			return w.advise(ctx, userID, chat, l, plan.FinishSoonest, false)
+			return w.advise(ctx, userID, chat, l, plan.Goal{Kind: plan.Fastest}, false)
 		case "relief":
-			return w.advise(ctx, userID, chat, l, plan.FreeUpMonthly, false)
+			return w.askReliefCap(ctx, userID, chat, l)
+		case "first":
+			return w.advise(ctx, userID, chat, l, plan.Goal{Kind: plan.FirstWin}, false)
 		case "compare":
-			return w.advise(ctx, userID, chat, l, plan.PayLeastInterest, true)
+			return w.advise(ctx, userID, chat, l, plan.Goal{Kind: plan.LeastInterest}, true)
 		default:
-			return w.advise(ctx, userID, chat, l, plan.PayLeastInterest, false)
+			return w.advise(ctx, userID, chat, l, plan.Goal{Kind: plan.LeastInterest}, false)
 		}
 	}
 	if len(data) > 5 && data[:5] == "lang:" {

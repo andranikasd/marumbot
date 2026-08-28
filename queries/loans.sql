@@ -18,7 +18,8 @@
 -- intended rather than an omission.
 WITH new_loan AS (
     INSERT INTO loans (id, user_id, name, description, currency)
-    VALUES ($1, $2, $3, $4, $5)
+    SELECT $1, $2, $3, $4, $5
+     WHERE (SELECT count(*) FROM loans WHERE user_id = $2 AND archived_at IS NULL) < $19
     RETURNING id
 ), new_contract AS (
     INSERT INTO loan_contract_versions (
@@ -62,7 +63,7 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        c.rounding_mode, c.rounding_unit_minor,
        s.principal_minor, s.as_of::text, s.trust,
        coalesce(p.excess_rule, 'unknown'),
-       coalesce(c.prepayment_policy->>'effect', ''), coalesce((c.prepayment_policy->>'fee_bp')::int, 0)
+       c.prepayment_policy::text
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v

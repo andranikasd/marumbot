@@ -2,12 +2,15 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"strings"
+	"time"
 
 	"github.com/andranikasd/marumbot/internal/i18n"
 	"github.com/andranikasd/marumbot/pkg/core/amortisation"
+	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
 	"github.com/andranikasd/marumbot/pkg/core/plan"
@@ -25,9 +28,12 @@ import (
 // header; every amount below it is bare, so a line reads as a number rather
 // than as a sentence about a number.
 func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.Locale, goal plan.Goal, compare bool) error {
-	loans, err := w.Loans.LoansForUser(ctx, userID, 25)
+	loans, err := w.Loans.LoansForUser(ctx, userID, plan.MaxLoans+1)
 	if err != nil {
 		return fmt.Errorf("listing loans: %w", err)
+	}
+	if len(loans) > plan.MaxLoans {
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "advice.refuse.too_many", plan.MaxLoans), w.mainMenu(l))
 	}
 
 	positions, owed, required, cur, err := w.positions(ctx, loans)
@@ -57,6 +63,16 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 			i18n.T(l, "budget.too_low", bare(budget.Monthly), bare(required)), w.budgetMarkup(l))
 	}
 
+	in := plan.Input{
+		ValuationDate: date.From(w.Clock.Now(), time.UTC),
+		Cash:          plan.CashPlan{Monthly: budget.Monthly, PayDay: budget.PayDay},
+		Loans:         positions,
+	}
+	u, err := plan.Explore(in)
+	if err != nil {
+		return w.refuse(ctx, chat, l, err)
+	}
+
 	var b strings.Builder
 	b.WriteString("<b>" + i18n.T(l, "advice.title") + "</b>")
 	if compare {
@@ -68,18 +84,20 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 	figure(&b, l, "advice.owed", owed)
 	figure(&b, l, "advice.required", required)
 	figure(&b, l, "advice.budget", budget.Monthly)
-	cash := plan.Cash{Monthly: budget.Monthly, Day: budget.PayDay}
 	if budget.PayDay > 0 {
 		b.WriteString(i18n.T(l, "advice.payday", budget.PayDay) + "\n")
 	}
-
-	if compare {
-		return w.compareGoals(ctx, chat, l, &b, positions, cash)
+	if n := assumedTotal(u); n > 0 {
+		b.WriteString("<i>" + i18n.T(l, "advice.assumed", n) + "</i>\n")
 	}
 
-	rep, err := plan.Search(positions, cash, goal)
+	if compare {
+		return w.compareGoals(ctx, chat, l, &b, u, required)
+	}
+
+	rep, err := u.Rank(goal)
 	if err != nil {
-		return fmt.Errorf("searching %s: %w", goal, err)
+		return w.refuse(ctx, chat, l, err)
 	}
 	o := rep.Best
 
@@ -88,9 +106,9 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 	b.WriteString(i18n.T(l, "advice.remaining", bare(o.NextMonthOwed)) + "\n")
 
 	b.WriteString("\n<b>" + i18n.T(l, "advice.result") + "</b>\n")
-	writeResult(&b, l, rep, positions, cash)
-	if o.ClearedFirst != "" {
-		b.WriteString(i18n.T(l, "advice.first_clear", html.EscapeString(o.ClearedFirst), o.ClearedMonth) + "\n")
+	writeResult(&b, l, rep, in, required)
+	if o.FirstClear != "" {
+		b.WriteString(i18n.T(l, "advice.first_clear", html.EscapeString(o.FirstClear), o.FirstClearOn.String()) + "\n")
 	}
 
 	b.WriteString("\n<b>" + i18n.T(l, "advice.how") + "</b>\n")
@@ -100,25 +118,68 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l))
 }
 
-// compareGoals answers every goal at once, with the minimum as the floor, so
-// the reader sees what each choice costs in months, interest and monthly
-// outflow rather than three reports that each look reasonable alone.
-//
-// Each goal is two lines: its name, then one monospace line of figures, so the
-// four blocks scan as a table without a table.
-func (w *Worker) compareGoals(ctx context.Context, chat int64, l i18n.Locale, b *strings.Builder, positions []plan.Position, cash plan.Cash) error {
+// refuse maps a typed engine refusal to a message that says what would have
+// to change. Anything untyped is a fault, and is returned to be logged and
+// retried rather than explained away.
+func (w *Worker) refuse(ctx context.Context, chat int64, l i18n.Locale, err error) error {
+	var inf *plan.InfeasibleError
+	var un *plan.UnsupportedError
+	var tr *plan.TruncatedError
+	var mc *plan.MixedCurrencyError
+	switch {
+	case errors.As(err, &inf):
+		return w.Send.SendMessage(ctx, chat,
+			i18n.T(l, "advice.refuse.infeasible", inf.On.String(), bare(inf.Required), bare(inf.Shortfall)), w.budgetMarkup(l))
+	case errors.As(err, &un):
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "advice.refuse.unsupported", un.Feature), w.mainMenu(l))
+	case errors.As(err, &tr):
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "advice.refuse.too_many", tr.Max), w.mainMenu(l))
+	case errors.As(err, &mc):
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "advice.currency_mismatch", mc.Want, mc.Have), w.budgetMarkup(l))
+	case errors.Is(err, plan.ErrHorizon):
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "advice.refuse.horizon"), w.mainMenu(l))
+	case errors.Is(err, plan.ErrInvariant):
+		w.Log.ErrorContext(ctx, "engine invariant violated", "error", err)
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "advice.refuse.calculation"), w.mainMenu(l))
+	}
+	return fmt.Errorf("planning: %w", err)
+}
+
+func assumedTotal(u *plan.Universe) int {
+	n := 0
+	if len(u.Results) > 0 {
+		for _, k := range u.Results[0].Assumed {
+			n += k
+		}
+	}
+	return n
+}
+
+// compareGoals answers every goal at once over the same simulated policies,
+// with the minimum as the floor.
+func (w *Worker) compareGoals(ctx context.Context, chat int64, l i18n.Locale, b *strings.Builder, u *plan.Universe, required money.Amount) error {
+	goals := []plan.Goal{{Kind: plan.LeastInterest}, {Kind: plan.Fastest}, {Kind: plan.FirstWin}}
+	// Relief needs a target; for the comparison, use "get under half of
+	// today's required total", which is the question most people mean.
+	half := money.FromMinor(required.Minor()/2, required.Currency())
+	goals = append(goals, plan.Goal{Kind: plan.Relief, Cap: half})
 	var first *plan.Report
-	for _, g := range []plan.Goal{plan.PayLeastInterest, plan.FinishSoonest, plan.FreeUpMonthly} {
-		rep, err := plan.Search(positions, cash, g)
+	for _, g := range goals {
+		rep, err := u.Rank(g)
 		if err != nil {
-			return fmt.Errorf("searching %s: %w", g, err)
+			return w.refuse(ctx, chat, l, err)
 		}
 		if first == nil {
-			first = &rep
+			r := rep
+			first = &r
 		}
-		writeRow(b, l, i18n.T(l, goalKey(g)), rep.Best)
+		name := i18n.T(l, goalKey(g))
+		if g.Kind == plan.Relief {
+			name += " ≤ " + bare(half)
+		}
+		writeRow(b, l, name, rep, required)
 	}
-	writeRow(b, l, i18n.T(l, "advice.minimum"), first.Minimum)
+	writeRow(b, l, i18n.T(l, "advice.minimum"), plan.Report{Goal: plan.Goal{}, Best: first.Minimum}, required)
 
 	if len(first.Ties) > 0 {
 		b.WriteString("\n<i>" + i18n.T(l, "advice.ties_intro") + "</i>\n")
@@ -131,65 +192,75 @@ func (w *Worker) compareGoals(ctx context.Context, chat int64, l i18n.Locale, b 
 }
 
 // writeRow is one block of the comparison: the name, then the figures.
-func writeRow(b *strings.Builder, l i18n.Locale, name string, o plan.Result) {
+func writeRow(b *strings.Builder, l i18n.Locale, name string, rep plan.Report, required money.Amount) {
+	o := rep.Best
 	b.WriteString("\n<b>" + name + "</b>\n")
-	b.WriteString(i18n.T(l, "advice.row", o.Months, bare(o.TotalInterest)) + "\n")
-	if o.FinalMonthly.Cmp(o.PeakMonthly) < 0 && o.ReliefMonth > 0 {
-		b.WriteString(i18n.T(l, "advice.row_relief", bare(o.PeakMonthly), bare(o.FinalMonthly), o.ReliefMonth) + "\n")
-	} else {
-		b.WriteString(i18n.T(l, "advice.row_flat", bare(o.PeakMonthly)) + "\n")
-	}
-}
-
-// writeResult is the block that answers the goal's own question: months and
-// interest for every goal, then the comparison that goal is measured by.
-func writeResult(b *strings.Builder, l i18n.Locale, rep plan.Report, positions []plan.Position, cash plan.Cash) {
-	o, m := rep.Best, rep.Minimum
-	b.WriteString(i18n.T(l, "advice.months_interest", o.Months, bare(o.TotalInterest)) + "\n")
-	switch rep.Goal {
-	case plan.FinishSoonest:
-		if len(rep.Ladder) > 1 {
-			b.WriteString(i18n.T(l, "advice.ladder_intro") + "\n")
-			for _, r := range rep.Ladder[1:] {
-				b.WriteString(i18n.T(l, "advice.ladder", bare(r.Budget), r.Months, bare(r.Interest)) + "\n")
-			}
-		}
-		if target := o.Months / 2; target >= 1 {
-			if need, err := plan.BudgetFor(positions, cash, o.Policy, target); err == nil {
-				b.WriteString(i18n.T(l, "advice.budget_for", target, bare(need)) + "\n")
-			}
-		}
-	case plan.FreeUpMonthly:
-		if o.ReliefMonth > 0 {
-			b.WriteString(i18n.T(l, "advice.relief.head", bare(o.PeakMonthly), bare(o.FinalMonthly), o.ReliefMonth) + "\n")
+	b.WriteString(i18n.T(l, "advice.row", o.PayoffDate.String(), bare(o.Cost())) + "\n")
+	if rep.Goal.Kind == plan.Relief {
+		if m := plan.ReliefMonth(rep.Goal, required, o); m < 1<<29 {
+			b.WriteString(i18n.T(l, "advice.row_relief", bare(o.PeakRequired), bare(o.FinalRequired), m) + "\n")
 		} else {
 			b.WriteString(i18n.T(l, "advice.relief.none") + "\n")
 		}
-		if d, err := o.TotalInterest.Sub(rep.Avalanche.TotalInterest); err == nil && d.Sign() > 0 {
-			b.WriteString(i18n.T(l, "advice.relief.vs_cheapest", bare(d), rep.Avalanche.Months) + "\n")
+	} else {
+		b.WriteString(i18n.T(l, "advice.row_flat", bare(o.PeakRequired)) + "\n")
+	}
+}
+
+// writeResult answers the goal's own question.
+func writeResult(b *strings.Builder, l i18n.Locale, rep plan.Report, in plan.Input, required money.Amount) {
+	o, m := rep.Best, rep.Minimum
+	b.WriteString(i18n.T(l, "advice.months_interest", o.PayoffDate.String(), o.Months, bare(o.TotalInterest)) + "\n")
+	if o.TotalFees.Sign() > 0 {
+		b.WriteString(i18n.T(l, "advice.fees", bare(o.TotalFees)) + "\n")
+	}
+	switch rep.Goal.Kind {
+	case plan.Fastest:
+		if len(rep.Ladder) > 1 {
+			b.WriteString(i18n.T(l, "advice.ladder_intro") + "\n")
+			for _, r := range rep.Ladder[1:] {
+				b.WriteString(i18n.T(l, "advice.ladder", bare(r.Budget), r.Payoff.String(), bare(r.Interest)) + "\n")
+			}
+		}
+		if o.Months >= 2 {
+			by := date.AddMonths(in.ValuationDate, o.Months/2)
+			if need, err := plan.BudgetFor(in, o.Policy, by); err == nil {
+				b.WriteString(i18n.T(l, "advice.budget_for", by.String(), bare(need)) + "\n")
+			}
+		}
+	case plan.Relief:
+		if mo := plan.ReliefMonth(rep.Goal, required, o); mo < 1<<29 {
+			b.WriteString(i18n.T(l, "advice.relief.head", bare(o.PeakRequired), bare(o.FinalRequired), mo) + "\n")
+		} else {
+			b.WriteString(i18n.T(l, "advice.relief.none") + "\n")
+		}
+		if d, err := o.Cost().Sub(rep.Avalanche.Cost()); err == nil && d.Sign() > 0 {
+			b.WriteString(i18n.T(l, "advice.relief.vs_cheapest", bare(d), rep.Avalanche.PayoffDate.String()) + "\n")
 		}
 	default:
-		if saved, err := m.TotalInterest.Sub(o.TotalInterest); err == nil && saved.Sign() > 0 {
+		if saved, err := m.Cost().Sub(o.Cost()); err == nil && saved.Sign() > 0 {
 			b.WriteString(i18n.T(l, "advice.vs_minimum", bare(saved), m.Months-o.Months) + "\n")
 		}
 	}
 }
 
-// writeActions lists the first month as a dated checklist: what to pay, when,
-// to which loan, and what an early payment saves.
+// writeActions lists the first cycle as a dated checklist.
 func writeActions(b *strings.Builder, l i18n.Locale, acts []plan.Action) {
 	var extra int
 	for _, a := range acts {
 		name := html.EscapeString(a.Loan)
 		switch {
-		case a.Extra && a.Saves.Sign() > 0:
+		case a.Kind == plan.Extra && a.Saves.Sign() > 0:
 			b.WriteString(i18n.T(l, "advice.step_early", a.On.String(), bare(a.Amount), name, bare(a.Saves)) + "\n")
 			extra++
-		case a.Extra:
+		case a.Kind == plan.Extra:
 			b.WriteString(i18n.T(l, "advice.step_extra", a.On.String(), bare(a.Amount), name) + "\n")
 			extra++
 		default:
 			b.WriteString(i18n.T(l, "advice.step_due", a.On.String(), bare(a.Amount), name) + "\n")
+		}
+		if a.Fee.Sign() > 0 {
+			b.WriteString("   " + i18n.T(l, "advice.step_fee", bare(a.Fee)) + "\n")
 		}
 	}
 	if extra == 0 {
@@ -197,29 +268,55 @@ func writeActions(b *strings.Builder, l i18n.Locale, acts []plan.Action) {
 	}
 }
 
-// writeSearchSummary says how the answer was found and what it beat. Only the
-// lines that carry a number or a caveat: the reader wants to trust the plan,
-// not to audit the search.
+// writeSearchSummary says how the answer was found and what it beat, in
+// the borrower's language: one sentence for the search strength, the
+// comparisons that carry a number, and the caveats.
 func writeSearchSummary(b *strings.Builder, l i18n.Locale, rep plan.Report) {
-	if rep.Exhaustive {
-		b.WriteString(i18n.T(l, "advice.evaluated", rep.Evaluated) + "\n")
-	} else {
-		b.WriteString(i18n.T(l, "advice.evaluated_named", rep.Evaluated) + "\n")
-	}
-	if rep.Goal != plan.FreeUpMonthly {
-		if d, err := rep.Avalanche.TotalInterest.Sub(rep.Best.TotalInterest); err == nil && d.Sign() > 0 {
+	c := rep.Certificate
+	b.WriteString(i18n.T(l, strengthKey(c.Strength), c.Policies) + "\n")
+	if rep.Goal.Kind != plan.Relief {
+		if d, err := rep.Avalanche.Cost().Sub(rep.Best.Cost()); err == nil && d.Sign() > 0 {
 			b.WriteString(i18n.T(l, "advice.vs_avalanche", bare(d)) + "\n")
 		}
-		if d, err := rep.Snowball.TotalInterest.Sub(rep.Best.TotalInterest); err == nil && d.Sign() > 0 {
+		if d, err := rep.Snowball.Cost().Sub(rep.Best.Cost()); err == nil && d.Sign() > 0 {
 			b.WriteString(i18n.T(l, "advice.vs_snowball", bare(d)) + "\n")
 		}
 	}
 	if rep.TimingSaving.Sign() > 0 {
 		b.WriteString(i18n.T(l, "advice.timing", bare(rep.TimingSaving)) + "\n")
 	}
-	b.WriteString("<i>" + i18n.T(l, effectKey(rep.Best.Policy.Effect)) + "</i>\n")
+	if e, ok := uniformEffectOf(rep.Best.Policy); ok {
+		b.WriteString("<i>" + i18n.T(l, effectKey(e)) + "</i>\n")
+	} else {
+		b.WriteString("<i>" + i18n.T(l, "advice.effect.mixed") + "</i>\n")
+	}
 	for _, t := range rep.Ties {
 		b.WriteString("• " + i18n.T(l, tieKey(t)) + "\n")
+	}
+}
+
+func uniformEffectOf(p plan.Policy) (model.PrepaymentEffect, bool) {
+	if len(p.Effect) == 0 {
+		return model.PrepayBorrowerChooses, true
+	}
+	for _, e := range p.Effect[1:] {
+		if e != p.Effect[0] {
+			return 0, false
+		}
+	}
+	return p.Effect[0], true
+}
+
+func strengthKey(s plan.Strength) string {
+	switch s {
+	case plan.ProvenOptimal:
+		return "advice.strength.proven"
+	case plan.ExhaustiveStaticOrder:
+		return "advice.strength.exhaustive"
+	case plan.NamedStrategiesOnly:
+		return "advice.strength.named"
+	default:
+		return "advice.strength.bounded"
 	}
 }
 
@@ -306,11 +403,13 @@ func (w *Worker) positions(ctx context.Context, loans []UserLoan) ([]plan.Positi
 }
 
 func goalKey(g plan.Goal) string {
-	switch g {
-	case plan.FinishSoonest:
+	switch g.Kind {
+	case plan.Fastest:
 		return "goal.soonest"
-	case plan.FreeUpMonthly:
+	case plan.Relief:
 		return "goal.relief"
+	case plan.FirstWin:
+		return "goal.first"
 	default:
 		return "goal.cheapest"
 	}
@@ -325,6 +424,9 @@ func goalMenu(l i18n.Locale) any {
 		},
 		{
 			{keyText: i18n.T(l, "goal.relief"), keyCallback: "goal:relief"},
+			{keyText: i18n.T(l, "goal.first"), keyCallback: "goal:first"},
+		},
+		{
 			{keyText: i18n.T(l, "advice.compare"), keyCallback: "goal:compare"},
 		},
 	}}
@@ -333,7 +435,7 @@ func goalMenu(l i18n.Locale) any {
 // RequiredThisMonth sums the next instalment of every active loan, using the
 // same projection the advice report uses so the two cannot disagree.
 func (w *Worker) RequiredThisMonth(ctx context.Context, userID string) (money.Amount, money.Currency, error) {
-	loans, err := w.Loans.LoansForUser(ctx, userID, 25)
+	loans, err := w.Loans.LoansForUser(ctx, userID, plan.MaxLoans+1)
 	if err != nil {
 		return money.Amount{}, money.Currency{}, err
 	}

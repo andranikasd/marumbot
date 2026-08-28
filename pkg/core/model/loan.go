@@ -74,12 +74,37 @@ func ParsePrepaymentEffect(s string) (PrepaymentEffect, error) {
 	return PrepayBorrowerChooses, fmt.Errorf("%w: unknown prepayment effect %q", ErrInvalid, s)
 }
 
+// PrepaymentCharge is one dated rule for what an early payment costs.
+//
+// Consumer credit in Armenia carries no charge by law. Residential mortgage
+// credit may carry a capped percentage in the first contract years, and
+// some products add a fixed transfer commission. A rule applies from
+// FromYear through ThroughYear of the contract (1-based; zero means
+// unbounded), charges PercentBP of the principal credited beyond the year's
+// FreeAllowance plus Fixed, and is clamped to [MinCharge, MaxCharge] when
+// those are set.
+type PrepaymentCharge struct {
+	FromYear      int
+	ThroughYear   int
+	PercentBP     int64
+	Fixed         money.Amount
+	FreeAllowance money.Amount // per contract year, zero means none
+	MinCharge     money.Amount
+	MaxCharge     money.Amount
+}
+
 // Prepayment is the contract's terms for paying early.
 type Prepayment struct {
 	Effect PrepaymentEffect
-	// FeeBP is a fee on the prepaid amount, in basis points. Consumer credit
-	// carries none by law; mortgages sometimes do in the first years.
+	// FeeBP is a flat fee on the prepaid amount in basis points, kept for
+	// contracts recorded before dated charge rules existed. When Charges is
+	// non-empty it is ignored.
 	FeeBP int
+	// Charges are the dated rules; empty means free.
+	Charges []PrepaymentCharge
+	// MinAmount is the smallest optional payment the lender accepts; zero
+	// means any.
+	MinAmount money.Amount
 }
 
 // Contract is what the loan agreement says. It is immutable: a restructuring,

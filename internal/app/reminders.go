@@ -6,6 +6,8 @@ import (
 	"html"
 	"time"
 
+	"github.com/andranikasd/marumbot/pkg/core/plan"
+
 	"github.com/andranikasd/marumbot/internal/i18n"
 	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 )
@@ -37,7 +39,7 @@ const remindHorizon = 14 * 24 * time.Hour
 
 // ScheduleForUser generates occurrences for one borrower's loans.
 func (w *Worker) ScheduleForUser(ctx context.Context, userID string) error {
-	loans, err := w.Loans.LoansForUser(ctx, userID, 50)
+	loans, err := w.Loans.LoansForUser(ctx, userID, plan.MaxLoans+1)
 	if err != nil {
 		return fmt.Errorf("listing loans: %w", err)
 	}

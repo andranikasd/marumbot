@@ -86,7 +86,7 @@ type UserView struct {
 }
 
 // User returns one account with its loans, budgets and pending dialogue.
-func (a *Admin) User(ctx context.Context, id string) (UserView, error) {
+func (a *Admin) User(ctx context.Context, id string, now time.Time) (UserView, error) {
 	var v UserView
 	var err error
 	if v.User, err = call(ctx, "GetUser", func(c context.Context) (UserRow, error) { return a.store.GetUser(c, id) }); err != nil {
@@ -99,7 +99,7 @@ func (a *Admin) User(ctx context.Context, id string) (UserView, error) {
 	v.Convo, _ = call(ctx, "ConversationState", func(c context.Context) (*ConvoRow, error) { return a.store.ConversationState(c, id) })
 	v.Commands, _ = call(ctx, "CommandsForUser", func(c context.Context) ([]CommandRow, error) { return a.store.CommandsForUser(c, id, 20) })
 	v.Deliveries, _ = call(ctx, "DeliveriesForUser", func(c context.Context) ([]DeliveryRow, error) { return a.store.DeliveriesForUser(c, id, 20) })
-	v.Plan, v.PlanNote = a.planFor(ctx, id)
+	v.Plan, v.PlanNote = a.planFor(ctx, id, now)
 	return v, nil
 }
 
@@ -122,37 +122,36 @@ type ProjectionRow struct {
 
 // PlanSummary is the borrower's current advice, condensed for an operator.
 type PlanSummary struct {
-	Goal         string
-	Policy       string
-	Months       int
-	Interest     money.Amount
-	Owed         money.Amount // after the first month
-	Evaluated    int
-	Exhaustive   bool
-	TimingSaving money.Amount
-	VsAvalanche  money.Amount
-	VsSnowball   money.Amount
-	ClearedFirst string
-	ClearedMonth int
-	Actions      []plan.Action
-	// The floor: paying only what the contracts require.
+	Goal            string
+	Policy          string
+	Months          int
+	Payoff          date.Date
+	Interest        money.Amount
+	Fees            money.Amount
+	Owed            money.Amount // after the first cycle
+	Evaluated       int
+	Strength        string
+	Eligibility     string
+	Truncation      string
+	TimingSaving    money.Amount
+	VsAvalanche     money.Amount
+	VsSnowball      money.Amount
+	ClearedFirst    string
+	ClearedOn       date.Date
+	Actions         []plan.Action
 	MinimumMonths   int
 	MinimumInterest money.Amount
-	// What more money per month would buy, under the best policy.
-	Ladder []plan.Rung
-	// Why candidates coincide, when they do.
-	Ties []string
-	// Relief, when the goal is to pay less: the month the outflow first
-	// drops and what it drops to.
-	ReliefMonth  int
-	PeakMonthly  money.Amount
-	FinalMonthly money.Amount
-	Effect       string
+	Ladder          []plan.Rung
+	Ties            []string
+	PeakRequired    money.Amount
+	FinalRequired   money.Amount
+	Effect          string
+	Certificate     plan.Certificate
 }
 
 // enrich adds the engine's reading to a loan view. Nothing here is fatal:
 // the stored facts are the page, and the engine's opinion is a panel on it.
-func (a *Admin) enrich(ctx context.Context, v *LoanView) {
+func (a *Admin) enrich(ctx context.Context, v *LoanView, now time.Time) {
 	if a.engine == nil {
 		v.ProjectionNote = "engine not attached"
 		return
@@ -174,7 +173,7 @@ func (a *Admin) enrich(ctx context.Context, v *LoanView) {
 		return
 	}
 	v.Projection, v.ProjectionNote = project(ln.Contract, ln.Balance, ln.AsOf)
-	v.Plan, v.PlanNote = a.planFor(ctx, v.Loan.UserID)
+	v.Plan, v.PlanNote = a.planFor(ctx, v.Loan.UserID, now)
 	v.Support = supportText(v.Loan, ln, v.Projection)
 }
 
@@ -233,11 +232,11 @@ func project(c model.Contract, balance money.Amount, from date.Date) (*Projectio
 
 // planFor runs the borrower's own search — the same call the bot makes — so
 // the operator can answer "why was I told this" with the actual numbers.
-func (a *Admin) planFor(ctx context.Context, userID string) (*PlanSummary, string) {
+func (a *Admin) planFor(ctx context.Context, userID string, now time.Time) (*PlanSummary, string) {
 	if a.engine == nil {
 		return nil, "engine not attached"
 	}
-	loans, err := a.engine.LoansForUser(ctx, userID, 25)
+	loans, err := a.engine.LoansForUser(ctx, userID, plan.MaxLoans+1)
 	if err != nil {
 		return nil, err.Error()
 	}
@@ -249,17 +248,9 @@ func (a *Admin) planFor(ctx context.Context, userID string) (*PlanSummary, strin
 		return nil, "no budget set"
 	}
 	var positions []plan.Position
-	required := money.Zero(budget.Monthly.Currency())
 	for _, ln := range loans {
 		if ln.Balance.Sign() <= 0 || ln.Contract.Currency.Code != budget.Currency {
 			continue
-		}
-		s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
-		if err != nil || len(s.Rows) == 0 {
-			continue
-		}
-		if required, err = required.Add(s.Rows[0].Payment); err != nil {
-			return nil, err.Error()
 		}
 		positions = append(positions, plan.Position{
 			ID: ln.ID, Name: ln.Name, Contract: ln.Contract,
@@ -267,12 +258,14 @@ func (a *Admin) planFor(ctx context.Context, userID string) (*PlanSummary, strin
 		})
 	}
 	if len(positions) == 0 {
-		return nil, "no projectable loan in the budget's currency"
+		return nil, "no loan in the budget's currency"
 	}
-	if budget.Monthly.Cmp(required) < 0 {
-		return nil, fmt.Sprintf("budget %s is below the required %s", budget.Monthly, required)
+	in := plan.Input{
+		ValuationDate: date.From(now, time.UTC),
+		Cash:          plan.CashPlan{Monthly: budget.Monthly, PayDay: budget.PayDay},
+		Loans:         positions,
 	}
-	rep, err := plan.Search(positions, plan.Cash{Monthly: budget.Monthly, Day: budget.PayDay}, plan.PayLeastInterest)
+	rep, err := plan.Search(in, plan.Goal{Kind: plan.LeastInterest})
 	if err != nil {
 		return nil, err.Error()
 	}
@@ -281,19 +274,20 @@ func (a *Admin) planFor(ctx context.Context, userID string) (*PlanSummary, strin
 
 func summarise(rep plan.Report) *PlanSummary {
 	b := rep.Best
+	c := rep.Certificate
 	s := &PlanSummary{
-		Goal: rep.Goal.String(), Policy: b.Policy.String(), Months: b.Months,
-		Interest: b.TotalInterest, Owed: b.NextMonthOwed,
-		Evaluated: rep.Evaluated, Exhaustive: rep.Exhaustive,
-		TimingSaving: rep.TimingSaving, ClearedFirst: b.ClearedFirst, ClearedMonth: b.ClearedMonth,
+		Goal: rep.Goal.String(), Policy: b.Policy.String(), Months: b.Months, Payoff: b.PayoffDate,
+		Interest: b.TotalInterest, Fees: b.TotalFees, Owed: b.NextMonthOwed,
+		Evaluated: c.Policies, Strength: string(c.Strength), Eligibility: c.Eligibility, Truncation: c.Truncation,
+		TimingSaving: rep.TimingSaving, ClearedFirst: b.FirstClear, ClearedOn: b.FirstClearOn,
 		Actions:       b.Actions,
 		MinimumMonths: rep.Minimum.Months, MinimumInterest: rep.Minimum.TotalInterest,
 		Ladder: rep.Ladder, Ties: rep.Ties,
-		ReliefMonth: b.ReliefMonth, PeakMonthly: b.PeakMonthly, FinalMonthly: b.FinalMonthly,
-		Effect: b.Policy.Effect.String(),
+		PeakRequired: b.PeakRequired, FinalRequired: b.FinalRequired,
+		Effect: b.Policy.String(), Certificate: c,
 	}
-	s.VsAvalanche, _ = rep.Avalanche.TotalInterest.Sub(b.TotalInterest)
-	s.VsSnowball, _ = rep.Snowball.TotalInterest.Sub(b.TotalInterest)
+	s.VsAvalanche, _ = rep.Avalanche.Cost().Sub(b.Cost())
+	s.VsSnowball, _ = rep.Snowball.Cost().Sub(b.Cost())
 	return s
 }
 
