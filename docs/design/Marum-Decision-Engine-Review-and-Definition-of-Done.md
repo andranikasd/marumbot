@@ -1210,10 +1210,10 @@ Legend: ✅ done · 🟡 partial · ⬜ not started · 🚫 out of code (field w
 - ✅ DA.1 Manifest with sha256, row counts, support state; counts and exact rows may not decrease (`TestCorpusProvenance`).
 - ⬜ DA.2 Three real profiles exact — one (Inecobank consumer) today.
 - ✅ DA.3 Profiles enabled independently via manifest state.
-- 🟡 DA.4 Mid-life anchor projects from the next instalment (`RemainingDates`); no golden mid-life fixture yet.
+- ✅ DA.4 Mid-life anchor reproduces every remaining lender row from nine anchor points of the Inecobank schedule (`TestCorpusMidLifeAnchors`).
 - 🟡 DA.5 Anchor carries principal and as-of; accrued/unpaid interest and fees not yet part of the planner anchor.
 - ⬜ DA.6 Day-count variants named as families, not variants.
-- ⬜ DA.7 Leap-year/boundary golden rows.
+- 🟡 DA.7 The Inecobank schedule spans February 2028 (leap year) and is exact through it; month-end day boundaries still lack a fixture.
 - 🟡 DA.8 Interest and instalment rounding modelled; fee rounding via settlement unit; residual rule on final date.
 - ⬜ DA.9 Business-day adjustment.
 - ✅ DA.10 Row explanation from stored inputs (`amortisation.Explain`).
