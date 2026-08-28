@@ -1190,3 +1190,112 @@ The defensible product promise should be:
 
 That is more reliable than claiming universal optimality, and—because it includes a proof class—it is also more technically impressive.
 
+
+---
+
+## 16. Implementation status (28 August 2026, engine `plan/2`)
+
+Legend: ✅ done · 🟡 partial · ⬜ not started · 🚫 out of code (field work)
+
+### Gate 0 - Supported-domain contract
+- 🟡 D0.1 Contract fingerprint covers every arithmetic term; regulatory class not yet a field.
+- 🟡 D0.2 Support is per fixture profile in `testdata/golden/MANIFEST.json`; not yet per lender/product at write time.
+- ✅ D0.3 Unknown/unsupported terms return `UnsupportedError`; never a default.
+- ✅ D0.4 Mixed currency returns `MixedCurrencyError`.
+- 🟡 D0.5 Rate reset, grace, balloon, delinquency, holiday, restructuring: refused implicitly (no field exists); explicit typed refusal pending fields.
+- ✅ D0.6 No ignored error on the advice path; typed refusals mapped to messages; invariant failures logged as errors.
+- ✅ D0.7 `plan.MaxLoans` enforced at `CreateLoan` (SQL guard → `ErrTooManyLoans`); planner refuses >MaxLoans with `TruncatedError`.
+
+### Gate A - Bank arithmetic
+- ✅ DA.1 Manifest with sha256, row counts, support state; counts and exact rows may not decrease (`TestCorpusProvenance`).
+- ⬜ DA.2 Three real profiles exact — one (Inecobank consumer) today.
+- ✅ DA.3 Profiles enabled independently via manifest state.
+- 🟡 DA.4 Mid-life anchor projects from the next instalment (`RemainingDates`); no golden mid-life fixture yet.
+- 🟡 DA.5 Anchor carries principal and as-of; accrued/unpaid interest and fees not yet part of the planner anchor.
+- ⬜ DA.6 Day-count variants named as families, not variants.
+- ⬜ DA.7 Leap-year/boundary golden rows.
+- 🟡 DA.8 Interest and instalment rounding modelled; fee rounding via settlement unit; residual rule on final date.
+- ⬜ DA.9 Business-day adjustment.
+- ✅ DA.10 Row explanation from stored inputs (`amortisation.Explain`).
+
+### Gate B - State anchoring
+- ✅ DB.1 `Normalize` advances every position to the valuation date; assumed instalments reported.
+- ⬜ DB.2 Reliability state does not yet block optimisation.
+- 🟡 DB.3-5 Reconciliation rows exist; explanation status not modelled.
+- ✅ DB.6 Deterministic replay.
+
+### Gate C - Event-driven simulator
+- ✅ DC.1 One ordered timeline (lump, income, due) across loans.
+- 🟡 DC.2 Same-day order fixed (lump → income → due by loan index); value-date/cutoff not modelled.
+- ✅ DC.3 Interest accrues between balance-changing events.
+- ✅ DC.4 Required payments reserved and paid on their dates.
+- ✅ DC.5 Reserve floor never spent.
+- ✅ DC.6 Unused cash carries forward; nothing disappears.
+- ✅ DC.7 Cash identity asserted every run (`ErrInvariant`).
+- ✅ DC.8 `InfeasibleError{On, Required, Available, Shortfall}`; no partial report.
+- ✅ DC.9 `ErrHorizon` typed.
+- ✅ DC.10 Minimum-only pays changing contractual instalments with no optional payment.
+
+### Gate D - Prepayment and timing
+- ✅ DD.1 Early payment applied as a dated quote/allocation with accrual to the credit date.
+- ✅ DD.2 Excess behaviours distinct; only `reduce_principal` credits early.
+- 🟡 DD.3 Required-remains-due is global (true for the consumer-credit profile).
+- ⬜ DD.4/5 Reissued-schedule fixtures for each effect.
+- ✅ DD.6 Effect vectors per free-choice loan (≤4 free loans, else uniform + label).
+- ✅ DD.7 Timing per loan (enumerated when fees make it matter; dominated otherwise, stated in code).
+- ✅ DD.8 Dominance used only under the printed preconditions; proof path checks them.
+- 🟡 DD.9 Minimum prepayment honoured; windows/maximums/pending requests not modelled.
+
+### Gate E - Fees and total cost
+- ✅ DE.1 Goal named `least_interest`; comparator minimises interest + fees.
+- 🟡 DE.2 Percent, fixed, min, max, free allowance, contract-year tiers modelled; frequency scope not.
+- ✅ DE.3 Fee outflow separate from principal credit.
+- ✅ DE.4 Fixed-fee batching via `MinPrepay` thresholds at contract breakpoints; tested.
+- ✅ DE.5 Percentage fee redirects the surplus; tested.
+- 🟡 DE.6 0.6/0.4/0.2 rules expressible as dated charges; regulatory class not enforced.
+- 🟡 DE.7 Decision made on full-run cost; batching thresholds sampled, not solved.
+
+### Gate F - Optimiser
+- ✅ DF.1 `exhaustive_static_order` label.
+- ✅ DF.2 Avalanche, snowball, minimum always reported.
+- ✅ DF.3 Per-loan effect combinations searched or capped with a label.
+- ⬜ DF.4 Dynamic switching search.
+- ✅ DF.5 Carried cash is state (batching, reserve).
+- 🟡 DF.6 Independent oracle exists (`-tags oracle`), reduced case, minutes to run.
+- ✅ DF.7 `Certificate` on every report.
+- ✅ DF.8 `proven_optimal` only from an eligibility-checked path.
+- ✅ DF.9 Truncation reason, counts, lower bound and gap under fees.
+- 🟡 DF.10 Timing-dominance pruning covered by P1; oracle covers static order.
+
+### Gate G - Goals
+- ✅ DG.1 Written comparators in `better()`.
+- ✅ DG.2 Fastest compares exact payoff dates.
+- ✅ DG.3 Relief uses contractual required amounts only.
+- ✅ DG.4 Relief requires cap or freed amount; the bot asks for it.
+- ✅ DG.5 `Rollover` is an explicit policy input.
+- ✅ DG.6 Discriminating fixture (`TestGoalsAreDifferentQuestions`).
+- ✅ DG.7 Minimum baseline on every report.
+
+### Gate H - Properties and determinism
+- ✅ DH.1-6 Scoped properties P1-P5, P7, P8 in `pkg/core/plan/plan_test.go`.
+- 🟡 DH.7/8 Same-process determinism tested; canonical cross-architecture hashes not yet in CI.
+- ✅ DH.9 Engine version and contract fingerprints in the certificate.
+- ✅ DH.10 No clock, floating money or map order reaches output (lint-enforced).
+
+### Gate I - Explainability
+- ✅ DI.1/2/4 Row explanations; dated actions with fee and saving; chronologically ordered across loans.
+- 🟡 DI.3 Timeline separates required/extra/fees/cash; report shows required, extra, fees.
+- ✅ DI.5/6 Assumptions, effect, ties and search strength in borrower language.
+- ✅ DI.7 Admin plan panel shows strength, proof rule, truncation, fees.
+- 🟡 DI.8 Diff-vs-bank per row exists; first-divergence component not isolated.
+
+### Gate J - Performance and operations
+- 🟡 DJ.1-4 `BenchmarkSearchFive` exists; container percentiles not yet measured in CI.
+- ⬜ DJ.5 Request deadline cancellation.
+- ✅ DJ.6 Cache key fingerprints the contract and every state input.
+- ⬜ DJ.7 Search metrics.
+
+### Gate K - Real-world validation
+- 🚫 DK.1-9 Field work: shadow mode, five users × two cycles, reissue fixtures, followed plan.
+
+Next in order: DA.2/DA.7/DD.4 (fixtures: mid-life, leap year, reissue, second lender), DB.2 (reliability blocks), D0.5 (explicit refusal fields), DF.4 (dynamic switching with the oracle as the check), DJ (container benchmarks).
