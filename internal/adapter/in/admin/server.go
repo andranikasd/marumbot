@@ -406,7 +406,7 @@ func (s *Server) renameLoan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) user(w http.ResponseWriter, r *http.Request) {
-	v, err := s.admin.User(r.Context(), r.PathValue("id"))
+	v, err := s.admin.User(r.Context(), r.PathValue("id"), s.now())
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -463,7 +463,7 @@ func (s *Server) loan(w http.ResponseWriter, r *http.Request) {
 // The schedule folds when it is long enough that the panels below it would
 // otherwise be a screen's scroll away.
 func (s *Server) loanPage(w http.ResponseWriter, r *http.Request, id string, extra map[string]any) {
-	v, err := s.admin.Loan(r.Context(), id)
+	v, err := s.admin.Loan(r.Context(), id, s.now())
 	if err != nil {
 		s.fail(w, r, err)
 		return

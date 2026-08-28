@@ -8,6 +8,7 @@ import (
 
 	"github.com/andranikasd/marumbot/internal/i18n"
 	"github.com/andranikasd/marumbot/pkg/core/money"
+	"github.com/andranikasd/marumbot/pkg/core/plan"
 )
 
 // askBudget requests a monthly figure, and remembers that it asked.
@@ -177,4 +178,31 @@ func parseInt64(s string) (int64, error) {
 		n = n*10 + d
 	}
 	return n, nil
+}
+
+// askReliefCap asks what "pay less per month" should mean. A relief plan
+// needs a target: the required monthly total the borrower wants to get
+// under. Without one, "relief" would rank a one-dram reduction above a real
+// one a month later.
+func (w *Worker) askReliefCap(ctx context.Context, userID string, chat int64, l i18n.Locale) error {
+	required, cur, err := w.RequiredThisMonth(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if err := w.Convos.SetState(ctx, userID, StateAwaitingReliefCap); err != nil {
+		return fmt.Errorf("recording the question: %w", err)
+	}
+	return w.Send.SendMessage(ctx, chat, i18n.T(l, "relief.prompt", required.String(), cur.Code), w.mainMenu(l))
+}
+
+// takeReliefCap interprets the reply and runs the relief plan.
+func (w *Worker) takeReliefCap(ctx context.Context, userID string, chat int64, l i18n.Locale, text string) (bool, error) {
+	minor, cur, ok := parseAmount(text, w.DefaultCurrency)
+	if !ok {
+		return false, nil
+	}
+	if err := w.Convos.ClearState(ctx, userID); err != nil {
+		w.Log.WarnContext(ctx, "clearing the conversation state failed", "error", err)
+	}
+	return true, w.advise(ctx, userID, chat, l, plan.Goal{Kind: plan.Relief, Cap: money.FromMinor(minor, cur)}, false)
 }

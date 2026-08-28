@@ -96,6 +96,9 @@ type BudgetStore interface {
 // strands every row that used it.
 const (
 	StateAwaitingBudget = "awaiting_budget"
+	// StateAwaitingReliefCap is set after the borrower picks "pay less per
+	// month": the engine needs a target, so the bot asks for one.
+	StateAwaitingReliefCap = "awaiting_relief_cap"
 )
 
 // ConversationStore remembers what the bot is waiting for.
@@ -124,6 +127,11 @@ type LoanEditor interface {
 // caller. Deliberately the same error for both: telling someone a loan exists
 // but is not theirs is telling them something about another account.
 var ErrNotFound = errors.New("app: not found")
+
+// ErrTooManyLoans is returned when filing a loan would exceed plan.MaxLoans.
+// The planner refuses a portfolio it cannot hold in full, so the limit is
+// enforced where loans enter rather than discovered when advice is asked.
+var ErrTooManyLoans = errors.New("app: too many active loans")
 
 // RequiredReader reports what a borrower's loans contractually require this
 // month. The Mini App shows it beside the budget so the figure is chosen

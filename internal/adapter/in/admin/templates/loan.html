@@ -192,31 +192,33 @@
   <dl class="kv">
     <dt>Goal</dt><dd>{{.Goal}}</dd>
     <dt>Best policy</dt><dd class="mono">{{.Policy}}</dd>
-    <dt>Clears in</dt><dd>{{.Months}} months</dd>
+    <dt>Paid off</dt><dd>{{.Payoff}} ({{.Months}} cycles)</dd>
     <dt>Total interest</dt><dd class="num">{{.Interest}}</dd>
     <dt>Owed after month 1</dt><dd class="num">{{.Owed}}</dd>
-    {{if .ClearedFirst}}<dt>First to clear</dt><dd>{{.ClearedFirst}} in month {{.ClearedMonth}}</dd>{{end}}
-    <dt>Searched</dt><dd>{{.Evaluated}} policies{{if .Exhaustive}}, exhaustive{{else}}, named strategies only{{end}}</dd>
+    {{if .ClearedFirst}}<dt>First to clear</dt><dd>{{.ClearedFirst}} on {{.ClearedOn}}</dd>{{end}}
+    <dt>Searched</dt><dd>{{.Evaluated}} policies · <span class="tag t-ok">{{.Strength}}</span>{{if .Truncation}} <span class="muted">{{.Truncation}}</span>{{end}}</dd>
+    {{if .Eligibility}}<dt>Proof rule</dt><dd class="muted">{{.Eligibility}}</dd>{{end}}
+    {{if gt .Fees.Sign 0}}<dt>Fees</dt><dd class="num">{{.Fees}}</dd>{{end}}
     {{if gt .VsAvalanche.Sign 0}}<dt>vs highest-rate-first</dt><dd class="num">saves {{.VsAvalanche}}</dd>{{end}}
     {{if gt .VsSnowball.Sign 0}}<dt>vs smallest-first</dt><dd class="num">saves {{.VsSnowball}}</dd>{{end}}
     {{if gt .TimingSaving.Sign 0}}<dt>from timing alone</dt><dd class="num">{{.TimingSaving}}</dd>{{end}}
     {{if .MinimumMonths}}<dt>Minimum only</dt><dd>{{.MinimumMonths}} months, interest <span class="num">{{.MinimumInterest}}</span></dd>{{end}}
     <dt>Prepayment effect</dt><dd class="mono">{{.Effect}}</dd>
-    {{if .ReliefMonth}}<dt>Relief</dt><dd>from month {{.ReliefMonth}}: <span class="num">{{.PeakMonthly}}</span> → <span class="num">{{.FinalMonthly}}</span></dd>{{end}}
+    <dt>Required outflow</dt><dd>peak <span class="num">{{.PeakRequired}}</span> · final <span class="num">{{.FinalRequired}}</span></dd>
   </dl>
   {{if .Ladder}}
   <h2>Budget ladder</h2>
   <div class="scroll"><table>
-    <thead><tr><th class="num">Monthly</th><th class="num">Months</th><th class="num">Interest</th></tr></thead>
-    <tbody>{{range .Ladder}}<tr><td class="num">{{.Budget}}</td><td class="num">{{.Months}}</td><td class="num">{{.Interest}}</td></tr>{{end}}</tbody>
+    <thead><tr><th class="num">Monthly</th><th>Paid off</th><th class="num">Interest</th></tr></thead>
+    <tbody>{{range .Ladder}}<tr><td class="num">{{.Budget}}</td><td>{{.Payoff}}</td><td class="num">{{.Interest}}</td></tr>{{end}}</tbody>
   </table></div>
   {{end}}
   {{if .Ties}}<p class="hint">{{range .Ties}}{{.}}. {{end}}</p>{{end}}
   {{if .Actions}}
   <h2>First month</h2>
   <ul class="steps">{{range .Actions}}
-    <li {{if .Extra}}class="extra"{{end}}><span class="d">{{.On}}</span>
-      <span>{{.Amount}} {{if .Extra}}extra{{else}}instalment{{end}} → {{.Loan}}{{if gt .Saves.Sign 0}} <span class="muted">saves {{.Saves}} this month</span>{{end}}</span></li>
+    <li {{if eq .Kind.String "extra"}}class="extra"{{end}}><span class="d">{{.On}}</span>
+      <span>{{.Amount}} {{.Kind}} → {{.Loan}}{{if gt .Fee.Sign 0}} (fee {{.Fee}}){{end}}{{if gt .Saves.Sign 0}} <span class="muted">saves {{.Saves}} this month</span>{{end}}</span></li>
   {{end}}</ul>
   {{end}}
 </div>

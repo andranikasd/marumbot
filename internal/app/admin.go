@@ -200,7 +200,7 @@ type LoanView struct {
 }
 
 // Loan returns one loan with its contracts, snapshots and ledger.
-func (a *Admin) Loan(ctx context.Context, id string) (LoanView, error) {
+func (a *Admin) Loan(ctx context.Context, id string, now time.Time) (LoanView, error) {
 	var v LoanView
 	var err error
 	if v.Loan, err = a.store.GetLoan(ctx, id); err != nil {
@@ -215,7 +215,7 @@ func (a *Admin) Loan(ctx context.Context, id string) (LoanView, error) {
 	if v.Events, err = a.store.EventsForLoan(ctx, id); err != nil {
 		return v, err
 	}
-	a.enrich(ctx, &v)
+	a.enrich(ctx, &v, now)
 	return v, nil
 }
 

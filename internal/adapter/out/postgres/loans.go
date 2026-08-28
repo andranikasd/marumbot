@@ -16,6 +16,7 @@ import (
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
+	"github.com/andranikasd/marumbot/pkg/core/plan"
 )
 
 // The column values are check-constrained, so each mapping is a switch rather
@@ -73,8 +74,11 @@ func (s *Store) CreateLoan(ctx context.Context, d app.LoanDraft) (string, error)
 		c.MaturityDate.String(), c.PaymentDay,
 		roundingModeName(c.Rounding.Mode), c.Rounding.Unit,
 		uuid.NewString(), d.Balance.Minor(), d.AsOf.String(),
-		prepaymentJSON(c.Prepayment),
+		prepaymentJSON(c.Prepayment), plan.MaxLoans,
 	).Scan(&got)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", app.ErrTooManyLoans
+	}
 	return got, err
 }
 
@@ -107,23 +111,22 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 			asOf      *string
 			trust     *string
 			excess    string
-			effect    string
-			feeBP     int32
+			prepay    string
 		)
 		if err := rows.Scan(&l.ID, &l.Name, &l.Description, &code,
 			&rate, &repayment, &dayCount, &start, &maturity, &day,
-			&mode, &unit, &principal, &asOf, &trust, &excess, &effect, &feeBP); err != nil {
+			&mode, &unit, &principal, &asOf, &trust, &excess, &prepay); err != nil {
 			return nil, err
-		}
-		prepayEffect, err := model.ParsePrepaymentEffect(effect)
-		if err != nil {
-			return nil, fmt.Errorf("loan %s: %w", l.ID, err)
 		}
 		if l.Excess, err = allocation.ParseExcessRule(excess); err != nil {
 			return nil, fmt.Errorf("loan %s: %w", l.ID, err)
 		}
 
 		cur, err := money.Lookup(code)
+		if err != nil {
+			return nil, fmt.Errorf("loan %s: %w", l.ID, err)
+		}
+		prepayment, err := parsePrepayment(prepay, cur)
 		if err != nil {
 			return nil, fmt.Errorf("loan %s: %w", l.ID, err)
 		}
@@ -147,7 +150,7 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 			MaturityDate: maturityDate,
 			PaymentDay:   int(day),
 			Rounding:     money.Policy{Mode: roundingModeFrom(mode), Unit: int64(unit)},
-			Prepayment:   model.Prepayment{Effect: prepayEffect, FeeBP: int(feeBP)},
+			Prepayment:   prepayment,
 		}
 		if principal != nil {
 			l.Balance = money.FromMinor(*principal, cur)
@@ -314,6 +317,55 @@ func prepaymentJSON(p model.Prepayment) string {
 	if p.FeeBP > 0 {
 		out["fee_bp"] = p.FeeBP
 	}
+	if p.MinAmount.Sign() > 0 {
+		out["min_amount_minor"] = p.MinAmount.Minor()
+	}
+	if len(p.Charges) > 0 {
+		var cs []map[string]any
+		for _, c := range p.Charges {
+			cs = append(cs, map[string]any{
+				"from_year": c.FromYear, "through_year": c.ThroughYear, "percent_bp": c.PercentBP,
+				"fixed_minor": c.Fixed.Minor(), "free_allowance_minor": c.FreeAllowance.Minor(),
+				"min_charge_minor": c.MinCharge.Minor(), "max_charge_minor": c.MaxCharge.Minor(),
+			})
+		}
+		out["charges"] = cs
+	}
 	b, _ := json.Marshal(out)
 	return string(b)
+}
+
+// parsePrepayment reads the stored terms back. Unknown keys are ignored so
+// a newer writer does not break an older reader; a malformed document is
+// an error, because guessing a fee is worse than refusing.
+func parsePrepayment(raw string, cur money.Currency) (model.Prepayment, error) {
+	var doc struct {
+		Effect  string `json:"effect"`
+		FeeBP   int    `json:"fee_bp"`
+		MinAmt  int64  `json:"min_amount_minor"`
+		Charges []struct {
+			FromYear, ThroughYear                      int
+			PercentBP                                  int64 `json:"percent_bp"`
+			Fixed, FreeAllowance, MinCharge, MaxCharge int64
+		} `json:"charges"`
+	}
+	if raw == "" || raw == "{}" {
+		return model.Prepayment{}, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
+		return model.Prepayment{}, fmt.Errorf("prepayment terms: %w", err)
+	}
+	eff, err := model.ParsePrepaymentEffect(doc.Effect)
+	if err != nil {
+		return model.Prepayment{}, err
+	}
+	p := model.Prepayment{Effect: eff, FeeBP: doc.FeeBP, MinAmount: money.FromMinor(doc.MinAmt, cur)}
+	for _, c := range doc.Charges {
+		p.Charges = append(p.Charges, model.PrepaymentCharge{
+			FromYear: c.FromYear, ThroughYear: c.ThroughYear, PercentBP: c.PercentBP,
+			Fixed: money.FromMinor(c.Fixed, cur), FreeAllowance: money.FromMinor(c.FreeAllowance, cur),
+			MinCharge: money.FromMinor(c.MinCharge, cur), MaxCharge: money.FromMinor(c.MaxCharge, cur),
+		})
+	}
+	return p, nil
 }
