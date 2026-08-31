@@ -72,6 +72,21 @@ jobs:
       # nobody can reproduce.
       - run: go test -race -count=1 ./...
 
+  web:
+    name: Mini App bundles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: "22" }
+      # node --check misses real syntax errors in this codebase (a stray
+      # Armenian identifier parsed as a property shorthand); esbuild parses
+      # the whole module graph the way a browser will, and fails the build
+      # the way the browser fails the user.
+      - run: |
+          cd internal/adapter/in/miniapp/web
+          npx -y esbuild js/main.js --bundle --format=esm --outfile=/dev/null
+
   determinism-arm:
     name: Same answer on arm64
     runs-on: ubuntu-24.04-arm
