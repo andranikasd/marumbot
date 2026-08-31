@@ -211,6 +211,15 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 
 	switch c.Kind {
 	case KindStart:
+		// The per-chat menu button, once set, overrides the bot-wide default
+		// forever — including its URL. /start re-pins it, so the one command
+		// everyone knows always leads to the current app. Best-effort: a
+		// missing button is not a reason to greet nobody.
+		if w.MiniApp != "" {
+			if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.Button(l, KindAdd), w.miniURL("")); err != nil {
+				w.Log.DebugContext(ctx, "menu button not refreshed", "error", err)
+			}
+		}
 		return w.Send.SendMessage(ctx, chat, w.withTip(ctx, c.UserID, l, w.startText(l), stageNoLoans), w.mainMenu(l))
 
 	case KindHelp:
