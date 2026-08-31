@@ -24,15 +24,16 @@ const HTML = `
     <button class="cta" type="button" data-go="add" data-i18n="plan.empty.add">Ավելացնել վարկ</button>
   </div>
   <div id="plan-body" hidden>
-    <div class="plan-summary">
-      <div class="big" id="pl-finish"></div>
+    <div class="hero">
+      <div class="k" data-i18n="plan.hero_k">Ազատ պարտքից</div>
+      <div class="v" id="pl-finish"></div>
       <div class="sub" id="pl-cost"></div>
       <div class="save" id="pl-save" hidden></div>
       <div class="plan-progress"><i id="pl-bar" style="width:3%"></i></div>
       <div class="plan-progress-cap"><span data-i18n="plan.today">այսօր</span><span id="pl-finish-short"></span></div>
       <div><span class="plan-approved" id="pl-approved" hidden data-i18n="plan.approved_badge">✅ Հաստատված պլան</span></div>
-      <button class="cta" type="button" id="pl-approve" data-i18n="plan.approve" hidden>✅ Հաստատել այս պլանը</button>
     </div>
+    <button class="cta" type="button" id="pl-approve" data-i18n="plan.approve" hidden>✅ Հաստատել այս պլանը</button>
     <ol class="tl" id="pl-months"></ol>
   </div>
   <div id="plan-error" hidden>

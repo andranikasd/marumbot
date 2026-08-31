@@ -10,15 +10,15 @@ import { register } from "../nav.js";
 const HTML = `
 <h1 data-i18n="manage.title">Իմ վարկերը</h1>
   <p class="lede" data-i18n="manage.lede">Ընդհանուր պատկերը, և յուրաքանչյուր վարկը՝ առանձին։</p>
-  <div class="summary hero" id="manage-summary" hidden>
-    <p class="label" data-i18n="manage.owed">Ընդհանուր պարտք</p>
-    <p class="big"><span id="m-owed">—</span></p>
-    <dl>
-      <dt data-i18n="manage.required">Այս ամիս պարտադիր</dt><dd id="m-required">—</dd>
-      <dt data-i18n="manage.next">Հաջորդ վճարումը</dt><dd id="m-next">—</dd>
-    </dl>
+  <div class="hero" id="manage-summary" hidden>
+    <div class="k" data-i18n="manage.owed">Ընդհանուր պարտք</div>
+    <div class="v" id="m-owed">—</div>
+    <div class="row">
+      <div class="cell"><div class="k" data-i18n="manage.required">Այս ամիս պարտադիր</div><div class="v" id="m-required">—</div></div>
+      <div class="cell"><div class="k" data-i18n="manage.next">Հաջորդ վճարումը</div><div class="v" id="m-next">—</div></div>
+    </div>
   </div>
-  <div id="manage-list"></div>
+<div id="manage-list"></div>
   <div class="state" id="manage-loading" hidden data-i18n="loading">Բեռնվում է…</div>
   <div class="state" id="manage-error" hidden>
     <span data-i18n="err.load">Չհաջողվեց բեռնել։</span><br>
