@@ -369,3 +369,36 @@ func parsePrepayment(raw string, cur money.Currency) (model.Prepayment, error) {
 	}
 	return p, nil
 }
+
+// ApprovePlan stores the borrower's commitment, replacing any earlier one.
+func (s *Store) ApprovePlan(ctx context.Context, userID string, p app.ApprovedPlan) error {
+	var got string
+	return s.pool.QueryRow(ctx, q("ApprovePlan"),
+		userID, p.Goal, p.CapMinor, p.Policy, p.Engine, p.PayoffDate, p.Months, p.InterestMinor).Scan(&got)
+}
+
+// ApprovedPlan returns the stored commitment, or nil when none exists.
+func (s *Store) ApprovedPlan(ctx context.Context, userID string) (*app.ApprovedPlan, error) {
+	rows, err := s.pool.Query(ctx, q("ApprovedPlan"), userID)
+	if err != nil {
+		return nil, err
+	}
+	p, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByPos[app.ApprovedPlan])
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// ClearApprovedPlan withdraws the commitment.
+func (s *Store) ClearApprovedPlan(ctx context.Context, userID string) error {
+	var got string
+	err := s.pool.QueryRow(ctx, q("ClearApprovedPlan"), userID).Scan(&got)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	return err
+}

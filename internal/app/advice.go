@@ -103,8 +103,16 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 	b.WriteString("\n<b>" + i18n.T(l, "advice.result") + "</b>\n")
 	writeResult(&b, l, rep, required, today)
 
+	approvedNow := false
+	if w.Plans != nil {
+		if ap, err := w.Plans.ApprovedPlan(ctx, userID); err == nil && ap != nil &&
+			ap.Goal == goal.Kind.String() && ap.CapMinor == goal.Cap.Minor() {
+			approvedNow = true
+			b.WriteString("\n<i>" + i18n.T(l, "plan.badge", shortDate(l, mustParseDate(ap.PayoffDate), today)) + "</i>")
+		}
+	}
 	b.WriteString("\n<i>" + i18n.T(l, "advice.pick") + "</i>")
-	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l, goal))
+	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l, goal, !approvedNow, w.MiniApp))
 }
 
 // explainPlan is the second message, sent only when the reader taps "why":
@@ -172,7 +180,7 @@ func (w *Worker) explainPlan(ctx context.Context, userID string, chat int64, l i
 		b.WriteString("• " + i18n.T(l, "advice.trust_caveat") + "\n")
 	}
 	_ = required
-	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l, goal))
+	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l, goal, false, w.MiniApp))
 }
 
 // refuse maps a typed engine refusal to a message that says what would have
@@ -245,7 +253,7 @@ func (w *Worker) compareGoals(ctx context.Context, chat int64, l i18n.Locale, b 
 		}
 	}
 	b.WriteString("\n<i>" + i18n.T(l, "advice.compare_pick") + "</i>")
-	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l, plan.Goal{Kind: plan.LeastInterest}))
+	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l, plan.Goal{Kind: plan.LeastInterest}, false, w.MiniApp))
 }
 
 // writeRow is one block of the comparison: the name, then the figures.
@@ -463,9 +471,10 @@ func goalKey(g plan.Goal) string {
 	}
 }
 
-// goalMenu lets the reader ask why, compare, or change the question. The
-// active goal is not repeated as a button: the report above already names it.
-func goalMenu(l i18n.Locale, active plan.Goal) any {
+// goalMenu lets the reader approve, ask why, see the full sheet, compare,
+// or change the question. The active goal is not repeated as a button, and
+// the approve button disappears once this exact plan is the approved one.
+func goalMenu(l i18n.Locale, active plan.Goal, offerApprove bool, miniApp string) any {
 	why := "why:" + goalToken(active)
 	goalRow := []map[string]any{}
 	for _, g := range []struct {
@@ -482,12 +491,17 @@ func goalMenu(l i18n.Locale, active plan.Goal) any {
 		}
 		goalRow = append(goalRow, map[string]any{keyText: i18n.T(l, goalKey(plan.Goal{Kind: g.kind})), keyCallback: g.data})
 	}
-	rows := [][]map[string]any{
-		{
-			{keyText: i18n.T(l, "advice.why_button"), keyCallback: why},
-			{keyText: i18n.T(l, "advice.compare"), keyCallback: "goal:compare"},
-		},
+	rows := [][]map[string]any{}
+	if offerApprove {
+		rows = append(rows, []map[string]any{{keyText: i18n.T(l, "plan.approve_button"), keyCallback: "approve:" + goalToken(active)}})
 	}
+	if miniApp != "" {
+		rows = append(rows, []map[string]any{webAppButton(i18n.T(l, "plan.sheet_button"), miniApp+"?screen=plan&goal="+goalToken(active))})
+	}
+	rows = append(rows, []map[string]any{
+		{keyText: i18n.T(l, "advice.why_button"), keyCallback: why},
+		{keyText: i18n.T(l, "advice.compare"), keyCallback: "goal:compare"},
+	})
 	for i := 0; i < len(goalRow); i += 2 {
 		end := i + 2
 		if end > len(goalRow) {
