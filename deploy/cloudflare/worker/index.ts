@@ -169,9 +169,15 @@ export default {
       const res = await app(env).containerFetch(
         new Request(new URL(url.pathname + url.search, "http://container"), request));
       const headers = new Headers(res.headers);
-      headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
-      headers.set("Pragma", "no-cache");
-      headers.set("Expires", "0");
+      if (url.pathname.startsWith("/app/a/")) {
+        // Version-addressed assets: immutable by construction, and caching
+        // them is what makes a warm open instant.
+        headers.set("Cache-Control", "public, max-age=31536000, immutable");
+      } else {
+        headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+        headers.set("Pragma", "no-cache");
+        headers.set("Expires", "0");
+      }
       return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
     }
 

@@ -14,7 +14,7 @@ buildTabs();
 // The build badge: the one honest answer to "which version am I looking
 // at". It reads the stamp off this module's own URL, so a cached copy
 // names itself.
-const stamp = new URL(import.meta.url).searchParams.get("v") || "unstamped";
+const stamp = (new URL(import.meta.url).pathname.match(/\/a\/([^/]+)\//) || [, "unstamped"])[1];
 document.getElementById("build").textContent = "Marum " + stamp;
 
 // Warm every screen's data in parallel while the first one renders, so a
