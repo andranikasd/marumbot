@@ -63,7 +63,7 @@ func (w *Worker) takeBudget(ctx context.Context, userID string, chat int64, l i1
 	if surplus, err := monthly.Sub(req); err == nil && surplus.Sign() > 0 {
 		msg += "\n" + i18n.T(l, "budget.set_surplus", surplus.String())
 	}
-	return true, w.Send.SendMessage(ctx, chat, msg, planButton(l))
+	return true, w.Send.SendMessage(ctx, chat, w.withTip(ctx, userID, l, msg), planButton(l))
 }
 
 // planButton is the one tap from "budget saved" to "what do I do".
