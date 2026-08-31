@@ -126,12 +126,13 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		MiniApp:         cfg.MiniAppURL,
 		Menus:           bot,
 		DefaultCurrency: money.MustLookup(cfg.DefaultCurrency),
+		Reminders:       store,
 	}
 	// The Mini App is served from the public listener under /app, so it shares
 	// the Worker's hostname and needs no second custom domain or certificate.
 	mini := &miniapp.Server{
 		BotToken: cfg.BotToken, Loans: store, Users: store, Budgets: store,
-		Editor: store, Reader: store, Required: worker,
+		Editor: store, Reader: store, Required: worker, Filed: worker,
 		Cipher: cipher, Clock: sysclock.New(), Log: log,
 	}
 	hook := &telegram.Webhook{
@@ -143,7 +144,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	public := &http.Server{
 		Addr: cfg.Addr,
 		Handler: otelhttp.NewHandler(
-			publicRoutes(adminSvc, hook, worker, mini, cfg.ServiceToken, log),
+			publicRoutes(adminSvc, hook, worker, mini, store, cfg.ServiceToken, log),
 			"marum", otelhttp.WithFilter(notHealthCheck)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -214,7 +215,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 }
 
 func publicRoutes(a *app.Admin, hook *telegram.Webhook, w *app.Worker,
-	mini *miniapp.Server, serviceToken string, log *slog.Logger,
+	mini *miniapp.Server, users app.UserLister, serviceToken string, log *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
 
@@ -225,7 +226,7 @@ func publicRoutes(a *app.Admin, hook *telegram.Webhook, w *app.Worker,
 
 	// The scheduler tick. Idempotent and safe to run concurrently, so a
 	// duplicate costs nothing and a missed one is caught by the next.
-	mux.Handle("POST /internal/tick", tickHandler(w, serviceToken, log))
+	mux.Handle("POST /internal/tick", tickHandler(w, users, serviceToken, log))
 
 	// The Mini App. It authenticates every call with Telegram's signed
 	// initData, so it needs no service token and is safe to expose.
@@ -273,7 +274,7 @@ func publicRoutes(a *app.Admin, hook *telegram.Webhook, w *app.Worker,
 // tickHandler drains the command inbox. It is bounded rather than looping until
 // empty: a tick that runs forever holds a Worker request open past its limit,
 // and the next tick is only minutes away.
-func tickHandler(w *app.Worker, serviceToken string, log *slog.Logger) http.Handler {
+func tickHandler(w *app.Worker, users app.UserLister, serviceToken string, log *slog.Logger) http.Handler {
 	const batch = 25
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		if serviceToken != "" &&
@@ -290,6 +291,15 @@ func tickHandler(w *app.Worker, serviceToken string, log *slog.Logger) http.Hand
 			log.ErrorContext(ctx, "tick failed", "error", err)
 			writeJSON(rw, http.StatusInternalServerError, map[string]any{"error": "tick failed"})
 			return
+		}
+		// Reminders ride the same tick. The call rate-limits itself to once
+		// an hour; a failure is logged rather than failing the tick, because
+		// a stuck reminder must not stop the inbox draining.
+		if sent, err := w.TickReminders(ctx, users); err != nil {
+			span.RecordError(err)
+			log.ErrorContext(ctx, "reminder tick failed", "error", err)
+		} else if sent > 0 {
+			log.InfoContext(ctx, "reminders sent", "count", sent)
 		}
 		// Logged on every tick, including the empty ones. A scheduler that is
 		// not running looks exactly like a scheduler with nothing to do, and

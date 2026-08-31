@@ -51,6 +51,15 @@ type Certificate struct {
 	EngineVersion   string
 	Fingerprints    []string
 	AssumedPayments map[string]int
+	// Positions records each loan's identity and how far its balance can be
+	// trusted, so a report can carry its own caveat.
+	Positions []CertifiedPosition
+}
+
+// CertifiedPosition is one loan as the certificate records it.
+type CertifiedPosition struct {
+	ID    string
+	Trust string
 }
 
 // Rung is one step of the budget ladder.
@@ -302,6 +311,7 @@ func (u *Universe) certificate(goal Goal, rep Report) Certificate {
 	}
 	for _, l := range in.Loans {
 		c.Fingerprints = append(c.Fingerprints, fingerprint(l.Contract))
+		c.Positions = append(c.Positions, CertifiedPosition{ID: l.ID, Trust: l.Trust})
 	}
 	c.CandidateDates = candidateDates(rep.Ranked)
 

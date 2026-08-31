@@ -1220,7 +1220,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started · 🚫 out of code (field w
 
 ### Gate B - State anchoring
 - ✅ DB.1 `Normalize` advances every position to the valuation date; assumed instalments reported.
-- ⬜ DB.2 Reliability state does not yet block optimisation.
+- 🟡 DB.2 Every certificate carries per-loan trust; the report warns when figures rest on user-entered balances. A hard block still needs a bank-confirmed pipeline to fall back on.
 - 🟡 DB.3-5 Reconciliation rows exist; explanation status not modelled.
 - ✅ DB.6 Deterministic replay.
 
@@ -1278,7 +1278,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started · 🚫 out of code (field w
 
 ### Gate H - Properties and determinism
 - ✅ DH.1-6 Scoped properties P1-P5, P7, P8 in `pkg/core/plan/plan_test.go`.
-- 🟡 DH.7/8 Same-process determinism tested; canonical cross-architecture hashes not yet in CI.
+- ✅ DH.7/8 Canonical report hash committed (`testdata/plan-report.sha256`); CI recomputes it on amd64 and arm64 (`internal/determinism`).
 - ✅ DH.9 Engine version and contract fingerprints in the certificate.
 - ✅ DH.10 No clock, floating money or map order reaches output (lint-enforced).
 
@@ -1298,4 +1298,6 @@ Legend: ✅ done · 🟡 partial · ⬜ not started · 🚫 out of code (field w
 ### Gate K - Real-world validation
 - 🚫 DK.1-9 Field work: shadow mode, five users × two cycles, reissue fixtures, followed plan.
 
-Next in order: DA.2/DA.7/DD.4 (fixtures: mid-life, leap year, reissue, second lender), DB.2 (reliability blocks), D0.5 (explicit refusal fields), DF.4 (dynamic switching with the oracle as the check), DJ (container benchmarks).
+Also done since: reminders wired end to end (store → hourly tick on the scheduler → send; created with the loan), Mini App asks the prepayment effect, loan cap enforced at create, trust caveat in reports.
+
+Next in order: DA.2/DD.4 (fixtures: second lender, reissue), D0.5 (explicit refusal fields for resets/grace/balloon), DF.4 (dynamic switching with the oracle as the check), DJ (container benchmark percentiles).

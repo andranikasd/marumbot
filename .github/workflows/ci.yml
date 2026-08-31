@@ -72,6 +72,18 @@ jobs:
       # nobody can reproduce.
       - run: go test -race -count=1 ./...
 
+  determinism-arm:
+    name: Same answer on arm64
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v5
+        with: { go-version: "${{ env.GO_VERSION }}", cache: true }
+      # The canonical report hash is committed. amd64 computes it in the test
+      # job; this job recomputes it on arm64. A difference means a platform-
+      # dependent code path reached money.
+      - run: go test ./internal/determinism/
+
   core-is-pure:
     name: Engine imports no I/O
     runs-on: ubuntu-latest

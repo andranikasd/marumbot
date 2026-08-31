@@ -293,6 +293,20 @@ func writeSearchSummary(b *strings.Builder, l i18n.Locale, rep plan.Report) {
 	for _, t := range rep.Ties {
 		b.WriteString("• " + i18n.T(l, tieKey(t)) + "\n")
 	}
+	if unconfirmed(rep) {
+		b.WriteString("• " + i18n.T(l, "advice.trust_caveat") + "\n")
+	}
+}
+
+// unconfirmed reports whether any figure rests on what the borrower typed
+// rather than on a bank-confirmed balance.
+func unconfirmed(rep plan.Report) bool {
+	for _, p := range rep.Certificate.Positions {
+		if p.Trust != "bank_confirmed" && p.Trust != "imported_verified" {
+			return true
+		}
+	}
+	return false
 }
 
 func uniformEffectOf(p plan.Policy) (model.PrepaymentEffect, bool) {
@@ -396,7 +410,7 @@ func (w *Worker) positions(ctx context.Context, loans []UserLoan) ([]plan.Positi
 		}
 		out = append(out, plan.Position{
 			ID: ln.ID, Name: ln.Name, Contract: ln.Contract,
-			Balance: ln.Balance, From: ln.AsOf, Excess: ln.Excess,
+			Balance: ln.Balance, From: ln.AsOf, Excess: ln.Excess, Trust: ln.Trust,
 		})
 	}
 	return out, owed, required, cur, nil

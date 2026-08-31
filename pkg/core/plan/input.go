@@ -30,6 +30,10 @@ type Position struct {
 	// Excess is what the lender does with money paid beyond the instalment.
 	// Only ExcessReducePrincipal lets an early payment save interest.
 	Excess allocation.ExcessRule
+	// Trust is how the balance was established: user_entered,
+	// bank_confirmed or imported_verified. The engine plans either way; the
+	// report says when the figures rest on what the borrower typed.
+	Trust string
 }
 
 // CashEvent is money that becomes available on a date.
