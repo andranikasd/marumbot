@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"log/slog"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -78,7 +79,11 @@ type Worker struct {
 	Clock           Clock
 	Owner           string
 	Log             *slog.Logger
-	MiniApp         string // absolute URL of the loan form, empty if not deployed
+	MiniApp         string // absolute URL of the Mini App, empty if not deployed
+	// AppVersion stamps every Mini App URL the bot hands out, so a deploy is
+	// a new URL and the Telegram webview cannot serve last week's app from
+	// its cache. The webview caches by URL and honours little else.
+	AppVersion string
 
 	// Menus is the Telegram surface used to publish the command list. Optional:
 	// without it the bot works and simply suggests nothing.
@@ -102,7 +107,7 @@ const LeaseFor = 2 * time.Minute
 // scan error, retried five times each, and starved every other command.
 func (w *Worker) HandleOne(ctx context.Context, id string) error {
 	if w.Menus != nil {
-		PublishOnce(ctx, &w.menusOnce, w.Menus, w.MiniApp)
+		PublishOnce(ctx, &w.menusOnce, w.Menus, w.miniURL(""))
 	}
 	l, ok, err := w.Inbox.LeaseByID(ctx, id, w.Owner, w.Clock.Now().Add(LeaseFor))
 	if err != nil {
@@ -122,7 +127,7 @@ func (w *Worker) Drain(ctx context.Context, n int) (int, error) {
 	// Publish the command list the first time this process does any work. See
 	// PublishOnce for why startup alone is not enough.
 	if w.Menus != nil {
-		PublishOnce(ctx, &w.menusOnce, w.Menus, w.MiniApp)
+		PublishOnce(ctx, &w.menusOnce, w.Menus, w.miniURL(""))
 	}
 
 	leases, err := w.Inbox.Lease(ctx, w.Owner, n, w.Clock.Now().Add(LeaseFor))
@@ -334,7 +339,7 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 
 	if w.MiniApp != "" {
 		rows = append(rows, []map[string]any{
-			webAppButton(i18n.T(l, "btn.manage"), w.MiniApp+"?screen=manage"),
+			webAppButton(i18n.T(l, "btn.manage"), w.miniURL("manage")),
 		})
 	}
 	rows = append(rows, []map[string]any{{keyText: i18n.T(l, "btn.plan"), keyCallback: "goal:cheapest"}})
@@ -415,7 +420,7 @@ func (w *Worker) callback(ctx context.Context, userID string, chat int64, data s
 		// a button in the wrong language is worse than none, but not a reason
 		// to fail the switch that fixes everything else.
 		if w.MiniApp != "" {
-			if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.Button(want, KindAdd), w.MiniApp); err != nil {
+			if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.Button(want, KindAdd), w.miniURL("")); err != nil {
 				w.Log.DebugContext(ctx, "menu button not localised", "error", err)
 			}
 		}
@@ -504,7 +509,7 @@ func (w *Worker) helpText(l i18n.Locale) string {
 func (w *Worker) mainMenu(l i18n.Locale) any {
 	rows := [][]map[string]any{}
 	if w.MiniApp != "" {
-		rows = append(rows, []map[string]any{webAppButton(i18n.Button(l, KindAdd), w.MiniApp)})
+		rows = append(rows, []map[string]any{webAppButton(i18n.Button(l, KindAdd), w.miniURL(""))})
 	}
 	rows = append(rows,
 		[]map[string]any{button(i18n.Button(l, KindAdvice))},
@@ -526,7 +531,7 @@ func (w *Worker) addMarkup(l i18n.Locale) any {
 		return w.mainMenu(l)
 	}
 	return map[string]any{keyInline: [][]map[string]any{{
-		webAppButton(i18n.T(l, "add.button"), w.MiniApp),
+		webAppButton(i18n.T(l, "add.button"), w.miniURL("")),
 	}}}
 }
 
@@ -537,7 +542,7 @@ func (w *Worker) budgetMarkup(l i18n.Locale) any {
 		return w.mainMenu(l)
 	}
 	return map[string]any{keyInline: [][]map[string]any{{
-		webAppButton(i18n.T(l, "budget.button"), w.MiniApp+"?screen=budget"),
+		webAppButton(i18n.T(l, "budget.button"), w.miniURL("budget")),
 	}}}
 }
 
@@ -605,4 +610,15 @@ func GoalFromToken(tok string) plan.Goal {
 	default:
 		return plan.Goal{Kind: plan.LeastInterest}
 	}
+}
+
+// miniURL is the one place a Mini App URL is built: the base, the build
+// version, and the screen. Everything the bot sends goes through it, so a
+// deploy changes every URL at once.
+func (w *Worker) miniURL(screen string) string {
+	u := w.MiniApp + "?v=" + url.QueryEscape(w.AppVersion)
+	if screen != "" {
+		u += "&screen=" + screen
+	}
+	return u
 }
