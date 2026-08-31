@@ -88,9 +88,15 @@ page=$(get "$base/app/") || fail "the mini app did not answer"
 echo "$page" | grep -q 'telegram-web-app.js' || \
   fail "$base/app/ did not serve the form; got: $(echo "$page" | head -c 80)"
 
-echo "→ budget form"
-budget=$(get "$base/app/?screen=budget") || fail "the budget screen did not answer"
-echo "$budget" | grep -q 'budget-form' || fail "the budget screen did not serve its form"
+# The screens live in ES modules now; the shell is deliberately empty. So the
+# shell is checked for its versioned entry script, and the modules for the
+# markup they carry -- the budget form and the plan timeline.
+echo "→ app shell and modules"
+echo "$page" | grep -q 'js/main.js?v=' || fail "the shell does not stamp its entry script; got: $(echo "$page" | grep -o 'main.js[^\"]*' | head -1)"
+budget=$(get "$base/app/js/screens/budget.js") || fail "the budget module did not answer"
+echo "$budget" | grep -q 'budget-form' || fail "the budget module does not carry its form"
+planmod=$(get "$base/app/js/screens/plan.js") || fail "the plan module did not answer"
+echo "$planmod" | grep -q 'plan-goals' || fail "the plan module does not carry its screen"
 
 echo "→ mini app rejects an unsigned call"
 code=$(status "$base/app/api/loans" 401 POST)
