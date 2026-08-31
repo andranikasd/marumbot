@@ -46,7 +46,7 @@ jobs:
       #    still waits for a reviewer, and dev is meant to move without one.
       #    The plan is still posted on every pull request that touches
       #    deploy/terraform, which is where infrastructure review belongs.
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.13.3
           terraform_wrapper: false
