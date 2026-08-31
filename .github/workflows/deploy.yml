@@ -85,7 +85,7 @@ jobs:
 
       # 1. Expand. Additive only, and compatible with the binary still running,
       #    so the deploy that follows can be rolled back without touching data.
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         if: inputs.run_migrations
         with: { go-version: "1.27", cache: true }
       - name: Install goose
