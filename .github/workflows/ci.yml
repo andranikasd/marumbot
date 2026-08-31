@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version: "${{ env.GO_VERSION }}", cache: true }
       - name: gofumpt
         run: |
@@ -30,7 +30,7 @@ jobs:
       # v7 or later: v6 refuses golangci-lint v2 outright. The pinned version
       # must also be built with a Go at least as new as the module targets -
       # v2.0.2 is built with 1.24 and refuses to load a 1.25 config.
-      - uses: golangci/golangci-lint-action@v7
+      - uses: golangci/golangci-lint-action@v9
         with: { version: v2.13.1 }
 
   vet:
@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version: "${{ env.GO_VERSION }}", cache: true }
       - run: go vet ./...
       - name: govulncheck
@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version: "${{ env.GO_VERSION }}", cache: true }
       # Downloading modules is a network operation and the proxy is not always
       # well. A failed zip fetch aborted the whole run with "stream error:
@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version: "${{ env.GO_VERSION }}", cache: true }
       # The engine must stay publishable on its own. If it ever imports the
       # application, a driver or a clock, this stops compiling - which is a
@@ -132,7 +132,7 @@ jobs:
         ports: ["5432:5432"]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version: "${{ env.GO_VERSION }}", cache: true }
       - name: Install goose
         run: go install github.com/pressly/goose/v3/cmd/goose@v3.24.1
@@ -177,7 +177,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/Dockerfile
