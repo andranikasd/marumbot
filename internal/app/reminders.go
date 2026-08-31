@@ -83,7 +83,13 @@ func (w *Worker) OnLoanFiled(ctx context.Context, userID, loanID string) error {
 	if err := w.Reminders.EnsureDefaultReminders(ctx, loanID); err != nil {
 		return fmt.Errorf("default reminders: %w", err)
 	}
-	return w.ScheduleForUser(ctx, userID)
+	if err := w.ScheduleForUser(ctx, userID); err != nil {
+		return err
+	}
+	// The conversation confirms what the form did. Best-effort: the loan
+	// exists whether or not the message lands.
+	w.OnLoanFiledMessage(ctx, userID)
+	return nil
 }
 
 // ScheduleForUser generates occurrences for one borrower's loans.

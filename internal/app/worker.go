@@ -205,10 +205,10 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 
 	switch c.Kind {
 	case KindStart:
-		return w.Send.SendMessage(ctx, chat, w.startText(l), w.mainMenu(l))
+		return w.Send.SendMessage(ctx, chat, w.withTip(ctx, c.UserID, l, w.startText(l), stageNoLoans), w.mainMenu(l))
 
 	case KindHelp:
-		return w.Send.SendMessage(ctx, chat, w.helpText(l), w.mainMenu(l))
+		return w.Send.SendMessage(ctx, chat, w.withTip(ctx, c.UserID, l, w.helpText(l)), w.mainMenu(l))
 
 	case KindAdd:
 		if w.MiniApp == "" {
@@ -337,7 +337,7 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 		})
 	}
 	rows = append(rows, []map[string]any{{keyText: i18n.T(l, "btn.plan"), keyCallback: "goal:cheapest"}})
-	return w.Send.SendMessage(ctx, chat, b.String(), map[string]any{keyInline: rows})
+	return w.Send.SendMessage(ctx, chat, w.withTip(ctx, userID, l, b.String()), map[string]any{keyInline: rows})
 }
 
 // percent renders a rate the way a borrower reads it. The engine holds parts
@@ -367,6 +367,13 @@ func (w *Worker) callback(ctx context.Context, userID string, chat int64, data s
 		return w.showWorking(ctx, userID, chat, i18n.Locale(locale), data[5:])
 	}
 
+	if strings.HasPrefix(data, "why:") {
+		locale, _, err := w.Users.Locale(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("reading locale: %w", err)
+		}
+		return w.explainPlan(ctx, userID, chat, i18n.Locale(locale), goalFromToken(data[4:]))
+	}
 	if strings.HasPrefix(data, "goal:") {
 		locale, _, err := w.Users.Locale(ctx, userID)
 		if err != nil {
@@ -449,7 +456,8 @@ func (w *Worker) startText(l i18n.Locale) string {
 	return i18n.T(l, "start.greeting") + "\n\n" +
 		i18n.T(l, "start.next") + "\n" +
 		i18n.T(l, "start.language") + "\n\n" +
-		"<i>" + i18n.T(l, "start.no_ai") + "</i>"
+		"<i>" + i18n.T(l, "start.no_ai") + "</i>\n" +
+		"<i>" + i18n.T(l, "start.reminders") + "</i>"
 }
 
 // helpText explains the three goals in plain words before it lists commands:
@@ -461,7 +469,9 @@ func (w *Worker) helpText(l i18n.Locale) string {
 		i18n.T(l, "help.goals") + "\n" +
 		i18n.T(l, "help.goal.cheapest") + "\n" +
 		i18n.T(l, "help.goal.soonest") + "\n" +
-		i18n.T(l, "help.goal.relief") + "\n\n" +
+		i18n.T(l, "help.goal.relief") + "\n" +
+		i18n.T(l, "help.goal.first") + "\n" +
+		i18n.T(l, "help.compare") + "\n\n" +
 		i18n.T(l, "help.commands") + "\n" +
 		i18n.T(l, "help.add") + "\n" +
 		i18n.T(l, "help.advice") + "\n" +
@@ -469,6 +479,7 @@ func (w *Worker) helpText(l i18n.Locale) string {
 		i18n.T(l, "help.budget") + "\n" +
 		i18n.T(l, "help.language") + "\n" +
 		i18n.T(l, "help.help") + "\n\n" +
+		i18n.T(l, "help.reminders") + "\n\n" +
 		"<i>" + i18n.T(l, "start.no_ai") + "</i>"
 }
 
@@ -567,5 +578,23 @@ func code(err error) string {
 		return "lease_lost"
 	default:
 		return "error"
+	}
+}
+
+// goalFromToken decodes the callback form of a goal. Unknown tokens fall
+// back to least interest: a stale button must answer something sensible.
+func goalFromToken(tok string) plan.Goal {
+	switch {
+	case tok == "soonest":
+		return plan.Goal{Kind: plan.Fastest}
+	case tok == "first":
+		return plan.Goal{Kind: plan.FirstWin}
+	case strings.HasPrefix(tok, "relief:"):
+		if minor, err := parseInt64(tok[7:]); err == nil && minor > 0 {
+			return plan.Goal{Kind: plan.Relief, Cap: money.FromMinor(minor, money.MustLookup("AMD"))}
+		}
+		return plan.Goal{Kind: plan.LeastInterest}
+	default:
+		return plan.Goal{Kind: plan.LeastInterest}
 	}
 }
