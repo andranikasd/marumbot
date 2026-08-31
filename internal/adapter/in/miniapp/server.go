@@ -5,11 +5,13 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -73,6 +75,13 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("DELETE /api/loans/{id}", s.deleteLoan())
 	mux.Handle("GET /{$}", s.static(s.shell(sub)))
 	mux.Handle("GET /index.html", s.static(s.shell(sub)))
+	// Assets live under a build-versioned prefix: /a/<version>/js/main.js.
+	// The version in the path makes the content immutable for as long as
+	// anyone might cache it — a deploy changes the path, and relative module
+	// imports inherit the versioned prefix, so every file the app loads is
+	// cacheable without ever being stale. This is what makes a warm open
+	// instant while /{$} itself stays no-store.
+	mux.Handle("GET /a/", s.immutable(http.StripPrefix("/a/", stripVersion(http.FileServerFS(sub)))))
 	mux.Handle("/", s.static(http.FileServerFS(sub)))
 	return mux
 }
@@ -461,10 +470,10 @@ func (s *Server) approvePlan() http.Handler {
 	})
 }
 
-// shell serves index.html with the build version stamped into its asset
-// URLs. The Telegram webview caches by URL and honours cache headers
-// unreliably; a URL that changes with the deployment is the only cache
-// control that always works.
+// shell serves index.html with its assets rewritten under the versioned
+// prefix and every module preloaded. The prefix makes the assets immutable;
+// the preloads collapse the ES-module waterfall — nine sequential fetches
+// through the Worker and the container — into one parallel round trip.
 func (s *Server) shell(sub fs.FS) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, err := fs.ReadFile(sub, "index.html")
@@ -472,10 +481,52 @@ func (s *Server) shell(sub fs.FS) http.Handler {
 			http.Error(w, "unavailable", http.StatusInternalServerError)
 			return
 		}
-		v := url.QueryEscape(s.Version)
-		out := strings.ReplaceAll(string(b), `href="styles.css"`, `href="styles.css?v=`+v+`"`)
-		out = strings.ReplaceAll(out, `src="js/main.js"`, `src="js/main.js?v=`+v+`"`)
+		v := url.PathEscape(s.Version)
+		pre := &strings.Builder{}
+		for _, m := range moduleFiles(sub) {
+			fmt.Fprintf(pre, "<link rel=\"modulepreload\" href=\"a/%s/%s\">\n", v, m)
+		}
+		out := strings.ReplaceAll(string(b), `href="styles.css"`, `href="a/`+v+`/styles.css"`)
+		out = strings.ReplaceAll(out, `src="js/main.js"`, `src="a/`+v+`/js/main.js"`)
+		out = strings.Replace(out, "</head>", pre.String()+"</head>", 1)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(out))
+	})
+}
+
+// moduleFiles lists every JS module in the embed, for preloading.
+func moduleFiles(sub fs.FS) []string {
+	var out []string
+	_ = fs.WalkDir(sub, "js", func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(p, ".js") {
+			out = append(out, p)
+		}
+		return nil
+	})
+	sort.Strings(out)
+	return out
+}
+
+// stripVersion drops the leading version segment: <version>/js/main.js →
+// js/main.js. The value is never interpreted; it exists to make the URL new.
+func stripVersion(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, rest, ok := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = "/" + rest
+		next.ServeHTTP(w, r2)
+	})
+}
+
+// immutable is the cache policy for content whose URL names its version.
+func (s *Server) immutable(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		next.ServeHTTP(w, r)
 	})
 }

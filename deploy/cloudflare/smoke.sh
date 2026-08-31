@@ -92,7 +92,7 @@ echo "$page" | grep -q 'telegram-web-app.js' || \
 # shell is checked for its versioned entry script, and the modules for the
 # markup they carry -- the budget form and the plan timeline.
 echo "→ app shell and modules"
-echo "$page" | grep -q 'js/main.js?v=' || fail "the shell does not stamp its entry script; got: $(echo "$page" | grep -o 'main.js[^\"]*' | head -1)"
+echo "$page" | grep -Eq 'a/[^"]+/js/main\.js' || fail "the shell does not version its entry script"
 budget=$(get "$base/app/js/screens/budget.js") || fail "the budget module did not answer"
 echo "$budget" | grep -q 'budget-form' || fail "the budget module does not carry its form"
 planmod=$(get "$base/app/js/screens/plan.js") || fail "the plan module did not answer"
