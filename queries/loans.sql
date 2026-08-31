@@ -63,7 +63,8 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        c.rounding_mode, c.rounding_unit_minor,
        s.principal_minor, s.as_of::text, s.trust,
        coalesce(p.excess_rule, 'unknown'),
-       c.prepayment_policy::text
+       c.prepayment_policy::text,
+       f.principal_minor AS first_principal_minor
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
@@ -74,6 +75,10 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
         SELECT * FROM loan_snapshots sn
          WHERE sn.loan_id = l.id ORDER BY sn.as_of DESC, sn.captured_at DESC LIMIT 1
        ) s ON true
+  LEFT JOIN LATERAL (
+        SELECT sn.principal_minor FROM loan_snapshots sn
+         WHERE sn.loan_id = l.id ORDER BY sn.as_of ASC, sn.captured_at ASC LIMIT 1
+       ) f ON true
  WHERE l.user_id = $1 AND l.archived_at IS NULL
  ORDER BY l.created_at DESC
  LIMIT $2;

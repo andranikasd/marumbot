@@ -27,6 +27,10 @@ enabled = true
 [env.dev]
 name = "marum-dev"
 
+[env.dev.assets]
+directory = "../../internal/adapter/in/miniapp/web"
+binding = "ASSETS"
+
 [env.dev.vars]
 ENVIRONMENT = "dev"
 

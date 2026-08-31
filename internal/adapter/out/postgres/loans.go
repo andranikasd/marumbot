@@ -112,10 +112,11 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 			trust     *string
 			excess    string
 			prepay    string
+			first     *int64
 		)
 		if err := rows.Scan(&l.ID, &l.Name, &l.Description, &code,
 			&rate, &repayment, &dayCount, &start, &maturity, &day,
-			&mode, &unit, &principal, &asOf, &trust, &excess, &prepay); err != nil {
+			&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first); err != nil {
 			return nil, err
 		}
 		if l.Excess, err = allocation.ParseExcessRule(excess); err != nil {
@@ -151,6 +152,11 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 			PaymentDay:   int(day),
 			Rounding:     money.Policy{Mode: roundingModeFrom(mode), Unit: int64(unit)},
 			Prepayment:   prepayment,
+		}
+		if first != nil {
+			l.OriginalPrincipal = money.FromMinor(*first, cur)
+		} else {
+			l.OriginalPrincipal = money.Zero(cur)
 		}
 		if principal != nil {
 			l.Balance = money.FromMinor(*principal, cur)

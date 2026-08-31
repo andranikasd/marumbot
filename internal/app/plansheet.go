@@ -104,6 +104,7 @@ type SheetLoan struct {
 	ExtraMinor int64  `json:"extra_minor"`
 	OwedMinor  int64  `json:"owed_minor"`
 	Cleared    bool   `json:"cleared,omitempty"`
+	FreedMinor int64  `json:"freed_minor,omitempty"`
 }
 
 // PlanSheet computes the full sheet for a goal. The zero goal means "the
@@ -181,7 +182,7 @@ func (w *Worker) PlanSheet(ctx context.Context, userID string, goal *plan.Goal) 
 		for _, ml := range m.Loans {
 			sm.Loans = append(sm.Loans, SheetLoan{
 				Name: ml.Name, PaidMinor: ml.Paid.Minor(), ExtraMinor: ml.Extra.Minor(),
-				OwedMinor: ml.Owed.Minor(), Cleared: ml.Cleared,
+				OwedMinor: ml.Owed.Minor(), Cleared: ml.Cleared, FreedMinor: ml.Freed.Minor(),
 			})
 		}
 		sh.Months = append(sh.Months, sm)

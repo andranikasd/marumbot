@@ -176,16 +176,50 @@ func (w *Worker) SendDueReminders(ctx context.Context, limit int32) (int, error)
 // number is worse than a timely one without.
 func (w *Worker) reminderText(ctx context.Context, l i18n.Locale, d DueReminder) string {
 	name := html.EscapeString(d.LoanName)
+	var text string
 	if amount, ok := w.instalmentOn(ctx, d); ok {
 		if d.OffsetDays < 0 {
-			return i18n.T(l, "reminder.due_soon", d.DueDate, amount, name)
+			text = i18n.T(l, "reminder.due_soon", d.DueDate, amount, name)
+		} else {
+			text = i18n.T(l, "reminder.due_today", d.DueDate, amount, name)
 		}
-		return i18n.T(l, "reminder.due_today", d.DueDate, amount, name)
+	} else if d.OffsetDays < 0 {
+		text = i18n.T(l, "reminder.due_soon_plain", d.DueDate, name)
+	} else {
+		text = i18n.T(l, "reminder.due_today_plain", d.DueDate, name)
 	}
-	if d.OffsetDays < 0 {
-		return i18n.T(l, "reminder.due_soon_plain", d.DueDate, name)
+	// The reminder knows the plan: other instalments on the same date are
+	// named, so one message covers the day rather than four covering it in
+	// pieces.
+	for _, also := range w.alsoDue(ctx, d) {
+		text += "\n" + also
 	}
-	return i18n.T(l, "reminder.due_today_plain", d.DueDate, name)
+	return text
+}
+
+// alsoDue lists the other loans with an instalment on the reminder's date.
+func (w *Worker) alsoDue(ctx context.Context, d DueReminder) []string {
+	loans, err := w.Loans.LoansForUser(ctx, d.UserID, plan.MaxLoans+1)
+	if err != nil {
+		return nil
+	}
+	locale, _, err := w.Users.Locale(ctx, d.UserID)
+	if err != nil {
+		return nil
+	}
+	l := i18n.Locale(locale)
+	var out []string
+	for _, ln := range loans {
+		if ln.ID == d.LoanID || ln.Balance.Sign() <= 0 {
+			continue
+		}
+		s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
+		if err != nil || len(s.Rows) == 0 || s.Rows[0].Due.String() != d.DueDate {
+			continue
+		}
+		out = append(out, i18n.T(l, "reminder.also", s.Rows[0].Payment.String(), html.EscapeString(ln.Name)))
+	}
+	return out
 }
 
 // instalmentOn finds the scheduled payment falling on the reminder's date.
