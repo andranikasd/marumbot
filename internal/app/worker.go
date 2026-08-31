@@ -65,6 +65,7 @@ type Worker struct {
 	Budgets   BudgetStore
 	Convos    ConversationStore
 	Reminders ReminderStore
+	Plans     PlanStore
 	// lastRemind is when TickReminders last did the work. One goroutine
 	// drains the inbox at a time, so a plain field is enough.
 	lastRemind time.Time
@@ -367,12 +368,19 @@ func (w *Worker) callback(ctx context.Context, userID string, chat int64, data s
 		return w.showWorking(ctx, userID, chat, i18n.Locale(locale), data[5:])
 	}
 
+	if strings.HasPrefix(data, "approve:") {
+		locale, _, err := w.Users.Locale(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("reading locale: %w", err)
+		}
+		return w.approvePlan(ctx, userID, chat, i18n.Locale(locale), GoalFromToken(data[8:]))
+	}
 	if strings.HasPrefix(data, "why:") {
 		locale, _, err := w.Users.Locale(ctx, userID)
 		if err != nil {
 			return fmt.Errorf("reading locale: %w", err)
 		}
-		return w.explainPlan(ctx, userID, chat, i18n.Locale(locale), goalFromToken(data[4:]))
+		return w.explainPlan(ctx, userID, chat, i18n.Locale(locale), GoalFromToken(data[4:]))
 	}
 	if strings.HasPrefix(data, "goal:") {
 		locale, _, err := w.Users.Locale(ctx, userID)
@@ -581,9 +589,9 @@ func code(err error) string {
 	}
 }
 
-// goalFromToken decodes the callback form of a goal. Unknown tokens fall
+// GoalFromToken decodes the callback form of a goal. Unknown tokens fall
 // back to least interest: a stale button must answer something sensible.
-func goalFromToken(tok string) plan.Goal {
+func GoalFromToken(tok string) plan.Goal {
 	switch {
 	case tok == "soonest":
 		return plan.Goal{Kind: plan.Fastest}

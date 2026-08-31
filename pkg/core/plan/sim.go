@@ -45,6 +45,7 @@ type Action struct {
 // MonthState is one cycle of a run, for timelines and comparators.
 type MonthState struct {
 	Month    int
+	On       date.Date    // the income date that opened the cycle
 	Required money.Amount // contractual instalments paid this cycle
 	Extra    money.Amount // optional payments, fees excluded
 	Fees     money.Amount
@@ -385,7 +386,7 @@ func (s *sim) openCycle(on date.Date) {
 	zero := money.Zero(s.cur)
 	s.cycle++
 	s.cycleIncome = on
-	s.month = MonthState{Month: s.cycle, Required: zero, Extra: zero, Fees: zero, Interest: zero, Owed: zero, Cash: zero}
+	s.month = MonthState{Month: s.cycle, On: on, Required: zero, Extra: zero, Fees: zero, Interest: zero, Owed: zero, Cash: zero}
 }
 
 func (s *sim) closeCycle() {

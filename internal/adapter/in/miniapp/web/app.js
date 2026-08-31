@@ -85,7 +85,18 @@ const STRINGS = {
     "budget.exact": "Ծածկում է պարտադիրը՝ առանց ավելցուկի։",
     "budget.done": "Բյուջեն պահպանված է։ Պլանը տեսնելու համար չաթում սեղմեք <b>«💡 Ի՞նչ անել»</b>։",
     "budget.back": "Վերադառնալ չաթ",
-    "tab.loans": "Վարկեր", "tab.add": "Ավելացնել", "tab.budget": "Բյուջե",
+    "tab.loans": "Վարկեր", "tab.add": "Ավելացնել", "tab.budget": "Բյուջե", "tab.plan": "Պլան",
+    "plan.title": "Պլան", "plan.lede": "Ամիս առ ամիս՝ մինչև վերջին վճարումը։",
+    "plan.g.cheapest": "Էժան", "plan.g.soonest": "Արագ", "plan.g.first": "Առաջինը",
+    "plan.loading": "Հաշվում եմ…", "plan.error": "Չստացվեց հաշվել պլանը։",
+    "plan.empty": "Պլանի համար պետք են վարկեր և բյուջե։", "plan.empty.add": "Ավելացնել վարկ",
+    "plan.finish": "Ավարտ՝ {d} · {n} ամիս", "plan.cost": "Ընդհանուր տոկոս՝ {i}",
+    "plan.cost_fees": " · վճարներ՝ {f}",
+    "plan.save": "Խնայում եք {s} և ավարտում {m} ամիս շուտ՝ միայն պարտադիրի համեմատ",
+    "plan.approve": "✅ Հաստատել այս պլանը", "plan.approved_badge": "✅ Հաստատված պլան",
+    "plan.approve_done": "Պլանը հաստատված է ✅", "plan.approve_fail": "Չհաջողվեց հաստատել։ Փորձեք նորից։",
+    "plan.pay": "վճարում", "plan.extra": "+{x} լրացուցիչ", "plan.fee": "վճար՝ {f}",
+    "plan.owed": "մնում է {o}", "plan.win": "🎉 Փակվում է «{n}»-ը", "plan.done_row": "Բոլոր վարկերը փակված են",
   },
   en: {
     title: "Add a loan", lede: "Enter the details from your loan agreement.",
@@ -130,7 +141,18 @@ const STRINGS = {
     "budget.exact": "Covers the required instalments with nothing spare.",
     "budget.done": "Budget saved. To see your plan, tap <b>“💡 What to do”</b> in the chat.",
     "budget.back": "Back to chat",
-    "tab.loans": "Loans", "tab.add": "Add", "tab.budget": "Budget",
+    "tab.loans": "Loans", "tab.add": "Add", "tab.budget": "Budget", "tab.plan": "Plan",
+    "plan.title": "Plan", "plan.lede": "Month by month, to the last payment.",
+    "plan.g.cheapest": "Cheapest", "plan.g.soonest": "Fastest", "plan.g.first": "First win",
+    "plan.loading": "Calculating…", "plan.error": "Could not build the plan.",
+    "plan.empty": "The plan needs loans and a budget.", "plan.empty.add": "Add a loan",
+    "plan.finish": "Done {d} · {n} months", "plan.cost": "Total interest {i}",
+    "plan.cost_fees": " · fees {f}",
+    "plan.save": "You save {s} and finish {m} months sooner than paying only the minimum",
+    "plan.approve": "✅ Approve this plan", "plan.approved_badge": "✅ Approved plan",
+    "plan.approve_done": "Plan approved ✅", "plan.approve_fail": "Could not approve. Try again.",
+    "plan.pay": "payment", "plan.extra": "+{x} extra", "plan.fee": "fee {f}",
+    "plan.owed": "{o} left", "plan.win": "🎉 “{n}” is paid off", "plan.done_row": "Every loan is closed",
   },
 };
 const lang = (tg?.initDataUnsafe?.user?.language_code || "hy").slice(0, 2) === "en" ? "en" : "hy";
@@ -172,7 +194,7 @@ function toast(msg) {
 // ---------------------------------------------------------------------------
 // Screens.
 // ---------------------------------------------------------------------------
-const SCREENS = ["loan", "manage", "budget"];
+const SCREENS = ["loan", "manage", "budget", "plan"];
 let current = null;
 
 function go(name) {
@@ -185,6 +207,7 @@ function go(name) {
   if (name === "loan") estimate();
   if (name === "manage") loadLoans();
   if (name === "budget") { $("budget-done").classList.remove("show"); loadBudget(); }
+  if (name === "plan") loadPlan(planGoal);
 }
 for (const b of document.querySelectorAll("[data-go]")) {
   b.addEventListener("click", () => { haptic.tap(); go(b.dataset.go); });
@@ -558,4 +581,107 @@ tg?.MainButton.onClick(() => { if (current === "loan") saveLoan(); else if (curr
 
 // Start where the caller asked, else on the list.
 const REQUESTED = new URLSearchParams(location.search).get("screen");
-go(REQUESTED === "budget" ? "budget" : REQUESTED === "loan" || REQUESTED === "add" ? "loan" : "manage");
+go(REQUESTED === "budget" ? "budget" : REQUESTED === "plan" ? "plan" : REQUESTED === "loan" || REQUESTED === "add" ? "loan" : "manage");
+
+// ---------------------------------------------------------------------------
+// The plan sheet: the whole repayment, month by month, with the approve
+// button. The goal chips re-run the sheet; approving stores the commitment.
+
+let planGoal = new URLSearchParams(location.search).get("goal") || "";
+
+const sub = (key, vars) => {
+  let s = T(key);
+  for (const k in vars) s = s.replace("{" + k + "}", vars[k]);
+  return s;
+};
+
+function goalChips(active) {
+  for (const b of document.querySelectorAll("#plan-goals button")) {
+    b.classList.toggle("on", b.dataset.goal === active);
+  }
+}
+
+async function loadPlan(goal) {
+  $("plan-error").hidden = true;
+  $("plan-empty").hidden = true;
+  $("plan-body").hidden = true;
+  $("plan-loading").hidden = false;
+  try {
+    const res = await api("api/plan" + (goal ? "?goal=" + encodeURIComponent(goal) : ""));
+    if (!res.ok) throw new Error("http " + res.status);
+    const d = await res.json();
+    $("plan-loading").hidden = true;
+    if (d.empty) { $("plan-empty").hidden = false; return; }
+    planGoal = goal || (d.goal === "fastest" ? "soonest" : d.goal === "first_win" ? "first" : "cheapest");
+    goalChips(planGoal);
+    renderPlan(d);
+    $("plan-body").hidden = false;
+  } catch {
+    $("plan-loading").hidden = true;
+    $("plan-error").hidden = false;
+  }
+}
+
+function renderPlan(d) {
+  const cur = d.currency;
+  const m = (minor) => fmtMoney(minor / 100, cur);
+  const s = d.summary;
+  $("pl-finish").textContent = sub("plan.finish", { d: fmtDate(s.payoff_date), n: s.months });
+  let cost = sub("plan.cost", { i: m(s.interest_minor) });
+  if (s.fees_minor > 0) cost += sub("plan.cost_fees", { f: m(s.fees_minor) });
+  $("pl-cost").textContent = cost;
+  const save = $("pl-save");
+  if (s.saved_minor > 0) {
+    save.textContent = sub("plan.save", { s: m(s.saved_minor), m: s.saved_months });
+    save.hidden = false;
+  } else save.hidden = true;
+  $("pl-approved").hidden = !d.approved;
+  $("pl-approve").hidden = d.approved;
+
+  const start = (d.months || []).length ? d.months[0].owed_minor + d.months[0].required_minor + d.months[0].extra_minor : 1;
+  const list = $("pl-months");
+  list.innerHTML = "";
+  for (const mo of d.months || []) {
+    const li = document.createElement("li");
+    const paid = mo.required_minor + mo.extra_minor + mo.fees_minor;
+    let extras = "";
+    if (mo.extra_minor > 0) extras += ' <span class="extra">' + sub("plan.extra", { x: m(mo.extra_minor) }) + "</span>";
+    if (mo.fees_minor > 0) extras += ' <span class="fee">' + sub("plan.fee", { f: m(mo.fees_minor) }) + "</span>";
+    const pct = start > 0 ? Math.max(1, Math.round((mo.owed_minor / start) * 100)) : 0;
+    li.innerHTML =
+      '<div class="row1"><span class="m">' + mo.n + " · " + fmtDate(mo.on) + '</span>' +
+      '<span class="pay">' + m(paid) + "</span></div>" +
+      (extras ? '<div>' + extras + "</div>" : "") +
+      '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
+      '<div class="owed">' + (mo.owed_minor > 0 ? sub("plan.owed", { o: m(mo.owed_minor) }) : T("plan.done_row")) + "</div>";
+    if (mo.cleared) {
+      li.classList.add("win");
+      const w = document.createElement("div");
+      w.className = "winline";
+      w.textContent = sub("plan.win", { n: mo.cleared });
+      li.appendChild(w);
+    }
+    list.appendChild(li);
+  }
+}
+
+for (const b of document.querySelectorAll("#plan-goals button")) {
+  b.addEventListener("click", () => { haptic.tap(); loadPlan(b.dataset.goal); });
+}
+$("plan-retry").addEventListener("click", () => { haptic.tap(); loadPlan(planGoal); });
+$("pl-approve").addEventListener("click", async () => {
+  haptic.tap();
+  $("pl-approve").disabled = true;
+  try {
+    const res = await api("api/plan/approve", { method: "POST", body: JSON.stringify({ goal: planGoal || "cheapest" }) });
+    if (!res.ok) throw new Error("http " + res.status);
+    haptic.ok();
+    toast(T("plan.approve_done"));
+    $("pl-approve").hidden = true;
+    $("pl-approved").hidden = false;
+  } catch {
+    toast(T("plan.approve_fail"));
+  } finally {
+    $("pl-approve").disabled = false;
+  }
+});

@@ -17,6 +17,7 @@ import (
 	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/money"
+	"github.com/andranikasd/marumbot/pkg/core/plan"
 )
 
 //go:embed web
@@ -32,11 +33,13 @@ type Server struct {
 	Required app.RequiredReader
 	// Filed is told when a loan is created, so reminders exist from the
 	// first day rather than from the next scheduler tick. Optional.
-	Filed  app.LoanFiledHook
-	Users  app.UserStore
-	Cipher TagCipher
-	Clock  app.Clock
-	Log    *slog.Logger
+	Filed app.LoanFiledHook
+	// Planner computes the month-by-month sheet and stores approvals.
+	Planner app.Planner
+	Users   app.UserStore
+	Cipher  TagCipher
+	Clock   app.Clock
+	Log     *slog.Logger
 }
 
 // TagCipher is the part of the identity cipher this package needs: enough to
@@ -58,6 +61,8 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/loans", s.createLoan())
 	mux.Handle("POST /api/budget", s.setBudget())
+	mux.Handle("GET /api/plan", s.planSheet())
+	mux.Handle("POST /api/plan/approve", s.approvePlan())
 	mux.Handle("GET /api/budget", s.getBudget())
 	mux.Handle("GET /api/loans", s.listLoans())
 	mux.Handle("PATCH /api/loans/{id}", s.updateLoan())
@@ -389,4 +394,63 @@ func trimTo(s string, n int) string {
 		return s[:n]
 	}
 	return s
+}
+
+// planSheet returns the full month-by-month plan for a goal. Without a goal
+// parameter it follows the approved plan, or least interest.
+func (s *Server) planSheet() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, userID, ok := s.authed(w, r)
+		if !ok {
+			return
+		}
+		if s.Planner == nil {
+			http.Error(w, `{"error":"unavailable"}`, http.StatusServiceUnavailable)
+			return
+		}
+		var goal *plan.Goal
+		if tok := r.URL.Query().Get("goal"); tok != "" {
+			g := app.GoalFromToken(tok)
+			goal = &g
+		}
+		sheet, err := s.Planner.PlanSheet(ctx, userID, goal)
+		if err != nil {
+			if errors.Is(err, app.ErrNotFound) {
+				writeJSON(w, http.StatusOK, map[string]any{"empty": true})
+				return
+			}
+			s.Log.ErrorContext(ctx, "building the plan sheet failed", "error", err)
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "plan_failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, sheet)
+	})
+}
+
+// approvePlan stores the borrower's yes to the goal in the request body.
+func (s *Server) approvePlan() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, userID, ok := s.authed(w, r)
+		if !ok {
+			return
+		}
+		if s.Planner == nil {
+			http.Error(w, `{"error":"unavailable"}`, http.StatusServiceUnavailable)
+			return
+		}
+		var in struct {
+			Goal string `json:"goal"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, maxRequest)).Decode(&in); err != nil {
+			http.Error(w, `{"error":"malformed"}`, http.StatusBadRequest)
+			return
+		}
+		p, err := s.Planner.ApprovePlanFor(ctx, userID, app.GoalFromToken(in.Goal))
+		if err != nil {
+			s.Log.ErrorContext(ctx, "approving the plan failed", "error", err)
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "approve_failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"approved": true, "goal": p.Goal, "payoff": p.PayoffDate})
+	})
 }

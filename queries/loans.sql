@@ -187,3 +187,20 @@ SELECT DISTINCT l.user_id
   JOIN users u ON u.id = l.user_id
  WHERE l.archived_at IS NULL AND u.deleted_at IS NULL AND u.access_state <> 'paused'
  LIMIT $1;
+
+-- name: ApprovePlan
+INSERT INTO approved_plans (user_id, goal, cap_minor, policy, engine, payoff_date, months, interest_minor)
+VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8)
+ON CONFLICT (user_id) DO UPDATE
+   SET goal = EXCLUDED.goal, cap_minor = EXCLUDED.cap_minor, policy = EXCLUDED.policy,
+       engine = EXCLUDED.engine, payoff_date = EXCLUDED.payoff_date,
+       months = EXCLUDED.months, interest_minor = EXCLUDED.interest_minor,
+       approved_at = now()
+RETURNING user_id;
+
+-- name: ApprovedPlan
+SELECT goal, cap_minor, policy, engine, payoff_date::text, months, interest_minor, approved_at
+  FROM approved_plans WHERE user_id = $1;
+
+-- name: ClearApprovedPlan
+DELETE FROM approved_plans WHERE user_id = $1 RETURNING user_id;
