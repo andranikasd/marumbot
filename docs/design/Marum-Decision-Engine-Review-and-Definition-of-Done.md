@@ -1300,4 +1300,6 @@ Legend: ✅ done · 🟡 partial · ⬜ not started · 🚫 out of code (field w
 
 Also done since: reminders wired end to end (store → hourly tick on the scheduler → send; created with the loan), Mini App asks the prepayment effect, loan cap enforced at create, trust caveat in reports.
 
+Since then (31 Aug 2026): the Mini App is modular (shell + self-registering screen modules), served from Cloudflare's edge as version-addressed immutable assets with the container answering only /app/api/*; CI bundles the app's module graph with esbuild ("Mini App bundles" job) after node --check proved blind to a real syntax break; plans are approvable and rendered as a milestone timeline with per-loan rows and freed-instalment figures from the simulator; reminders are wired end to end and cover their whole day.
+
 Next in order: DA.2/DD.4 (fixtures: second lender, reissue), D0.5 (explicit refusal fields for resets/grace/balloon), DF.4 (dynamic switching with the oracle as the check), DJ (container benchmark percentiles).
