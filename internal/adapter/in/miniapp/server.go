@@ -30,10 +30,13 @@ type Server struct {
 	Reader   app.LoanReader
 	Budgets  app.BudgetStore
 	Required app.RequiredReader
-	Users    app.UserStore
-	Cipher   TagCipher
-	Clock    app.Clock
-	Log      *slog.Logger
+	// Filed is told when a loan is created, so reminders exist from the
+	// first day rather than from the next scheduler tick. Optional.
+	Filed  app.LoanFiledHook
+	Users  app.UserStore
+	Cipher TagCipher
+	Clock  app.Clock
+	Log    *slog.Logger
 }
 
 // TagCipher is the part of the identity cipher this package needs: enough to
@@ -108,7 +111,7 @@ func (s *Server) createLoan() http.Handler {
 		draft, err := in.Validate(date.From(s.Clock.Now(), time.UTC))
 		if err != nil {
 			s.Log.InfoContext(ctx, "miniapp loan rejected", "error", err)
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
 			return
 		}
 
@@ -127,9 +130,20 @@ func (s *Server) createLoan() http.Handler {
 		id, err := s.Loans.CreateLoan(ctx, draft)
 		if err != nil {
 			span.RecordError(err)
+			if errors.Is(err, app.ErrTooManyLoans) {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "too_many_loans"})
+				return
+			}
 			s.Log.ErrorContext(ctx, "creating loan failed", "error", err)
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
+		}
+		if s.Filed != nil {
+			if err := s.Filed.OnLoanFiled(ctx, userID, id); err != nil {
+				// The loan exists; reminders will be rebuilt by the next
+				// tick. Worth a log line, not a failed create.
+				s.Log.WarnContext(ctx, "setting up reminders failed", "loan", id, "error", err)
+			}
 		}
 		writeJSON(w, http.StatusCreated, map[string]string{"id": id})
 	})
@@ -200,7 +214,7 @@ func (s *Server) setBudget() http.Handler {
 		}
 		cur, minor, payDay, err := in.Validate()
 		if err != nil {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
 			return
 		}
 
@@ -355,10 +369,16 @@ type LoanRequest struct {
 	Currency     string  `json:"currency"`
 	RatePercent  float64 `json:"rate_percent"`
 	Method       string  `json:"method"`
-	StartDate    string  `json:"start_date"`
-	MaturityDate string  `json:"maturity_date"`
-	PaymentDay   int     `json:"payment_day"`
+	// PrepayEffect is what an early payment does: shorten_term,
+	// reduce_instalment, or empty when the borrower has not said.
+	PrepayEffect string `json:"prepay_effect"`
+	StartDate    string `json:"start_date"`
+	MaturityDate string `json:"maturity_date"`
+	PaymentDay   int    `json:"payment_day"`
 }
+
+// jsonError is the one key every error body carries.
+const jsonError = "error"
 
 // ErrInvalid marks a request the form should not have sent.
 var ErrInvalid = errors.New("invalid loan")

@@ -65,6 +65,9 @@ type Worker struct {
 	Budgets   BudgetStore
 	Convos    ConversationStore
 	Reminders ReminderStore
+	// lastRemind is when TickReminders last did the work. One goroutine
+	// drains the inbox at a time, so a plain field is enough.
+	lastRemind time.Time
 
 	// DefaultCurrency is what a bare number means. AMD here; a user with a
 	// dollar loan writes the code and it is honoured.

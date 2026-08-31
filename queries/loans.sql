@@ -178,3 +178,12 @@ UPDATE reminder_occurrences SET status = 'satisfied'
 -- name: CancelRemindersForLoan
 UPDATE reminder_occurrences SET status = 'canceled'
  WHERE loan_id = $1 AND status = 'scheduled' RETURNING id;
+
+-- name: ActiveLoanUsers
+-- Every account that still owes something, for the reminder tick. Bounded
+-- because the tick is bounded; the next tick is minutes away.
+SELECT DISTINCT l.user_id
+  FROM loans l
+  JOIN users u ON u.id = l.user_id
+ WHERE l.archived_at IS NULL AND u.deleted_at IS NULL AND u.access_state <> 'paused'
+ LIMIT $1;

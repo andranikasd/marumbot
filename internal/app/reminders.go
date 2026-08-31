@@ -37,6 +37,55 @@ type ReminderStore interface {
 // enough that a scheduling bug is visible rather than buried.
 const remindHorizon = 14 * 24 * time.Hour
 
+// UserLister names the accounts the reminder tick walks.
+type UserLister interface {
+	ActiveLoanUsers(ctx context.Context, limit int32) ([]string, error)
+}
+
+// remindEvery is how often the tick actually does the work. The scheduler
+// calls every few minutes to keep the container warm; generating occurrences
+// that often would be churn for rows that change daily.
+const remindEvery = time.Hour
+
+// TickReminders schedules upcoming occurrences and sends the due ones. It is
+// called from the scheduler tick and rate-limits itself with the injected
+// clock, so calling it every minute costs one comparison.
+func (w *Worker) TickReminders(ctx context.Context, users UserLister) (int, error) {
+	if w.Reminders == nil || users == nil {
+		return 0, nil
+	}
+	now := w.Clock.Now()
+	if !w.lastRemind.IsZero() && now.Sub(w.lastRemind) < remindEvery {
+		return 0, nil
+	}
+	w.lastRemind = now
+	ids, err := users.ActiveLoanUsers(ctx, 500)
+	if err != nil {
+		return 0, fmt.Errorf("listing accounts for reminders: %w", err)
+	}
+	for _, id := range ids {
+		if err := w.ScheduleForUser(ctx, id); err != nil {
+			// One account's broken loan must not silence everyone else's
+			// reminders; it is logged and the walk continues.
+			w.Log.WarnContext(ctx, "scheduling reminders failed", "user", id, "error", err)
+		}
+	}
+	return w.SendDueReminders(ctx, 50)
+}
+
+// OnLoanFiled sets up reminders the moment a loan exists: the default rules,
+// and the occurrences inside the horizon. Called by the Mini App after a
+// successful create, so the first reminder does not wait for the next tick.
+func (w *Worker) OnLoanFiled(ctx context.Context, userID, loanID string) error {
+	if w.Reminders == nil {
+		return nil
+	}
+	if err := w.Reminders.EnsureDefaultReminders(ctx, loanID); err != nil {
+		return fmt.Errorf("default reminders: %w", err)
+	}
+	return w.ScheduleForUser(ctx, userID)
+}
+
 // ScheduleForUser generates occurrences for one borrower's loans.
 func (w *Worker) ScheduleForUser(ctx context.Context, userID string) error {
 	loans, err := w.Loans.LoansForUser(ctx, userID, plan.MaxLoans+1)

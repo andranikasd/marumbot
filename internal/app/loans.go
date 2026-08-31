@@ -123,6 +123,12 @@ type LoanEditor interface {
 	LoanForUser(ctx context.Context, loanID, userID string) (UserLoan, error)
 }
 
+// LoanFiledHook is told when a loan is created, so dependent state — the
+// default reminders and their first occurrences — exists immediately.
+type LoanFiledHook interface {
+	OnLoanFiled(ctx context.Context, userID, loanID string) error
+}
+
 // ErrNotFound is returned when a loan does not exist, or does not belong to the
 // caller. Deliberately the same error for both: telling someone a loan exists
 // but is not theirs is telling them something about another account.

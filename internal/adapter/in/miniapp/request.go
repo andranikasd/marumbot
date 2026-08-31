@@ -93,6 +93,10 @@ func (r LoanRequest) Validate(today date.Date) (app.LoanDraft, error) {
 	default:
 		return app.LoanDraft{}, fmt.Errorf("%w: unknown method %q", ErrInvalid, r.Method)
 	}
+	prepay, err := model.ParsePrepaymentEffect(r.PrepayEffect)
+	if err != nil {
+		return app.LoanDraft{}, fmt.Errorf("%w: prepayment effect", ErrInvalid)
+	}
 
 	return app.LoanDraft{
 		Title:       title,
@@ -114,6 +118,7 @@ func (r LoanRequest) Validate(today date.Date) (app.LoanDraft, error) {
 			MaturityDate: maturity,
 			PaymentDay:   r.PaymentDay,
 			Rounding:     money.DefaultPolicy(cur),
+			Prepayment:   model.Prepayment{Effect: prepay},
 		},
 	}, nil
 }

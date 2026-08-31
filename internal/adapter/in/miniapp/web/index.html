@@ -205,6 +205,15 @@
       <p class="error" id="e-balance"></p>
     </div>
     <div class="field">
+      <label for="prepay" data-i18n="prepay">Ավել վճարելուց հետո</label>
+      <select id="prepay" name="prepay">
+        <option value="" data-i18n="prepay.unsure">Չգիտեմ՝ կհաշվեմ երկու ձևով</option>
+        <option value="shorten_term" data-i18n="prepay.shorten">Վճարը նույնն է, ժամկետը կրճատվում է</option>
+        <option value="reduce_instalment" data-i18n="prepay.reduce">Բանկը նվազեցնում է ամսական վճարը</option>
+      </select>
+      <p class="hint" data-i18n="prepay.hint">Ինչ է անում բանկը վաղաժամկետ մարումից հետո։ Գրված է պայմանագրում։</p>
+    </div>
+    <div class="field">
       <label for="rate" data-i18n="rate">Տարեկան տոկոսադրույք</label>
       <div class="in">
         <input id="rate" name="rate" inputmode="decimal" placeholder="14" required>
