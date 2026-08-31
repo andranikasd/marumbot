@@ -174,25 +174,33 @@ export default {
         return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
       }
       if (env.ASSETS) {
-        let rest = url.pathname.slice("/app".length) || "/";
-        let immutable = false;
-        const versioned = rest.match(/^\/a\/[^/]+(\/.*)$/);
-        if (versioned) { rest = versioned[1]; immutable = true; }
-        if (rest === "/") rest = "/index.html";
-        const asset = await env.ASSETS.fetch(new Request(new URL(rest, request.url), request));
-        const headers = new Headers(asset.headers);
-        if (rest === "/index.html") {
-          // The shell names its assets under the versioned prefix, exactly
-          // as the container's own handler does.
-          const v = encodeURIComponent(env.VERSION ?? "dev");
-          const body = (await asset.text()).replace(
-            /(href|src)="((?:js\/[^"]+|styles\.css))"/g, `$1="a/${v}/$2"`);
-          headers.set("Cache-Control", "no-store");
-          headers.set("Content-Type", "text/html; charset=utf-8");
-          return new Response(body, { status: asset.status, headers });
+        try {
+          let rest = url.pathname.slice("/app".length) || "/";
+          let immutable = false;
+          const versioned = rest.match(/^\/a\/[^/]+(\/.*)$/);
+          if (versioned) { rest = versioned[1]; immutable = true; }
+          if (rest === "/") rest = "/index.html";
+          const assetURL = new URL(request.url);
+          assetURL.pathname = rest;
+          assetURL.search = "";
+          const asset = await env.ASSETS.fetch(assetURL.toString());
+          if (asset.status < 400) {
+            const headers = new Headers(asset.headers);
+            if (rest === "/index.html") {
+              const v = encodeURIComponent(env.VERSION ?? "dev");
+              const body = (await asset.text()).replace(
+                /(href|src)="((?:js\/[^"]+|styles\.css))"/g, `$1="a/${v}/$2"`);
+              headers.set("Cache-Control", "no-store");
+              headers.set("Content-Type", "text/html; charset=utf-8");
+              return new Response(body, { status: asset.status, headers });
+            }
+            headers.set("Cache-Control", immutable ? "public, max-age=31536000, immutable" : "no-store");
+            return new Response(asset.body, { status: asset.status, headers });
+          }
+          // fall through: an asset the edge does not have comes from the container
+        } catch (err) {
+          console.error("asset serving failed; falling back to the container", err);
         }
-        headers.set("Cache-Control", immutable ? "public, max-age=31536000, immutable" : "no-store");
-        return new Response(asset.body, { status: asset.status, headers });
       }
       // Self-hosted or assets not bound: the container serves the app.
       const res = await app(env).containerFetch(
