@@ -1,0 +1,31 @@
+name: CD · prod
+
+# Production deploys are tag-driven and dormant until armed: the workflow
+# runs only for v1* tags, targets the GitHub environment "prod", and that
+# environment's secrets and variables are intentionally empty until the
+# operator sets them. A run before then fails at the first missing secret,
+# which is the correct behaviour for an unarmed weapon.
+#
+# To arm (operator checklist, see docs/release/v1.0.0-beta.md):
+#   1. Create the GitHub environment "prod" with required reviewers.
+#   2. Set vars: PUBLIC_URL. Set secrets: CLOUDFLARE_API_TOKEN,
+#      CLOUDFLARE_ACCOUNT_ID, MARUM_DATABASE_URL and the runtime secrets.
+#   3. Fill the [env.prod] blocks in deploy/cloudflare/wrangler.toml with
+#      the production domain.
+on:
+  push:
+    tags: ["v1.*"]
+
+permissions:
+  contents: read
+  deployments: write
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: prod
+      wrangler_env: prod
+      version: ${{ github.ref_name }}
+    secrets: inherit
