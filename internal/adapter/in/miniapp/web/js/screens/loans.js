@@ -9,7 +9,6 @@ import { register } from "../nav.js";
 
 const HTML = `
 <h1 data-i18n="manage.title">Իմ վարկերը</h1>
-  <p class="lede" data-i18n="manage.lede">Ընդհանուր պատկերը, և յուրաքանչյուր վարկը՝ առանձին։</p>
   <div class="hero" id="manage-summary" hidden>
     <div class="k" data-i18n="manage.owed">Ընդհանուր պարտք</div>
     <div class="v" id="m-owed">—</div>
