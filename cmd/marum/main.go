@@ -70,7 +70,12 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	if err != nil {
 		return err
 	}
-	cfg.Version = version
+	// The build stamp wins when the binary was actually stamped; inside the
+	// container the image is generic and the Worker passes the deployed
+	// version through the environment instead.
+	if version != "dev" {
+		cfg.Version = version
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
