@@ -215,7 +215,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: deploy/cloudflare
-          command: rollback --env ${{ inputs.wrangler_env }} --message "post-deploy smoke failed"
+          command: rollback --env ${{ inputs.wrangler_env }} --message smoke-failed --yes
 
       - name: Annotate Grafana
         if: success() && vars.GRAFANA_URL != ''

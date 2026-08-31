@@ -92,7 +92,16 @@ echo "$page" | grep -q 'telegram-web-app.js' || \
 # shell is checked for its versioned entry script, and the modules for the
 # markup they carry -- the budget form and the plan timeline.
 echo "→ app shell and modules"
-echo "$page" | grep -Eq 'a/[^"]+/js/main\.js' || fail "the shell does not version its entry script"
+# The old container can still be answering while the new one rolls out, so
+# the marker is polled to a deadline rather than asserted against whichever
+# instance happened to answer first.
+shell_ok=""
+for attempt in 1 2 3 4 5 6 7 8; do
+  if echo "$page" | grep -Eq 'a/[^"]+/js/main\.js'; then shell_ok=yes; break; fi
+  sleep 8
+  page=$(get "$base/app/") || true
+done
+[ -n "$shell_ok" ] || fail "the shell does not version its entry script after rollout"
 budget=$(get "$base/app/js/screens/budget.js") || fail "the budget module did not answer"
 echo "$budget" | grep -q 'budget-form' || fail "the budget module does not carry its form"
 planmod=$(get "$base/app/js/screens/plan.js") || fail "the plan module did not answer"

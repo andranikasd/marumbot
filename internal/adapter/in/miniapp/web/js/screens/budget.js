@@ -1,7 +1,7 @@
 // The budget: the monthly amount and the payday, validated against what the
 // loans actually require this month.
 "use strict";
-import { tg, haptic, toast, fmtMoney, num, mainButton } from "../core.js";
+import { tg, haptic, toast, fmtMoney, num, mainButton, group } from "../core.js";
 import { T } from "../i18n.js";
 import { api, getJSON, invalidate } from "../api.js";
 import { register, currentScreen } from "../nav.js";
@@ -126,6 +126,7 @@ register({
   labelKey: "tab.budget",
   html: HTML,
   onMount() {
+    group($("monthly"));
     $("monthly").addEventListener("input", () => { $("budget-done").classList.remove("show"); validate(); });
     $("budget-currency").addEventListener("change", validate);
     $("payday").addEventListener("input", validate);

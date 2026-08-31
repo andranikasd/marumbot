@@ -5,6 +5,7 @@
 import { haptic, toast, fmtMoney, fmtDate, confirmDialog } from "../core.js";
 import { T } from "../i18n.js";
 import { api, getJSON, invalidate } from "../api.js";
+
 import { register } from "../nav.js";
 
 const HTML = `
@@ -16,9 +17,13 @@ const HTML = `
       <div class="cell"><div class="k" data-i18n="manage.required">Այս ամիս պարտադիր</div><div class="v" id="m-required">—</div></div>
       <div class="cell"><div class="k" data-i18n="manage.next">Հաջորդ վճարումը</div><div class="v" id="m-next">—</div></div>
     </div>
+    <div id="m-track" hidden>
+      <div class="plan-progress"><i></i></div>
+      <div class="plan-progress-cap"><span data-i18n="plan.today">այսօր</span><span id="m-free"></span></div>
+    </div>
   </div>
 <div id="manage-list"></div>
-  <div class="state" id="manage-loading" hidden data-i18n="loading">Բեռնվում է…</div>
+  <div id="manage-loading" hidden><div class="skel hero-skel"></div><div class="skel"></div><div class="skel"></div></div>
   <div class="state" id="manage-error" hidden>
     <span data-i18n="err.load">Չհաջողվեց բեռնել։</span><br>
     <button class="cta ghost" type="button" id="manage-retry" data-i18n="retry">Փորձել նորից</button>
@@ -125,6 +130,18 @@ function renderList(loans) {
   $("manage-empty").hidden = loans.length > 0;
 }
 
+// The freedom track on the loans hero comes from the plan, which boot has
+// already prefetched; when it is not there yet, the hero simply lacks the
+// track until the next visit. Never a second spinner for a garnish.
+function decorate() {
+  getJSON("api/plan", (d) => {
+    if (d && !d.empty && d.summary) {
+      $("m-free").textContent = fmtDate(d.summary.payoff_date);
+      $("m-track").hidden = false;
+    }
+  }).catch(() => { /* the track is optional */ });
+}
+
 async function load() {
   const list = $("manage-list");
   $("manage-error").hidden = true;
@@ -148,5 +165,5 @@ register({
   onMount() {
     $("manage-retry").addEventListener("click", () => { haptic.tap(); load(); });
   },
-  onShow: load,
+  onShow() { load(); decorate(); },
 });
