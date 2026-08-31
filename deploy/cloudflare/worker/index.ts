@@ -163,8 +163,16 @@ export default {
     // would: not merely that the request came through this Worker, but which
     // Telegram user made it.
     if (url.pathname === "/app" || url.pathname.startsWith("/app/")) {
-      return app(env).containerFetch(
+      // Nothing under /app may be cached by anything between the container
+      // and the phone: not the edge, not the webview. The origin already
+      // says no-store; saying it here too survives an origin regression.
+      const res = await app(env).containerFetch(
         new Request(new URL(url.pathname + url.search, "http://container"), request));
+      const headers = new Headers(res.headers);
+      headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+      headers.set("Pragma", "no-cache");
+      headers.set("Expires", "0");
+      return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
     }
 
     if (url.pathname === "/healthz" || url.pathname === "/readyz" || url.pathname === "/status") {
