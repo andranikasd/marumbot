@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -34,6 +35,9 @@ type Server struct {
 	// Filed is told when a loan is created, so reminders exist from the
 	// first day rather than from the next scheduler tick. Optional.
 	Filed app.LoanFiledHook
+	// Version stamps asset URLs for cache busting: the webview caches by
+	// URL and a URL that changes with the deployment always misses.
+	Version string
 	// Planner computes the month-by-month sheet and stores approvals.
 	Planner app.Planner
 	Users   app.UserStore
@@ -67,6 +71,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/loans", s.listLoans())
 	mux.Handle("PATCH /api/loans/{id}", s.updateLoan())
 	mux.Handle("DELETE /api/loans/{id}", s.deleteLoan())
+	mux.Handle("GET /{$}", s.static(s.shell(sub)))
+	mux.Handle("GET /index.html", s.static(s.shell(sub)))
 	mux.Handle("/", s.static(http.FileServerFS(sub)))
 	return mux
 }
@@ -84,7 +90,7 @@ func (s *Server) static(h http.Handler) http.Handler {
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		// The form changes with the deployment, and a stale one would collect
 		// fields the server no longer accepts.
-		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Cache-Control", "no-store")
 		h.ServeHTTP(w, r)
 	})
 }
@@ -452,5 +458,24 @@ func (s *Server) approvePlan() http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"approved": true, "goal": p.Goal, "payoff": p.PayoffDate})
+	})
+}
+
+// shell serves index.html with the build version stamped into its asset
+// URLs. The Telegram webview caches by URL and honours cache headers
+// unreliably; a URL that changes with the deployment is the only cache
+// control that always works.
+func (s *Server) shell(sub fs.FS) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, err := fs.ReadFile(sub, "index.html")
+		if err != nil {
+			http.Error(w, "unavailable", http.StatusInternalServerError)
+			return
+		}
+		v := url.QueryEscape(s.Version)
+		out := strings.ReplaceAll(string(b), `href="styles.css"`, `href="styles.css?v=`+v+`"`)
+		out = strings.ReplaceAll(out, `src="js/main.js"`, `src="js/main.js?v=`+v+`"`)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(out))
 	})
 }

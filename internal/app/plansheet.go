@@ -227,7 +227,7 @@ func (w *Worker) approvePlan(ctx context.Context, userID string, chat int64, l i
 	markup := w.mainMenu(l)
 	if w.MiniApp != "" {
 		markup = map[string]any{keyInline: [][]map[string]any{{
-			webAppButton(i18n.T(l, "plan.sheet_button"), w.MiniApp+"?screen=plan"),
+			webAppButton(i18n.T(l, "plan.sheet_button"), w.miniURL("plan")),
 		}}}
 	}
 	return w.Send.SendMessage(ctx, chat, text, markup)

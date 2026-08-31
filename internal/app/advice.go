@@ -112,7 +112,7 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 		}
 	}
 	b.WriteString("\n<i>" + i18n.T(l, "advice.pick") + "</i>")
-	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l, goal, !approvedNow, w.MiniApp))
+	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l, goal, !approvedNow, w.sheetURL(goal)))
 }
 
 // explainPlan is the second message, sent only when the reader taps "why":
@@ -180,7 +180,7 @@ func (w *Worker) explainPlan(ctx context.Context, userID string, chat int64, l i
 		b.WriteString("• " + i18n.T(l, "advice.trust_caveat") + "\n")
 	}
 	_ = required
-	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l, goal, false, w.MiniApp))
+	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l, goal, false, w.sheetURL(goal)))
 }
 
 // refuse maps a typed engine refusal to a message that says what would have
@@ -253,7 +253,7 @@ func (w *Worker) compareGoals(ctx context.Context, chat int64, l i18n.Locale, b 
 		}
 	}
 	b.WriteString("\n<i>" + i18n.T(l, "advice.compare_pick") + "</i>")
-	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l, plan.Goal{Kind: plan.LeastInterest}, false, w.MiniApp))
+	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l, plan.Goal{Kind: plan.LeastInterest}, false, w.sheetURL(plan.Goal{Kind: plan.LeastInterest})))
 }
 
 // writeRow is one block of the comparison: the name, then the figures.
@@ -474,7 +474,15 @@ func goalKey(g plan.Goal) string {
 // goalMenu lets the reader approve, ask why, see the full sheet, compare,
 // or change the question. The active goal is not repeated as a button, and
 // the approve button disappears once this exact plan is the approved one.
-func goalMenu(l i18n.Locale, active plan.Goal, offerApprove bool, miniApp string) any {
+// sheetURL is the full-schedule link for a goal, version-stamped.
+func (w *Worker) sheetURL(g plan.Goal) string {
+	if w.MiniApp == "" {
+		return ""
+	}
+	return w.miniURL("plan") + "&goal=" + goalToken(g)
+}
+
+func goalMenu(l i18n.Locale, active plan.Goal, offerApprove bool, sheetURL string) any {
 	why := "why:" + goalToken(active)
 	goalRow := []map[string]any{}
 	for _, g := range []struct {
@@ -495,8 +503,8 @@ func goalMenu(l i18n.Locale, active plan.Goal, offerApprove bool, miniApp string
 	if offerApprove {
 		rows = append(rows, []map[string]any{{keyText: i18n.T(l, "plan.approve_button"), keyCallback: "approve:" + goalToken(active)}})
 	}
-	if miniApp != "" {
-		rows = append(rows, []map[string]any{webAppButton(i18n.T(l, "plan.sheet_button"), miniApp+"?screen=plan&goal="+goalToken(active))})
+	if sheetURL != "" {
+		rows = append(rows, []map[string]any{webAppButton(i18n.T(l, "plan.sheet_button"), sheetURL)})
 	}
 	rows = append(rows, []map[string]any{
 		{keyText: i18n.T(l, "advice.why_button"), keyCallback: why},

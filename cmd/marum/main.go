@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -124,6 +125,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		Owner:           cfg.InstanceID,
 		Log:             log,
 		MiniApp:         cfg.MiniAppURL,
+		AppVersion:      cfg.Version,
 		Menus:           bot,
 		DefaultCurrency: money.MustLookup(cfg.DefaultCurrency),
 		Reminders:       store,
@@ -134,7 +136,8 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	mini := &miniapp.Server{
 		BotToken: cfg.BotToken, Loans: store, Users: store, Budgets: store,
 		Editor: store, Reader: store, Required: worker, Filed: worker, Planner: worker,
-		Cipher: cipher, Clock: sysclock.New(), Log: log,
+		Version: cfg.Version,
+		Cipher:  cipher, Clock: sysclock.New(), Log: log,
 	}
 	hook := &telegram.Webhook{
 		Inbox: store, Users: store, Cipher: cipher,
@@ -191,7 +194,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	go func() {
 		menuCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		if err := app.PublishMenus(menuCtx, bot, cfg.MiniAppURL); err != nil {
+		if err := app.PublishMenus(menuCtx, bot, cfg.MiniAppURL+"?v="+neturl.QueryEscape(cfg.Version)); err != nil {
 			log.Warn("publishing the command menus failed", "err", err)
 		} else {
 			log.Info("command menus published", "languages", len(i18n.Supported()))
