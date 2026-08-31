@@ -46,9 +46,9 @@ const STRINGS = {
     title: "Ավելացնել վարկ", lede: "Մուտքագրեք վարկի պայմանագրի տվյալները։",
     "title.field": "Անվանում", "title.hint": "Ինչպե՞ս եք անվանում այս վարկը։",
     description: "Նշում (ըստ ցանկության)", "description.hint": "Բանկի անուն կամ հաշվեհամար պետք չէ։",
-    principal: "Վարկի գումար", balance: "Արդեն մարված գումար (ըստ ցանկության)",
-    "balance.hint": "Եթե վարկն արդեն ընթացքի մեջ է՝ նշեք մայր գումարից մարված մասը։",
-    "err.balance": "Պետք է լինի վարկի գումարից փոքր",
+    principal: "Վարկի գումար", balance: "Մնացորդ այսօր (ըստ ցանկության)",
+    "balance.hint": "Մայր գումարի մնացորդը բանկի քաղվածքից։ Դատարկ՝ եթե վարկը նոր է։",
+    "err.balance": "Չի կարող գերազանցել վարկի գումարը",
     prepay: "Ավել վճարելուց հետո", "prepay.unsure": "Չգիտեմ՝ կհաշվեմ երկու ձևով",
     "prepay.shorten": "Վճարը նույնն է, ժամկետը կրճատվում է",
     "prepay.reduce": "Բանկը նվազեցնում է ամսական վճարը",
@@ -91,9 +91,9 @@ const STRINGS = {
     title: "Add a loan", lede: "Enter the details from your loan agreement.",
     "title.field": "Name", "title.hint": "What do you call this loan?",
     description: "Note (optional)", "description.hint": "No bank name or account number needed.",
-    principal: "Loan amount", balance: "Already repaid (optional)",
-    "balance.hint": "If the loan is already running, enter the principal you have repaid so far.",
-    "err.balance": "Must be less than the loan amount",
+    principal: "Loan amount", balance: "Remaining balance today (optional)",
+    "balance.hint": "The principal outstanding from your bank statement. Leave empty for a new loan.",
+    "err.balance": "Cannot exceed the loan amount",
     prepay: "After an extra payment", "prepay.unsure": "Not sure — I will plan both ways",
     "prepay.shorten": "Instalment stays, term shortens",
     "prepay.reduce": "The bank lowers the instalment",
@@ -215,10 +215,10 @@ function validate() {
   if (!$("principal").value.trim()) errs.principal = T("err.required");
   else if (Number.isNaN(p)) errs.principal = T("err.number");
   else if (p <= 0) errs.principal = T("err.positive");
-  const paidRaw = $("balance").value.trim(), paid = paidRaw ? num(paidRaw) : 0;
-  if (paidRaw && Number.isNaN(paid)) errs.balance = T("err.number");
-  else if (paid < 0) errs.balance = T("err.positive");
-  else if (!Number.isNaN(p) && paid >= p) errs.balance = T("err.balance");
+  const remRaw = $("balance").value.trim(), rem = remRaw ? num(remRaw) : 0;
+  if (remRaw && Number.isNaN(rem)) errs.balance = T("err.number");
+  else if (remRaw && rem <= 0) errs.balance = T("err.positive");
+  else if (!Number.isNaN(p) && rem > p) errs.balance = T("err.balance");
   const r = num($("rate").value);
   if (!$("rate").value.trim()) errs.rate = T("err.required");
   else if (Number.isNaN(r)) errs.rate = T("err.number");
@@ -237,7 +237,7 @@ function validate() {
     if (box) box.textContent = touched && errs[f] ? errs[f] : "";
     $(f).setAttribute("aria-invalid", touched && errs[f] ? "true" : "false");
   }
-  return { ok: Object.keys(errs).length === 0, p, r, d, paid };
+  return { ok: Object.keys(errs).length === 0, p, r, d, rem };
 }
 let submitted = false;
 
@@ -329,7 +329,7 @@ async function saveLoan() {
       body: JSON.stringify({
         title: $("title").value.trim(),
         description: $("description").value.trim(),
-        principal_major: v.p, balance_major: v.paid ? v.p - v.paid : 0, currency: $("currency").value, rate_percent: v.r,
+        principal_major: v.p, balance_major: v.rem || 0, currency: $("currency").value, rate_percent: v.r,
         prepay_effect: $("prepay").value,
         method: method(), start_date: $("start").value,
         maturity_date: $("maturity").value, payment_day: v.d,
