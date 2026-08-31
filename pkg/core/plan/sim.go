@@ -51,6 +51,9 @@ type MonthLoan struct {
 	Extra   money.Amount // the optional part, fees excluded
 	Owed    money.Amount // balance after the cycle
 	Cleared bool
+	// Freed is the instalment this loan stops requiring, set on the cycle
+	// it clears: the number a win is worth every month after it.
+	Freed money.Amount
 }
 
 // MonthState is one cycle of a run, for timelines and comparators.
@@ -139,6 +142,7 @@ type loanState struct {
 	cyclePaid    money.Amount
 	cycleExtra   money.Amount
 	cycleCleared bool
+	cycleFreed   money.Amount
 }
 
 // obligation is the memoised next instalment for one loan state.
@@ -423,7 +427,7 @@ func (s *sim) closeCycle() {
 		s.month.Loans = append(s.month.Loans, MonthLoan{
 			ID: ls.pos.ID, Name: ls.pos.Name,
 			Paid: ls.cyclePaid, Extra: ls.cycleExtra,
-			Owed: ls.balance, Cleared: ls.cycleCleared,
+			Owed: ls.balance, Cleared: ls.cycleCleared, Freed: ls.cycleFreed,
 		})
 	}
 	s.res.Timeline = append(s.res.Timeline, s.month)
@@ -713,6 +717,10 @@ func (s *sim) due(ls *loanState, on date.Date) {
 func (s *sim) close(ls *loanState, on date.Date) {
 	ls.closed, ls.closedOn = true, on
 	ls.cycleCleared = true
+	ls.cycleFreed = ls.carried
+	if ls.cycleFreed.Sign() == 0 {
+		ls.cycleFreed = ls.required
+	}
 	ls.balance = money.Zero(s.cur)
 	freed := ls.carried
 	if freed.Sign() == 0 {

@@ -163,22 +163,41 @@ export default {
     // would: not merely that the request came through this Worker, but which
     // Telegram user made it.
     if (url.pathname === "/app" || url.pathname.startsWith("/app/")) {
-      // Nothing under /app may be cached by anything between the container
-      // and the phone: not the edge, not the webview. The origin already
-      // says no-store; saying it here too survives an origin regression.
+      // The API is the container's; everything else under /app is a static
+      // file and is served from the edge — no container hop, no cold start,
+      // and the versioned prefix makes it immutable.
+      if (url.pathname.startsWith("/app/api/")) {
+        const res = await app(env).containerFetch(
+          new Request(new URL(url.pathname + url.search, "http://container"), request));
+        const headers = new Headers(res.headers);
+        headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+        return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+      }
+      if (env.ASSETS) {
+        let rest = url.pathname.slice("/app".length) || "/";
+        let immutable = false;
+        const versioned = rest.match(/^\/a\/[^/]+(\/.*)$/);
+        if (versioned) { rest = versioned[1]; immutable = true; }
+        if (rest === "/") rest = "/index.html";
+        const asset = await env.ASSETS.fetch(new Request(new URL(rest, request.url), request));
+        const headers = new Headers(asset.headers);
+        if (rest === "/index.html") {
+          // The shell names its assets under the versioned prefix, exactly
+          // as the container's own handler does.
+          const v = encodeURIComponent(env.VERSION ?? "dev");
+          const body = (await asset.text()).replace(
+            /(href|src)="((?:js\/[^"]+|styles\.css))"/g, `$1="a/${v}/$2"`);
+          headers.set("Cache-Control", "no-store");
+          headers.set("Content-Type", "text/html; charset=utf-8");
+          return new Response(body, { status: asset.status, headers });
+        }
+        headers.set("Cache-Control", immutable ? "public, max-age=31536000, immutable" : "no-store");
+        return new Response(asset.body, { status: asset.status, headers });
+      }
+      // Self-hosted or assets not bound: the container serves the app.
       const res = await app(env).containerFetch(
         new Request(new URL(url.pathname + url.search, "http://container"), request));
-      const headers = new Headers(res.headers);
-      if (url.pathname.startsWith("/app/a/")) {
-        // Version-addressed assets: immutable by construction, and caching
-        // them is what makes a warm open instant.
-        headers.set("Cache-Control", "public, max-age=31536000, immutable");
-      } else {
-        headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
-        headers.set("Pragma", "no-cache");
-        headers.set("Expires", "0");
-      }
-      return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+      return res;
     }
 
     if (url.pathname === "/healthz" || url.pathname === "/readyz" || url.pathname === "/status") {

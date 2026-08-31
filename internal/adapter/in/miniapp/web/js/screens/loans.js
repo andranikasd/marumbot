@@ -14,8 +14,9 @@ const HTML = `
     <div class="k" data-i18n="manage.owed">Ընդհանուր պարտք</div>
     <div class="v" id="m-owed">—</div>
     <div class="row">
-      <div class="cell"><div class="k" data-i18n="manage.required">Այս ամիս պարտադիր</div><div class="v" id="m-required">—</div></div>
-      <div class="cell"><div class="k" data-i18n="manage.next">Հաջորդ վճարումը</div><div class="v" id="m-next">—</div></div>
+      <div class="cell"><div class="k" data-i18n="manage.required">Այս ամիս</div><div class="v" id="m-required">—</div></div>
+      <div class="cell"><div class="k" data-i18n="manage.next">Հաջորդը</div><div class="v" id="m-next">—</div></div>
+      <div class="cell" id="m-savecell" hidden><div class="k" data-i18n="manage.saving">Խնայում եք</div><div class="v gold" id="m-saving">—</div></div>
     </div>
     <div id="m-track" hidden>
       <div class="plan-progress"><i></i></div>
@@ -71,7 +72,16 @@ function loanCard(loan) {
     else haptic.bad();
   };
   actions.append(edit, remove);
-  view.append(h, meta, next, actions);
+  if (loan.original_major) {
+    const bar = document.createElement("div"); bar.className = "paybar";
+    const fill = document.createElement("i");
+    const share = Math.max(2, Math.min(98, Math.round((1 - loan.balance_major / loan.original_major) * 100)));
+    fill.style.width = share + "%";
+    bar.appendChild(fill);
+    view.append(h, meta, bar, next, actions);
+  } else {
+    view.append(h, meta, next, actions);
+  }
 
   const form = document.createElement("div"); form.className = "edit";
   const nameIn = document.createElement("input"); nameIn.value = loan.name; nameIn.maxLength = 60;
@@ -135,9 +145,13 @@ function renderList(loans) {
 // track until the next visit. Never a second spinner for a garnish.
 function decorate() {
   getJSON("api/plan", (d) => {
-    if (d && !d.empty && d.summary) {
+    if (d && !d.empty && !d.blocked && d.summary) {
       $("m-free").textContent = fmtDate(d.summary.payoff_date);
       $("m-track").hidden = false;
+      if (d.summary.saved_minor > 0) {
+        $("m-saving").textContent = fmtMoney(d.summary.saved_minor / 100, d.currency);
+        $("m-savecell").hidden = false;
+      }
     }
   }).catch(() => { /* the track is optional */ });
 }

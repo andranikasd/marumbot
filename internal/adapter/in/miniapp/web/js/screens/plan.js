@@ -18,7 +18,13 @@ const HTML = `
     <button type="button" data-goal="first">🎯 <span data-i18n="plan.g.first">Առաջին վարկը</span></button>
   </div>
   <p class="goal-caption" id="plan-caption"></p>
-  <div id="plan-loading" class="lede" data-i18n="plan.loading" hidden>Հաշվում եմ…</div>
+  <div id="plan-loading" hidden><div class="skel hero-skel"></div><div class="skel"></div><div class="skel"></div></div>
+  <div id="plan-blocked" hidden>
+    <div class="card"><b data-i18n="plan.blocked">Բյուջեն չի բավականացնում</b>
+      <p class="meta" id="plan-blocked-why"></p>
+      <button class="cta" type="button" data-go="budget" data-i18n="plan.blocked.fix">💰 Բարձրացնել բյուջեն</button>
+    </div>
+  </div>
   <div id="plan-empty" hidden>
     <p class="lede" data-i18n="plan.empty">Պլանի համար պետք են վարկեր և բյուջե։</p>
     <button class="cta" type="button" data-go="add" data-i18n="plan.empty.add">Ավելացնել վարկ</button>
@@ -26,15 +32,15 @@ const HTML = `
   <div id="plan-body" hidden>
     <div class="hero">
       <div class="k" data-i18n="plan.hero_k">Ազատ պարտքից</div>
-      <div class="v" id="pl-finish"></div>
+      <div class="v"><span class="num" id="pl-monthsnum"></span> <small id="pl-finish"></small></div>
       <div class="sub" id="pl-cost"></div>
       <div class="save" id="pl-save" hidden></div>
       <div class="plan-progress"><i id="pl-bar"></i></div>
       <div class="plan-progress-cap"><span data-i18n="plan.today">այսօր</span><span id="pl-finish-short"></span></div>
       <div><span class="plan-approved" id="pl-approved" hidden data-i18n="plan.approved_badge">✅ Հաստատված պլան</span></div>
     </div>
+    <ol class="tl" id="pl-list"></ol>
     <button class="cta" type="button" id="pl-approve" data-i18n="plan.approve" hidden>✅ Հաստատել այս պլանը</button>
-    <ol class="tl" id="pl-months"></ol>
   </div>
   <div id="plan-error" hidden>
     <p class="lede" data-i18n="plan.error">Չստացվեց հաշվել պլանը։</p>
@@ -59,7 +65,14 @@ async function load(g) {
   try {
     await getJSON("api/plan" + (g ? "?goal=" + encodeURIComponent(g) : ""), (d) => {
       $("plan-loading").hidden = true;
+      $("plan-blocked").hidden = true;
       if (d.empty) { $("plan-body").hidden = true; $("plan-empty").hidden = false; return; }
+      if (d.blocked) {
+        $("plan-body").hidden = true;
+        $("plan-blocked-why").textContent = sub("plan.blocked.why", { d: fmtDate(d.on), r: fmtMoney(d.required_major, "AMD"), s: fmtMoney(d.short_major, "AMD") });
+        $("plan-blocked").hidden = false;
+        return;
+      }
       goal = g || (d.goal === "fastest" ? "soonest" : d.goal === "first_win" ? "first" : "cheapest");
       chips(goal);
       render(d);
@@ -71,11 +84,25 @@ async function load(g) {
   }
 }
 
+let curOf = "AMD";
+
+// freedOf names what a win is worth: the instalment that stops existing.
+function freedOf(mo) {
+  for (const ln of mo.loans || []) {
+    if (ln.cleared && ln.freed_minor > 0) {
+      return ' <span class="num">' + sub("plan.freed", { f: fmtMoney(ln.freed_minor / 100, curOf) }) + "</span>";
+    }
+  }
+  return "";
+}
+
 function render(d) {
   const cur = d.currency;
+  curOf = cur;
   const m = (minor) => fmtMoney(minor / 100, cur);
   const s = d.summary;
-  $("pl-finish").textContent = sub("plan.finish", { d: fmtDate(s.payoff_date), n: s.months });
+  $("pl-monthsnum").textContent = String(s.months);
+  $("pl-finish").textContent = sub("plan.finish_small", { d: fmtDate(s.payoff_date) });
   let cost = sub("plan.cost", { i: m(s.interest_minor) });
   if (s.fees_minor > 0) cost += sub("plan.cost_fees", { f: m(s.fees_minor) });
   $("pl-cost").textContent = cost;
@@ -97,7 +124,7 @@ function render(d) {
     return Math.abs(paidOf(mo) - paidOf(prev)) > Math.max(1000, paidOf(prev) * 0.02);
   };
 
-  const list = $("pl-months");
+  const list = $("pl-list");
   list.textContent = "";
   let i = 0;
   while (i < months.length) {
@@ -146,7 +173,7 @@ function monthCard(mo, m) {
   li.innerHTML = '<div class="mcard">' +
     '<div class="mhead"><span class="mwhen">' + fmtDate(mo.on) + '</span><span class="mpay">' + m(paid) + "</span></div>" +
     (loans ? '<ul class="mloans">' + loans + "</ul>" : "") +
-    (mo.cleared ? '<div class="win">' + sub("plan.win", { n: esc(mo.cleared) }) + "</div>" : "") +
+    (mo.cleared ? '<div class="win">' + sub("plan.win", { n: esc(mo.cleared) }) + freedOf(mo) + "</div>" : "") +
     '<div class="mfoot">' + (mo.owed_minor > 0 ? sub("plan.owed", { o: m(mo.owed_minor) }) : T("plan.done_row")) + "</div>" +
     "</div>";
   return li;

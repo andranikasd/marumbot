@@ -117,7 +117,7 @@ var catalogue = map[Locale]map[string]string{
 		"advice.first_clear": "Առաջինը կփակվի «%s»-ը՝ %s-ին։",
 
 		"advice.result":              "📊 Արդյունք",
-		"advice.vs_minimum":          "Միայն պարտադիրը վճարելու համեմատ՝ խնայում եք <code>%s</code> և ավարտում %d ամիս շուտ։",
+		"advice.vs_minimum":          "<b>Խնայում եք <code>%s</code>՝ %d ամիս շուտ</b>՝ միայն պարտադիրի համեմատ։",
 		"advice.fees":                "Դրանից վաղաժամկետ մարման վճարներ՝ <code>%s</code>։",
 		"advice.step_fee":            "վճար՝ %s",
 		"advice.assumed":             "Հաշվարկը ենթադրում է, որ մինչև այսօր %d վճարում կատարվել է ժամանակին։",
@@ -134,6 +134,7 @@ var catalogue = map[Locale]map[string]string{
 		"advice.refuse.calculation":  "Հաշվարկը ձախողվեց, և ես չեմ ցուցադրի կասկածելի թիվ։ Խնդիրն արձանագրված է։",
 		"relief.prompt":              "Հիմա պարտադիր ամսական վճարը %s %s է։ Ո՞ր գումարից ցածր եք ուզում իջեցնել այն։ Գրեք թիվը։",
 		"relief.not_a_number":        "Գրեք գումարը թվով, օրինակ՝ 90000։",
+		"reminder.also":              "Այս օրը նաև՝ <code>%s</code> → «%s»։",
 		"advice.ladder_intro":        "Ավելի մեծ բյուջեով՝",
 		"advice.ladder":              "• <code>%s</code>/ամիս → ավարտ %s, տոկոս՝ <code>%s</code>",
 		"advice.relief.head":         "Պարտադիր ամսական վճարը <code>%s</code>-ից կիջնի <code>%s</code>-ի՝ %d-րդ ամսից։",
@@ -302,7 +303,7 @@ var catalogue = map[Locale]map[string]string{
 		"advice.first_clear": "“%s” clears first, on %s.",
 
 		"advice.result":              "📊 Result",
-		"advice.vs_minimum":          "Against paying only the minimum you save <code>%s</code> and finish %d months sooner.",
+		"advice.vs_minimum":          "<b>You save <code>%s</code> and finish %d months sooner</b> than paying only the minimum.",
 		"advice.fees":                "Of which early-repayment fees: <code>%s</code>.",
 		"advice.step_fee":            "fee %s",
 		"advice.assumed":             "Assumes %d instalment(s) were paid on time up to today.",
@@ -319,6 +320,7 @@ var catalogue = map[Locale]map[string]string{
 		"advice.refuse.calculation":  "The calculation failed and I will not show a doubtful number. The problem has been recorded.",
 		"relief.prompt":              "Your required monthly payment is %s %s today. What amount do you want to get under? Type the number.",
 		"relief.not_a_number":        "Type the amount as a number, e.g. 90000.",
+		"reminder.also":              "Also due this day: <code>%s</code> → “%s”.",
 		"advice.ladder_intro":        "With a bigger budget:",
 		"advice.ladder":              "• <code>%s</code>/month → done %s, interest <code>%s</code>",
 		"advice.relief.head":         "Your required monthly payment drops from <code>%s</code> to <code>%s</code> from month %d.",

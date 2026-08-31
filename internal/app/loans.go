@@ -53,7 +53,11 @@ type UserLoan struct {
 	Contract    model.Contract
 	// Balance is the latest anchor: what was owed on AsOf, by whoever said so.
 	Balance money.Amount
-	AsOf    date.Date
+	// OriginalPrincipal is the earliest recorded balance: what the loan
+	// started at, as far as Marum has seen. Zero when only one snapshot
+	// exists. It exists so a card can show how much is already behind.
+	OriginalPrincipal money.Amount
+	AsOf              date.Date
 	// Trust is how the balance was established: user_entered, bank_confirmed or
 	// imported_verified. Only a confirmed figure resets drift, so this decides
 	// whether a number is shown as reliable or as indicative.

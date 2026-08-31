@@ -5,13 +5,12 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
-	"sort"
+	"regexp"
 	"strings"
 	"time"
 
@@ -300,6 +299,9 @@ func (s *Server) listLoans() http.Handler {
 				"maturity":  l.Contract.MaturityDate.String(),
 				"confirmed": l.Confirmed(),
 			}
+			if l.OriginalPrincipal.Sign() > 0 && l.OriginalPrincipal.Cmp(l.Balance) > 0 {
+				row["original_major"] = major(l.OriginalPrincipal)
+			}
 			// The next instalment, projected the same way the bot projects it,
 			// so the summary card and the chat cannot disagree. Absent when the
 			// schedule cannot be built; the card then shows a dash, not a zero.
@@ -434,6 +436,16 @@ func (s *Server) planSheet() http.Handler {
 				writeJSON(w, http.StatusOK, map[string]any{"empty": true})
 				return
 			}
+			var inf *plan.InfeasibleError
+			if errors.As(err, &inf) {
+				// A budget that cannot meet a date is not a failure page; it
+				// is a fact with a fix, and the screen offers the fix.
+				writeJSON(w, http.StatusOK, map[string]any{
+					"blocked": "budget_low", "on": inf.On.String(),
+					"required_major": major(inf.Required), "short_major": major(inf.Shortfall),
+				})
+				return
+			}
 			s.Log.ErrorContext(ctx, "building the plan sheet failed", "error", err)
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "plan_failed"})
 			return
@@ -481,31 +493,23 @@ func (s *Server) shell(sub fs.FS) http.Handler {
 			http.Error(w, "unavailable", http.StatusInternalServerError)
 			return
 		}
-		v := url.PathEscape(s.Version)
-		pre := &strings.Builder{}
-		for _, m := range moduleFiles(sub) {
-			fmt.Fprintf(pre, "<link rel=\"modulepreload\" href=\"a/%s/%s\">\n", v, m)
-		}
-		out := strings.ReplaceAll(string(b), `href="styles.css"`, `href="a/`+v+`/styles.css"`)
-		out = strings.ReplaceAll(out, `src="js/main.js"`, `src="a/`+v+`/js/main.js"`)
-		out = strings.Replace(out, "</head>", pre.String()+"</head>", 1)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(out))
+		_, _ = w.Write(stampShell(b, s.Version))
 	})
 }
 
-// moduleFiles lists every JS module in the embed, for preloading.
-func moduleFiles(sub fs.FS) []string {
-	var out []string
-	_ = fs.WalkDir(sub, "js", func(p string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && strings.HasSuffix(p, ".js") {
-			out = append(out, p)
-		}
-		return nil
-	})
-	sort.Strings(out)
+// stampShell rewrites every local asset reference under the versioned
+// prefix. One rule for stylesheets, scripts and preloads alike, so a file
+// added to the shell is versioned by construction. The Worker applies the
+// same rewrite when it serves the shell from the edge.
+func stampShell(b []byte, version string) []byte {
+	v := url.PathEscape(version)
+	out := shellRef.ReplaceAll(b, []byte(`$1="a/`+v+`/$2"`))
 	return out
 }
+
+// shellRef matches href/src attributes pointing at local assets.
+var shellRef = regexp.MustCompile(`(href|src)="((?:js/[^"]+|styles\.css))"`)
 
 // stripVersion drops the leading version segment: <version>/js/main.js →
 // js/main.js. The value is never interpreted; it exists to make the URL new.
