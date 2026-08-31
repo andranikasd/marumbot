@@ -73,3 +73,17 @@ export const confirmDialog = (msg) => new Promise((resolve) => {
   if (tg?.showConfirm) tg.showConfirm(msg, resolve);
   else resolve(window.confirm(msg));
 });
+
+// group re-renders an amount input with thousand separators as the user
+// types, keeping the caret at the end. Separators are spaces, which num()
+// already strips, so validation never sees them.
+export function group(el) {
+  const fmt = () => {
+    const raw = el.value.replace(/[^\d.,]/g, "");
+    const [i, f] = raw.replace(/,/g, ".").split(".");
+    if (!i) return;
+    el.value = i.replace(/\B(?=(\d{3})+(?!\d))/g, " ") + (f !== undefined ? "." + f : "");
+  };
+  el.addEventListener("input", fmt);
+  el.addEventListener("blur", fmt);
+}

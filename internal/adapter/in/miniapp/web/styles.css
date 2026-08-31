@@ -180,7 +180,7 @@ input[aria-invalid="true"]{border-color:var(--danger)}
 
 /* ---------- floating dock ---------- */
 nav.tabs{
-  position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:10;
+  position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:10;
   display:flex;gap:2px;padding:6px;border-radius:999px;
   background:color-mix(in srgb,var(--card) 82%, transparent);
   backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
@@ -206,6 +206,14 @@ nav.tabs button.on .ic{filter:none;opacity:1}
   color:var(--hint);opacity:.65;pointer-events:none;z-index:5}
 
 .state{color:var(--hint);text-align:center;padding:26px 0;font-size:14px}
+/* Skeletons: the shape of the content before the content. A shimmering
+   card promises exactly what will appear, which reads faster than a word. */
+.skel{border-radius:var(--r);height:74px;margin:0 0 12px;
+  background:linear-gradient(100deg,var(--card) 40%,color-mix(in srgb,var(--fg) 5%,var(--card)) 50%,var(--card) 60%);
+  background-size:200% 100%;animation:shimmer 1.1s linear infinite}
+.skel.hero-skel{height:132px;border-radius:var(--r-lg)}
+@keyframes shimmer{to{background-position:-200% 0}}
+@media (prefers-reduced-motion: reduce){.skel{animation:none}}
 .state .cta{margin-top:12px}
 
 /* Legacy helpers still referenced by screen markup. */

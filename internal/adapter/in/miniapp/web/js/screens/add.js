@@ -3,7 +3,7 @@
 // figure is computed on the server, where it is tested against real bank
 // schedules.
 "use strict";
-import { tg, haptic, toast, fmtMoney, num, mainButton } from "../core.js";
+import { haptic, toast, fmtMoney, num, mainButton, group } from "../core.js";
 import { T } from "../i18n.js";
 import { api, invalidate } from "../api.js";
 import { register, go, currentScreen } from "../nav.js";
@@ -263,6 +263,8 @@ register({
   html: HTML,
   onMount() {
     resetDates();
+    group($("principal"));
+    group($("balance"));
     for (const el of $("f").querySelectorAll("input,select")) {
       el.addEventListener("input", () => { el.dataset.touched = "1"; estimate(); });
       el.addEventListener("change", () => { el.dataset.touched = "1"; estimate(); });
