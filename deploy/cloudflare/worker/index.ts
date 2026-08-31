@@ -51,6 +51,9 @@ export class MarumApp extends Container<Env> {
       // The edge already owns the transport. Long polling here would mean two
       // readers of the same bot and a race for every update.
       MARUM_MODE: "webhook",
+      // The deployed version, for telemetry and for the Mini App cache stamp:
+      // every URL the bot hands out carries it, so a deploy is a new URL.
+      MARUM_VERSION: env.VERSION ?? "dev",
       MARUM_DATABASE_URL: env.MARUM_DATABASE_URL,
       MARUM_BOT_TOKEN: env.MARUM_BOT_TOKEN,
       MARUM_WEBHOOK_SECRET: env.MARUM_WEBHOOK_SECRET,
@@ -114,6 +117,7 @@ interface Env {
   PYROSCOPE_BASIC_AUTH_USER?: string;
   PYROSCOPE_BASIC_AUTH_PASSWORD?: string;
   WEBHOOK_PATH: string;
+  VERSION?: string;
   ENVIRONMENT: string;
 }
 
