@@ -136,5 +136,17 @@ func MatchButton(text string) (kind string, ok bool) {
 			}
 		}
 	}
+	// Labels that shipped and were later renamed. A keyboard drawn last month
+	// is still on someone's screen, and its tap must keep meaning what it
+	// meant when it was drawn.
+	if k, ok := legacyButtons[t]; ok {
+		return k, true
+	}
 	return "", false
+}
+
+// legacyButtons maps retired labels to their commands.
+var legacyButtons = map[string]string{
+	"➕ Ավելացնել վարկ": "add",
+	"➕ Add a loan":     "add",
 }

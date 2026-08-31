@@ -86,14 +86,24 @@ type SheetSummary struct {
 
 // SheetMonth is one row of the sheet.
 type SheetMonth struct {
-	N             int    `json:"n"`
-	On            string `json:"on"` // ISO; the client renders it in its locale
-	RequiredMinor int64  `json:"required_minor"`
-	ExtraMinor    int64  `json:"extra_minor"`
-	FeesMinor     int64  `json:"fees_minor"`
-	InterestMinor int64  `json:"interest_minor"`
-	OwedMinor     int64  `json:"owed_minor"`
-	Cleared       string `json:"cleared,omitempty"`
+	N             int         `json:"n"`
+	On            string      `json:"on"` // ISO; the client renders it in its locale
+	RequiredMinor int64       `json:"required_minor"`
+	ExtraMinor    int64       `json:"extra_minor"`
+	FeesMinor     int64       `json:"fees_minor"`
+	InterestMinor int64       `json:"interest_minor"`
+	OwedMinor     int64       `json:"owed_minor"`
+	Cleared       string      `json:"cleared,omitempty"`
+	Loans         []SheetLoan `json:"loans,omitempty"`
+}
+
+// SheetLoan is one loan inside a month: whom to pay, how much, what remains.
+type SheetLoan struct {
+	Name       string `json:"name"`
+	PaidMinor  int64  `json:"paid_minor"`
+	ExtraMinor int64  `json:"extra_minor"`
+	OwedMinor  int64  `json:"owed_minor"`
+	Cleared    bool   `json:"cleared,omitempty"`
 }
 
 // PlanSheet computes the full sheet for a goal. The zero goal means "the
@@ -162,12 +172,19 @@ func (w *Worker) PlanSheet(ctx context.Context, userID string, goal *plan.Goal) 
 		sh.Summary.SavedMonths = rep.Minimum.Months - o.Months
 	}
 	for _, m := range o.Timeline {
-		sh.Months = append(sh.Months, SheetMonth{
+		sm := SheetMonth{
 			N: m.Month, On: m.On.String(),
 			RequiredMinor: m.Required.Minor(), ExtraMinor: m.Extra.Minor(),
 			FeesMinor: m.Fees.Minor(), InterestMinor: m.Interest.Minor(),
 			OwedMinor: m.Owed.Minor(), Cleared: m.Cleared,
-		})
+		}
+		for _, ml := range m.Loans {
+			sm.Loans = append(sm.Loans, SheetLoan{
+				Name: ml.Name, PaidMinor: ml.Paid.Minor(), ExtraMinor: ml.Extra.Minor(),
+				OwedMinor: ml.Owed.Minor(), Cleared: ml.Cleared,
+			})
+		}
+		sh.Months = append(sh.Months, sm)
 	}
 	return sh, nil
 }

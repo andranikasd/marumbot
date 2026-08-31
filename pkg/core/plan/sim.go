@@ -42,6 +42,17 @@ type Action struct {
 	Saves money.Amount
 }
 
+// MonthLoan is one loan's share of a cycle: what it was paid and where it
+// ended, so a sheet can answer "whom do I pay, how much, in month seven".
+type MonthLoan struct {
+	ID      string
+	Name    string
+	Paid    money.Amount // everything handed to this loan this cycle, fees included
+	Extra   money.Amount // the optional part, fees excluded
+	Owed    money.Amount // balance after the cycle
+	Cleared bool
+}
+
 // MonthState is one cycle of a run, for timelines and comparators.
 type MonthState struct {
 	Month    int
@@ -53,6 +64,7 @@ type MonthState struct {
 	Owed     money.Amount // balances at the end of the cycle
 	Cash     money.Amount // carried into the next cycle
 	Cleared  string       // a loan that reached zero this cycle, by name
+	Loans    []MonthLoan  // per loan, in input order
 }
 
 // Result is what one policy produces over a whole run.
@@ -123,6 +135,10 @@ type loanState struct {
 	allowance map[int]money.Amount
 	closed    bool
 	closedOn  date.Date
+	// The cycle's running figures, reset when a cycle opens.
+	cyclePaid    money.Amount
+	cycleExtra   money.Amount
+	cycleCleared bool
 }
 
 // obligation is the memoised next instalment for one loan state.
@@ -387,6 +403,9 @@ func (s *sim) openCycle(on date.Date) {
 	s.cycle++
 	s.cycleIncome = on
 	s.month = MonthState{Month: s.cycle, On: on, Required: zero, Extra: zero, Fees: zero, Interest: zero, Owed: zero, Cash: zero}
+	for _, ls := range s.loans {
+		ls.cyclePaid, ls.cycleExtra, ls.cycleCleared = zero, zero, false
+	}
 }
 
 func (s *sim) closeCycle() {
@@ -397,6 +416,16 @@ func (s *sim) closeCycle() {
 		}
 	}
 	s.month.Owed, s.month.Cash = owed, s.cash
+	for _, ls := range s.loans {
+		if ls.cyclePaid.Sign() <= 0 && ls.closed && !ls.cycleCleared {
+			continue // long since paid off; not a row in this month
+		}
+		s.month.Loans = append(s.month.Loans, MonthLoan{
+			ID: ls.pos.ID, Name: ls.pos.Name,
+			Paid: ls.cyclePaid, Extra: ls.cycleExtra,
+			Owed: ls.balance, Cleared: ls.cycleCleared,
+		})
+	}
 	s.res.Timeline = append(s.res.Timeline, s.month)
 	if s.cycle == 1 {
 		s.res.NextMonthOwed = owed
@@ -572,6 +601,8 @@ func (s *sim) accrueTo(ls *loanState, on date.Date) error {
 func (s *sim) prepay(ls *loanState, on date.Date, q Quote, early bool) {
 	c := ls.pos.Contract
 	s.cash = s.sub(s.cash, q.Outflow)
+	ls.cyclePaid = s.add(ls.cyclePaid, q.Outflow)
+	ls.cycleExtra = s.add(ls.cycleExtra, s.sub(q.Outflow, q.Fee))
 	s.res.TotalPaid = s.add(s.res.TotalPaid, q.Outflow)
 	s.res.TotalFees = s.add(s.res.TotalFees, q.Fee)
 	s.month.Fees = s.add(s.month.Fees, q.Fee)
@@ -637,6 +668,7 @@ func (s *sim) due(ls *loanState, on date.Date) {
 		return
 	}
 	s.cash = s.sub(s.cash, required)
+	ls.cyclePaid = s.add(ls.cyclePaid, required)
 	principal := s.sub(required, interest)
 	ls.balance = s.sub(ls.balance, principal)
 	ls.accrued = money.Zero(s.cur)
@@ -680,6 +712,7 @@ func (s *sim) due(ls *loanState, on date.Date) {
 // close retires a loan and frees its instalment.
 func (s *sim) close(ls *loanState, on date.Date) {
 	ls.closed, ls.closedOn = true, on
+	ls.cycleCleared = true
 	ls.balance = money.Zero(s.cur)
 	freed := ls.carried
 	if freed.Sign() == 0 {

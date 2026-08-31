@@ -415,7 +415,7 @@ func (w *Worker) callback(ctx context.Context, userID string, chat int64, data s
 		// a button in the wrong language is worse than none, but not a reason
 		// to fail the switch that fixes everything else.
 		if w.MiniApp != "" {
-			if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.Button(want, KindLoans), w.MiniApp+"?screen=manage"); err != nil {
+			if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.Button(want, KindAdd), w.MiniApp); err != nil {
 				w.Log.DebugContext(ctx, "menu button not localised", "error", err)
 			}
 		}
