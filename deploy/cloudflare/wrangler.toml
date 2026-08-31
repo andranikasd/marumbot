@@ -89,3 +89,25 @@ id = "set-after-creating-the-dev-hyperdrive-config"
 #   MARUM_DATABASE_URL         through Hyperdrive
 #   OTEL_EXPORTER_OTLP_HEADERS Grafana Cloud authorisation
 # ---------------------------------------------------------------------------
+
+
+# --- production -------------------------------------------------------------
+# Dormant until armed. The domain and Hyperdrive/database wiring are filled
+# by the operator as part of the v1.0.0-beta checklist; nothing deploys here
+# until the "prod" GitHub environment carries its secrets.
+[env.prod]
+
+[env.prod.assets]
+directory = "../../internal/adapter/in/miniapp/web"
+binding = "ASSETS"
+run_worker_first = true
+
+[env.prod.vars]
+ENVIRONMENT = "prod"
+
+[env.prod.triggers]
+crons = ["*/5 * * * *"]
+
+# [[env.prod.routes]]
+# pattern = "marum.loan"        # ← operator: set the production domain
+# custom_domain = true
