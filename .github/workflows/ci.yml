@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version: "${{ env.GO_VERSION }}", cache: true }
       - name: gofumpt
         run: |
@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version: "${{ env.GO_VERSION }}", cache: true }
       - run: go vet ./...
       - name: govulncheck
@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version: "${{ env.GO_VERSION }}", cache: true }
       # Downloading modules is a network operation and the proxy is not always
       # well. A failed zip fetch aborted the whole run with "stream error:
@@ -77,7 +77,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version: "${{ env.GO_VERSION }}", cache: true }
       # The engine must stay publishable on its own. If it ever imports the
       # application, a driver or a clock, this stops compiling - which is a
@@ -120,7 +120,7 @@ jobs:
         ports: ["5432:5432"]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version: "${{ env.GO_VERSION }}", cache: true }
       - name: Install goose
         run: go install github.com/pressly/goose/v3/cmd/goose@v3.24.1
