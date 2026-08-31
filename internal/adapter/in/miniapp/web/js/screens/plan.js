@@ -29,7 +29,7 @@ const HTML = `
       <div class="v" id="pl-finish"></div>
       <div class="sub" id="pl-cost"></div>
       <div class="save" id="pl-save" hidden></div>
-      <div class="plan-progress"><i id="pl-bar" style="width:3%"></i></div>
+      <div class="plan-progress"><i id="pl-bar"></i></div>
       <div class="plan-progress-cap"><span data-i18n="plan.today">այսօր</span><span id="pl-finish-short"></span></div>
       <div><span class="plan-approved" id="pl-approved" hidden data-i18n="plan.approved_badge">✅ Հաստատված պլան</span></div>
     </div>
