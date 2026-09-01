@@ -231,7 +231,7 @@ export default {
     // invitation to credential stuffing, and the answer is Cloudflare Access in
     // front of the hostname rather than trusting one password.
     if (url.hostname.startsWith("admin-")) {
-      if (env.ENVIRONMENT === "production") return new Response(null, { status: 404 });
+      if (env.ENVIRONMENT === "prod") return new Response(null, { status: 404 });
       return app(env).containerFetch(request, 8081);
     }
 

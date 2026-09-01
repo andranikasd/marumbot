@@ -31,8 +31,13 @@ type Webhook struct {
 	Users        app.UserStore
 	Cipher       *identity.Cipher
 	ServiceToken string
-	Timezone     string
-	Clock        app.Clock
+	// WebhookSecret is Telegram's secret_token, echoed by Telegram in
+	// X-Telegram-Bot-Api-Secret-Token. The Worker checks it at the edge, but a
+	// deployment without the Worker still needs the check here: defence in
+	// depth costs one compare.
+	WebhookSecret string
+	Timezone      string
+	Clock         app.Clock
 	// Handle processes the command that was just recorded, before the webhook
 	// answers. See accept for why this is synchronous, and why it is the one
 	// command rather than whatever is oldest.
@@ -56,6 +61,13 @@ func (h *Webhook) Handler() http.Handler {
 			if subtle.ConstantTimeCompare([]byte(got), []byte(h.ServiceToken)) != 1 {
 				// No detail in the response: an attacker learns nothing from a
 				// 401 and everything from "wrong token".
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+		}
+		if h.WebhookSecret != "" {
+			got := r.Header.Get("X-Telegram-Bot-Api-Secret-Token")
+			if subtle.ConstantTimeCompare([]byte(got), []byte(h.WebhookSecret)) != 1 {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}

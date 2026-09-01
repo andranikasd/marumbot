@@ -53,8 +53,12 @@ GOLANGCI_VERSION := v2.13.1
 lint: ## gofumpt and golangci-lint
 	$(RUN) golangci/golangci-lint:$(GOLANGCI_VERSION) golangci-lint run --timeout 5m
 
+# Pinned for the same reason golangci-lint is: a floating formatter makes local
+# and CI disagree about what formatted means.
+GOFUMPT_VERSION := v0.7.0
+
 fmt: ## Format with gofumpt
-	$(RUN) $(GO_ALPINE) sh -c 'go run mvdan.cc/gofumpt@latest -l -w .'
+	$(RUN) $(GO_ALPINE) sh -c 'go run mvdan.cc/gofumpt@$(GOFUMPT_VERSION) -l -w .'
 
 tidy: ## go mod tidy
 	$(RUN) $(GO_ALPINE) go mod tidy

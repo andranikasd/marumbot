@@ -55,10 +55,23 @@ func (w *Worker) TickReminders(ctx context.Context, users UserLister) (int, erro
 		return 0, nil
 	}
 	now := w.Clock.Now()
-	if !w.lastRemind.IsZero() && now.Sub(w.lastRemind) < remindEvery {
+	last := w.lastRemind.Load()
+	if last != 0 && now.Sub(time.Unix(0, last)) < remindEvery {
 		return 0, nil
 	}
-	w.lastRemind = now
+	if !w.lastRemind.CompareAndSwap(last, now.UnixNano()) {
+		return 0, nil // another tick won the walk
+	}
+	// Housekeeping rides the hourly walk: completed inbox rows only serve
+	// update-id dedup, and Telegram's retries span minutes, so a week of
+	// retention is generous. Optional -- a fake store simply skips it.
+	if j, ok := w.Inbox.(InboxJanitor); ok {
+		if n, err := j.PurgeCompletedBefore(ctx, now.Add(-inboxRetention)); err != nil {
+			w.Log.WarnContext(ctx, "purging completed commands failed", "error", err)
+		} else if n > 0 {
+			w.Log.InfoContext(ctx, "purged completed commands", "rows", n)
+		}
+	}
 	ids, err := users.ActiveLoanUsers(ctx, 500)
 	if err != nil {
 		return 0, fmt.Errorf("listing accounts for reminders: %w", err)
@@ -137,23 +150,24 @@ func (w *Worker) SendDueReminders(ctx context.Context, limit int32) (int, error)
 	if err != nil {
 		return 0, fmt.Errorf("reading due reminders: %w", err)
 	}
+	// One locale, one chat and one schedule build per user, not per reminder:
+	// fifty due reminders used to mean hundreds of queries and repeated
+	// projections of the same loans.
+	books := map[string]*reminderBook{}
 	sent := 0
 	for _, d := range due {
-		locale, _, err := w.Users.Locale(ctx, d.UserID)
-		if err != nil {
-			w.Log.WarnContext(ctx, "reminder: unknown user", "user", d.UserID, "error", err)
+		book, ok := books[d.UserID]
+		if !ok {
+			book = w.reminderBook(ctx, d.UserID)
+			books[d.UserID] = book
+		}
+		if book == nil {
 			continue
 		}
-		chat, err := w.Chats.ChatID(ctx, d.UserID)
-		if err != nil {
-			w.Log.WarnContext(ctx, "reminder: no chat", "user", d.UserID, "error", err)
-			continue
-		}
-		l := i18n.Locale(locale)
 
-		text := w.reminderText(ctx, l, d)
+		text := reminderText(book, d)
 
-		if err := w.Send.SendMessage(ctx, chat, text, w.mainMenu(l)); err != nil {
+		if err := w.Send.SendMessage(ctx, book.chat, text, w.mainMenu(book.locale)); err != nil {
 			// Left scheduled, so the next tick tries again. A reminder that
 			// failed to send is not a reminder that is no longer owed.
 			w.Log.WarnContext(ctx, "reminder failed to send", "occurrence", d.ID, "error", err)
@@ -170,14 +184,61 @@ func (w *Worker) SendDueReminders(ctx context.Context, limit int32) (int, error)
 	return sent, nil
 }
 
+// reminderBook is everything one user's reminders read: locale, chat, and each
+// live loan with its projected schedule, built once.
+type reminderBook struct {
+	locale i18n.Locale
+	chat   int64
+	loans  []scheduledLoan
+}
+
+type scheduledLoan struct {
+	loan  UserLoan
+	sched amortisation.Schedule
+}
+
+// reminderBook loads one user's reminder context, or nil when the user cannot
+// receive reminders at all; the cause is logged here, once.
+func (w *Worker) reminderBook(ctx context.Context, userID string) *reminderBook {
+	locale, _, err := w.Users.Locale(ctx, userID)
+	if err != nil {
+		w.Log.WarnContext(ctx, "reminder: unknown user", "user", userID, "error", err)
+		return nil
+	}
+	chat, err := w.Chats.ChatID(ctx, userID)
+	if err != nil {
+		w.Log.WarnContext(ctx, "reminder: no chat", "user", userID, "error", err)
+		return nil
+	}
+	book := &reminderBook{locale: i18n.Locale(locale), chat: chat}
+	loans, err := w.Loans.LoansForUser(ctx, userID, plan.MaxLoans+1)
+	if err != nil {
+		// Reminders still go out, without figures: a late reminder with a
+		// number is worse than a timely one without.
+		w.Log.WarnContext(ctx, "reminder: listing loans failed", "user", userID, "error", err)
+		return book
+	}
+	for _, ln := range loans {
+		if ln.Balance.Sign() <= 0 {
+			continue
+		}
+		s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
+		if err != nil || len(s.Rows) == 0 {
+			continue
+		}
+		book.loans = append(book.loans, scheduledLoan{loan: ln, sched: s})
+	}
+	return book
+}
+
 // reminderText is the whole reminder: date, amount, loan. The amount is the
 // instalment the schedule puts on that date; when it cannot be projected the
-// reminder still goes out, without a figure, because a late reminder with a
-// number is worse than a timely one without.
-func (w *Worker) reminderText(ctx context.Context, l i18n.Locale, d DueReminder) string {
+// reminder still goes out, without a figure.
+func reminderText(book *reminderBook, d DueReminder) string {
+	l := book.locale
 	name := html.EscapeString(d.LoanName)
 	var text string
-	if amount, ok := w.instalmentOn(ctx, d); ok {
+	if amount, ok := instalmentOn(book, d); ok {
 		if d.OffsetDays < 0 {
 			text = i18n.T(l, "reminder.due_soon", d.DueDate, amount, name)
 		} else {
@@ -191,53 +252,28 @@ func (w *Worker) reminderText(ctx context.Context, l i18n.Locale, d DueReminder)
 	// The reminder knows the plan: other instalments on the same date are
 	// named, so one message covers the day rather than four covering it in
 	// pieces.
-	for _, also := range w.alsoDue(ctx, d) {
-		text += "\n" + also
+	for _, s := range book.loans {
+		if s.loan.ID == d.LoanID {
+			continue
+		}
+		if len(s.sched.Rows) > 0 && s.sched.Rows[0].Due.String() == d.DueDate {
+			text += "\n" + i18n.T(l, "reminder.also",
+				s.sched.Rows[0].Payment.String(), html.EscapeString(s.loan.Name))
+		}
 	}
 	return text
 }
 
-// alsoDue lists the other loans with an instalment on the reminder's date.
-func (w *Worker) alsoDue(ctx context.Context, d DueReminder) []string {
-	loans, err := w.Loans.LoansForUser(ctx, d.UserID, plan.MaxLoans+1)
-	if err != nil {
-		return nil
-	}
-	locale, _, err := w.Users.Locale(ctx, d.UserID)
-	if err != nil {
-		return nil
-	}
-	l := i18n.Locale(locale)
-	var out []string
-	for _, ln := range loans {
-		if ln.ID == d.LoanID || ln.Balance.Sign() <= 0 {
-			continue
-		}
-		s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
-		if err != nil || len(s.Rows) == 0 || s.Rows[0].Due.String() != d.DueDate {
-			continue
-		}
-		out = append(out, i18n.T(l, "reminder.also", s.Rows[0].Payment.String(), html.EscapeString(ln.Name)))
-	}
-	return out
-}
-
 // instalmentOn finds the scheduled payment falling on the reminder's date.
-func (w *Worker) instalmentOn(ctx context.Context, d DueReminder) (string, bool) {
-	if w.Editor == nil {
-		return "", false
-	}
-	ln, err := w.Editor.LoanForUser(ctx, d.LoanID, d.UserID)
-	if err != nil {
-		return "", false
-	}
-	s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
-	if err != nil {
-		return "", false
-	}
-	for _, r := range s.Rows {
-		if r.Due.String() == d.DueDate {
-			return r.Payment.String(), true
+func instalmentOn(book *reminderBook, d DueReminder) (string, bool) {
+	for _, s := range book.loans {
+		if s.loan.ID != d.LoanID {
+			continue
+		}
+		for _, r := range s.sched.Rows {
+			if r.Due.String() == d.DueDate {
+				return r.Payment.String(), true
+			}
 		}
 	}
 	return "", false

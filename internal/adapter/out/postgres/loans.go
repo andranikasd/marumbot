@@ -164,9 +164,13 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 			l.Balance = money.Zero(cur)
 		}
 		if asOf != nil {
-			if d, err := date.Parse(*asOf); err == nil {
-				l.AsOf = d
+			d, err := date.Parse(*asOf)
+			if err != nil {
+				// A zero AsOf silently anchors the schedule at the start date,
+				// which shows wrong amounts; a bad stored date must surface.
+				return nil, fmt.Errorf("loan %s as_of: %w", l.ID, err)
 			}
+			l.AsOf = d
 		}
 		if trust != nil {
 			l.Trust = *trust
@@ -270,44 +274,80 @@ func (s *Store) ArchiveLoan(ctx context.Context, loanID, userID string) error {
 	return err
 }
 
-// LoanForUser returns one loan the borrower owns.
+// LoanForUser returns one loan the borrower owns. It maps exactly the columns
+// ListLoansForUser does: a contract rebuilt with defaults instead of the stored
+// day count, rounding and snapshot as_of produced different instalments here
+// than in the list, and with a zero AsOf the schedule re-accrued from the start
+// date on every mid-life loan.
 func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.UserLoan, error) {
 	var (
 		l         app.UserLoan
 		code      string
 		rate      string
+		dayCount  string
 		repayment string
+		mode      string
+		unit      int32
 		start     string
 		maturity  string
 		day       int16
 		principal *int64
+		asOf      *string
+		trust     *string
+		excess    string
+		prepay    string
 	)
 	err := s.pool.QueryRow(ctx, q("GetLoanForUser"), loanID, userID).Scan(
-		&l.ID, &l.Name, &l.Description, &code, &rate, &repayment,
-		&start, &maturity, &day, &principal)
+		&l.ID, &l.Name, &l.Description, &code,
+		&rate, &repayment, &dayCount, &start, &maturity, &day,
+		&mode, &unit, &principal, &asOf, &trust, &excess, &prepay)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return app.UserLoan{}, app.ErrNotFound
 	}
 	if err != nil {
 		return app.UserLoan{}, err
 	}
+	if l.Excess, err = allocation.ParseExcessRule(excess); err != nil {
+		return app.UserLoan{}, fmt.Errorf("loan %s: %w", l.ID, err)
+	}
 	cur, err := money.Lookup(code)
 	if err != nil {
 		return app.UserLoan{}, err
 	}
-	startDate, _ := date.Parse(start)
-	maturityDate, _ := date.Parse(maturity)
+	prepayment, err := parsePrepayment(prepay, cur)
+	if err != nil {
+		return app.UserLoan{}, fmt.Errorf("loan %s: %w", l.ID, err)
+	}
+	startDate, err := date.Parse(start)
+	if err != nil {
+		return app.UserLoan{}, fmt.Errorf("loan %s start date: %w", l.ID, err)
+	}
+	maturityDate, err := date.Parse(maturity)
+	if err != nil {
+		return app.UserLoan{}, fmt.Errorf("loan %s maturity date: %w", l.ID, err)
+	}
 	l.Contract = model.Contract{
 		LoanID: model.ID(l.ID), Version: 1, Currency: cur,
-		NominalRate: parseRate(rate), DayCount: money.Actual365,
+		NominalRate: parseRate(rate), DayCount: dayCountFrom(dayCount),
 		Type: repaymentTypeFrom(repayment), StartDate: startDate,
 		MaturityDate: maturityDate, PaymentDay: int(day),
-		Rounding: money.DefaultPolicy(cur),
+		Rounding:   money.Policy{Mode: roundingModeFrom(mode), Unit: int64(unit)},
+		Prepayment: prepayment,
 	}
 	if principal != nil {
 		l.Balance = money.FromMinor(*principal, cur)
 	} else {
 		l.Balance = money.Zero(cur)
+	}
+	if asOf != nil {
+		d, err := date.Parse(*asOf)
+		if err != nil {
+			return app.UserLoan{}, fmt.Errorf("loan %s as_of: %w", l.ID, err)
+		}
+		l.AsOf = d
+	}
+	if trust != nil {
+		l.Trust = *trust
 	}
 	return l, nil
 }

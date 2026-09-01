@@ -64,6 +64,15 @@ type InboxStore interface {
 	Fail(ctx context.Context, id, token, code string, retryAt time.Time, dead bool) error
 }
 
+// InboxJanitor is implemented by stores that can purge old completed commands.
+// Optional: a store without it simply keeps its rows.
+type InboxJanitor interface {
+	PurgeCompletedBefore(ctx context.Context, cutoff time.Time) (int64, error)
+}
+
+// inboxRetention is how long a completed command is kept for update-id dedup.
+const inboxRetention = 7 * 24 * time.Hour
+
 // MaxAttempts is how many times a command is retried before it is set aside.
 //
 // Dead is not deleted: a command that cannot be processed is evidence about a

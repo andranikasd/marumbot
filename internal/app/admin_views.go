@@ -183,9 +183,6 @@ func (a *Admin) enrich(ctx context.Context, v *LoanView, now time.Time) {
 func supportText(l LoanDetail, ln *UserLoan, p *Projection) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s", l.Name)
-	if l.Lender != nil && *l.Lender != "" {
-		fmt.Fprintf(&b, " (%s)", *l.Lender)
-	}
 	b.WriteString("\n")
 	c := ln.Contract
 	fmt.Fprintf(&b, "Terms: %s, %s, %s, paid on day %d, %s to %s\n",

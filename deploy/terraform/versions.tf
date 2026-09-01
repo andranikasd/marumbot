@@ -19,6 +19,9 @@ terraform {
     }
   }
 
+  # No state locking: R2's S3 API offers no DynamoDB-style lock, so two
+  # concurrent applies can corrupt state. Single operator, one apply at a
+  # time -- and CI must never run apply in parallel with a human.
   backend "s3" {}
 }
 

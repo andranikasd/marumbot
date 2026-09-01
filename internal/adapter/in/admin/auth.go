@@ -123,11 +123,21 @@ type throttle struct {
 	mu       sync.Mutex
 	failures map[string]int
 	until    map[string]time.Time
+	seen     map[string]time.Time
 }
 
 func newThrottle() *throttle {
-	return &throttle{failures: map[string]int{}, until: map[string]time.Time{}}
+	return &throttle{
+		failures: map[string]int{},
+		until:    map[string]time.Time{},
+		seen:     map[string]time.Time{},
+	}
 }
+
+// throttleRetention is how long a failing address is remembered. Longer than
+// the maximum backoff, so pruning never shortens a block; short enough that
+// addresses which only ever fail cannot grow the maps without bound.
+const throttleRetention = 15 * time.Minute
 
 func (t *throttle) blocked(addr string, now time.Time) (bool, time.Duration) {
 	t.mu.Lock()
@@ -141,7 +151,15 @@ func (t *throttle) blocked(addr string, now time.Time) (bool, time.Duration) {
 func (t *throttle) fail(addr string, now time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	for a, s := range t.seen {
+		if now.Sub(s) > throttleRetention {
+			delete(t.failures, a)
+			delete(t.until, a)
+			delete(t.seen, a)
+		}
+	}
 	t.failures[addr]++
+	t.seen[addr] = now
 	if n := t.failures[addr]; n >= 5 {
 		// Back off geometrically, capped, so a forgotten password is annoying
 		// rather than a lockout.
@@ -155,6 +173,7 @@ func (t *throttle) succeed(addr string) {
 	defer t.mu.Unlock()
 	delete(t.failures, addr)
 	delete(t.until, addr)
+	delete(t.seen, addr)
 }
 
 func clientAddr(r *http.Request) string {

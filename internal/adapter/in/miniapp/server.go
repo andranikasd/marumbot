@@ -405,10 +405,16 @@ const jsonError = "error"
 // ErrInvalid marks a request the form should not have sent.
 var ErrInvalid = errors.New("invalid loan")
 
+// trimTo caps a name at n runes. Runes, not bytes: an Armenian name cut at a
+// byte boundary is invalid UTF-8, which Postgres rejects with
+//
+//	invalid byte sequence for encoding "UTF8"
+//
+// and the create turns into a 500.
 func trimTo(s string, n int) string {
 	s = strings.TrimSpace(s)
-	if len(s) > n {
-		return s[:n]
+	if r := []rune(s); len(r) > n {
+		return string(r[:n])
 	}
 	return s
 }

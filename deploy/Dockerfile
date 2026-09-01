@@ -1,7 +1,7 @@
 # Build and run Marum. Distroless, static, non-root, no shell in the final image.
 FROM golang:1.27-alpine AS build
 WORKDIR /src
-COPY go.mod go.sum* ./
+COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 ARG VERSION=dev

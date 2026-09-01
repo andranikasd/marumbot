@@ -72,6 +72,8 @@ new_sqlite_classes = ["MarumApp"]
 
 [[env.dev.hyperdrive]]
 binding = "HYPERDRIVE"
+# Placeholder until the Hyperdrive config exists; `make tf-output` prints the
+# real binding once terraform has applied. Deploying with this value fails.
 id = "set-after-creating-the-dev-hyperdrive-config"
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,6 @@
 {{end}}
 {{define "content"}}
 <p class="subtitle">
-  {{if .V.Loan.Lender}}<span>{{.V.Loan.Lender}}</span> ·{{end}}
   <span class="mono">{{.V.Loan.Currency}}</span> ·
   <span>user <a class="mono" href="/users/{{.V.Loan.UserID}}" title="{{.V.Loan.UserID}}">{{short .V.Loan.UserID}}</a></span> ·
   <span class="mono" title="{{.V.Loan.ID}}">{{short .V.Loan.ID}}</span>

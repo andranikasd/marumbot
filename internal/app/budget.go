@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"unicode"
 
@@ -131,6 +132,12 @@ func parseAmount(s string, def money.Currency) (int64, money.Currency, bool) {
 	scale := int64(1)
 	for i := uint8(0); i < cur.Exponent; i++ {
 		scale *= 10
+	}
+	// whole*scale can wrap: parseInt64 allows values that overflow once
+	// multiplied into minor units, and a wrapped positive would be stored as a
+	// real budget.
+	if whole > math.MaxInt64/scale {
+		return 0, def, false
 	}
 	minor := whole * scale
 	if f := frac.String(); f != "" {

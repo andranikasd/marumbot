@@ -28,8 +28,7 @@ type Config struct {
 	DefaultTimezone string
 	TickInterval    time.Duration
 	AdminUser       string
-	AdminPassHash   string // argon2id encoded hash
-	AdminTOTPSecret string
+	AdminPassHash   string // pbkdf2 encoded hash, produced by -hash-password
 	OTLPEndpoint    string // empty disables telemetry entirely
 	PyroscopeAddr   string
 	Version         string
@@ -39,6 +38,10 @@ type Config struct {
 var ErrMissing = errors.New("required setting is missing")
 
 func Load() (Config, error) {
+	tick, err := dur("MARUM_TICK_INTERVAL", 60*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
 	c := Config{
 		Env:             str("MARUM_ENV", "dev"),
 		Mode:            str("MARUM_MODE", "polling"),
@@ -52,10 +55,9 @@ func Load() (Config, error) {
 		MiniAppURL:      str("MARUM_MINIAPP_URL", ""),
 		DefaultCurrency: str("MARUM_DEFAULT_CURRENCY", "AMD"),
 		DefaultTimezone: str("MARUM_DEFAULT_TZ", "Asia/Yerevan"),
-		TickInterval:    dur("MARUM_TICK_INTERVAL", 60*time.Second),
+		TickInterval:    tick,
 		AdminUser:       str("MARUM_ADMIN_USER", "admin"),
 		AdminPassHash:   str("MARUM_ADMIN_PASSWORD_HASH", ""),
-		AdminTOTPSecret: str("MARUM_ADMIN_TOTP_SECRET", ""),
 		OTLPEndpoint:    str("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
 		PyroscopeAddr:   str("PYROSCOPE_SERVER_ADDRESS", ""),
 		Version:         str("MARUM_VERSION", "dev"),
@@ -74,6 +76,12 @@ func (c Config) validate() error {
 	}
 	if c.Mode == "webhook" && c.WebhookSecret == "" {
 		missing = append(missing, "MARUM_WEBHOOK_SECRET (required in webhook mode)")
+	}
+	// Webhook mode exposes an HTTP listener; without a service token every check
+	// on it silently disappears, so an unset value must refuse to start rather
+	// than fail open.
+	if c.Mode == "webhook" && c.ServiceToken == "" {
+		missing = append(missing, "MARUM_SERVICE_TOKEN (required in webhook mode)")
 	}
 	// Without a key the service would store Telegram identifiers in the clear,
 	// which is worse than refusing to start: the damage is silent and permanent.
@@ -109,16 +117,18 @@ func str(key, def string) string {
 	return def
 }
 
-func dur(key string, def time.Duration) time.Duration {
+func dur(key string, def time.Duration) (time.Duration, error) {
 	v, ok := os.LookupEnv(key)
 	if !ok || v == "" {
-		return def
+		return def, nil
 	}
 	if secs, err := strconv.Atoi(v); err == nil {
-		return time.Duration(secs) * time.Second
+		return time.Duration(secs) * time.Second, nil
 	}
 	if d, err := time.ParseDuration(v); err == nil {
-		return d
+		return d, nil
 	}
-	return def
+	// Falling back to the default here would run a typo silently, which is the
+	// exact failure mode this package exists to prevent.
+	return 0, fmt.Errorf("%s %q is not a duration", key, v)
 }

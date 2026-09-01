@@ -16,7 +16,7 @@
   {{if .Rows}}
   <div class="scroll"><table>
     <thead><tr>
-      <th>Name</th><th>User</th><th>Lender</th><th>Cur</th><th class="num">Balance</th>
+      <th>Name</th><th>User</th><th>Cur</th><th class="num">Balance</th>
       <th>As of</th><th>Reliability</th><th class="num">Events</th><th class="num">Snaps</th><th>Created</th><th class="actions"></th>
     </tr></thead>
     <tbody>
@@ -24,7 +24,6 @@
       <tr {{if .ArchivedAt}}class="dim"{{end}}>
         <td><a href="/loans/{{.ID}}" title="{{.ID}}">{{.Name}}</a>{{if .ArchivedAt}} <span class="tag t-mute">archived</span>{{end}}</td>
         <td class="mono"><a href="/users/{{.UserID}}" title="{{.UserID}}">{{short .UserID}}</a></td>
-        <td>{{if .Lender}}{{.Lender}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="mono">{{.Currency}}</td>
         <td class="num">{{if .PrincipalMinor}}{{minor .PrincipalMinor .Currency}}{{else}}—{{end}}</td>
         <td class="nowrap">{{if .BalanceAsOf}}{{date .BalanceAsOf}}<span class="ago">{{ago $.Now .BalanceAsOf}}</span>{{else}}<span class="muted">never replayed</span>{{end}}</td>

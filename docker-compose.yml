@@ -14,6 +14,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    # Same policy as every other service: a postgres that stays down leaves the
+    # app in a restart loop against a dead database.
+    restart: unless-stopped
+    mem_limit: 1g
 
   marum:
     build:
@@ -22,7 +26,11 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       otel-collector: {condition: service_started}
-    env_file: [.env]
+    # Optional so a fresh clone can `make up` before copying .env.example; the
+    # app itself refuses to start on genuinely missing settings.
+    env_file:
+      - path: .env
+        required: false
     environment:
       MARUM_DATABASE_URL: postgres://marum:marum@postgres:5432/marum?sslmode=disable
       # Same shape as production; only the endpoint differs.
@@ -50,6 +58,9 @@ services:
     ports: ["127.0.0.1:4318:4318"]
     depends_on: [tempo, loki, prometheus]
     restart: unless-stopped
+    # The collector's memory_limiter works in percentages of what the container
+    # is allowed; without a limit that means 75% of the host.
+    mem_limit: 512m
 
   prometheus:
     image: prom/prometheus:v3.1.0
