@@ -146,6 +146,42 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        ) s ON true
  WHERE l.id = $1 AND l.user_id = $2 AND l.archived_at IS NULL;
 
+-- name: ReviseLoanContract
+-- The borrower corrects the terms. Never an UPDATE of the current version:
+-- a contract change is a new version with its own effective_from, so every
+-- past balance keeps meaning what it meant when it was written. The old
+-- version is closed, not touched.
+--
+-- The allocation policy rides over from the previous version: the form does
+-- not edit it, and losing it silently would change how excess money lands.
+WITH owned AS (
+    SELECT l.id FROM loans l
+     WHERE l.id = $1 AND l.user_id = $2 AND l.archived_at IS NULL
+), prev AS (
+    SELECT v.id, v.version, v.allocation_policy_version_id
+      FROM loan_contract_versions v
+      JOIN owned o ON v.loan_id = o.id
+     ORDER BY v.version DESC LIMIT 1
+), closed AS (
+    UPDATE loan_contract_versions
+       SET effective_until = $4::date
+     WHERE id IN (SELECT id FROM prev) AND effective_until IS NULL
+    RETURNING id
+)
+INSERT INTO loan_contract_versions (
+    id, loan_id, version, effective_from,
+    nominal_rate, day_count, repayment_type,
+    start_date, maturity_date, payment_day,
+    rounding_mode, rounding_unit_minor,
+    allocation_policy_version_id,
+    prepayment_policy, prepayment_schema_version
+)
+SELECT $3, o.id, p.version + 1, $4,
+       $5, $6, $7, $8, $9, $10, $11, $12,
+       p.allocation_policy_version_id, $13::jsonb, 1
+  FROM owned o, prev p
+RETURNING id;
+
 -- name: RecordBalanceSnapshot
 -- The borrower states what is owed after a payment. A SNAPSHOT, not an event:
 -- it is a statement of what was owed on a date, and replay anchors on it.

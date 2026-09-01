@@ -18,6 +18,7 @@ import (
 	"github.com/andranikasd/marumbot/internal/obs"
 	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 	"github.com/andranikasd/marumbot/pkg/core/date"
+	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
 	"github.com/andranikasd/marumbot/pkg/core/plan"
 )
@@ -41,10 +42,19 @@ type Server struct {
 	Version string
 	// Planner computes the month-by-month sheet and stores approvals.
 	Planner app.Planner
+	// Reviser applies full loan edits: words overwritten, terms versioned,
+	// balance re-anchored. Optional: without it PATCH stays a rename.
+	Reviser LoanReviser
 	Users   app.UserStore
 	Cipher  TagCipher
 	Clock   app.Clock
 	Log     *slog.Logger
+}
+
+// LoanReviser applies a full loan edit; the Worker implements it. Declared
+// here by the consumer, per house style.
+type LoanReviser interface {
+	ReviseLoan(ctx context.Context, loanID, userID string, e app.LoanEdit) error
 }
 
 // TagCipher is the part of the identity cipher this package needs: enough to
@@ -197,6 +207,26 @@ func (s *Server) getBudget() http.Handler {
 	})
 }
 
+// ratePercent renders the stored parts-per-billion fraction as the percent
+// figure the form shows. Display only, like major.
+func ratePercent(r money.Rate) float64 { return float64(r) / 1e7 }
+
+func methodName(t model.RepaymentType) string {
+	if t == model.DecliningPrincipal {
+		return "declining"
+	}
+	return "annuity"
+}
+
+// prepayEffectName is empty for the default, matching the form's "not stated"
+// option rather than inventing a stated choice.
+func prepayEffectName(e model.PrepaymentEffect) string {
+	if e == model.PrepayBorrowerChooses {
+		return ""
+	}
+	return e.String()
+}
+
 // major renders an amount as a decimal number of major units for the form.
 // The form takes major units back and the server converts once, so this is
 // the one place a money figure becomes a float, and it is display only.
@@ -298,6 +328,13 @@ func (s *Server) listLoans() http.Handler {
 				"currency":  l.Contract.Currency.Code,
 				"maturity":  l.Contract.MaturityDate.String(),
 				"confirmed": l.Confirmed(),
+				// The contract terms, so the edit form can prefill what is
+				// actually stored rather than make the user re-type it.
+				"start":         l.Contract.StartDate.String(),
+				"payment_day":   l.Contract.PaymentDay,
+				"rate_percent":  ratePercent(l.Contract.NominalRate),
+				"method":        methodName(l.Contract.Type),
+				"prepay_effect": prepayEffectName(l.Contract.Prepayment.Effect),
 			}
 			if l.OriginalPrincipal.Sign() > 0 && l.OriginalPrincipal.Cmp(l.Balance) > 0 {
 				row["original_major"] = major(l.OriginalPrincipal)
@@ -315,39 +352,75 @@ func (s *Server) listLoans() http.Handler {
 	})
 }
 
-// updateLoan renames a loan. Only the borrower's own words change; the contract
-// terms do not, because editing them would silently rewrite what a balance
-// means without any record that it happened.
+// updateLoan edits a loan. The borrower's own words are overwritten; contract
+// terms are never edited in place -- a full patch becomes a NEW contract
+// version through the Reviser, so every past balance keeps meaning what it
+// meant. A patch without terms (the old client's shape) stays a rename.
 func (s *Server) updateLoan() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, userID, ok := s.authed(w, r)
 		if !ok {
 			return
 		}
-		var in struct {
-			Name        string `json:"name"`
-			Description string `json:"description"`
-		}
+		var in LoanEditRequest
 		if err := json.NewDecoder(io.LimitReader(r.Body, maxRequest)).Decode(&in); err != nil {
 			http.Error(w, `{"error":"malformed"}`, http.StatusBadRequest)
 			return
 		}
-		name := trimTo(in.Name, 60)
-		if name == "" {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "a name is required"})
+		loanID := r.PathValue("id")
+
+		if !in.FullEdit() {
+			name := trimTo(in.Name, 60)
+			if name == "" {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "a name is required"})
+				return
+			}
+			err := s.Editor.UpdateLoan(ctx, loanID, userID, name, trimTo(in.Description, 200))
+			if errors.Is(err, app.ErrNotFound) {
+				http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+				return
+			}
+			if err != nil {
+				s.Log.ErrorContext(ctx, "updating a loan failed", "error", err)
+				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"id": loanID})
 			return
 		}
-		err := s.Editor.UpdateLoan(ctx, r.PathValue("id"), userID, name, trimTo(in.Description, 200))
+
+		if s.Reviser == nil {
+			http.Error(w, `{"error":"unavailable"}`, http.StatusServiceUnavailable)
+			return
+		}
+		// The currency the loan already has bounds the edit; read it through
+		// the same ownership-scoped path every other read uses.
+		ln, err := s.Editor.LoanForUser(ctx, loanID, userID)
 		if errors.Is(err, app.ErrNotFound) {
 			http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
 			return
 		}
 		if err != nil {
-			s.Log.ErrorContext(ctx, "updating a loan failed", "error", err)
+			s.Log.ErrorContext(ctx, "reading a loan for edit failed", "error", err)
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"id": r.PathValue("id")})
+		edit, err := in.Validate(ln.Contract.Currency)
+		if err != nil {
+			s.Log.InfoContext(ctx, "miniapp loan edit rejected", "error", err)
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
+			return
+		}
+		if err := s.Reviser.ReviseLoan(ctx, loanID, userID, edit); err != nil {
+			if errors.Is(err, app.ErrNotFound) {
+				http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+				return
+			}
+			s.Log.ErrorContext(ctx, "revising a loan failed", "error", err)
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"id": loanID})
 	})
 }
 
