@@ -9,6 +9,9 @@ tg?.ready();
 tg?.expand();
 
 function applyTheme() {
+  const scheme = tg?.colorScheme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = scheme;
+  document.documentElement.style.colorScheme = scheme;
   if (!tg) return;
   const p = tg.themeParams || {};
   const root = document.documentElement.style;
@@ -21,7 +24,6 @@ function applyTheme() {
     secondary_bg_color: "--field", section_bg_color: "--card",
   };
   for (const [k, v] of Object.entries(map)) if (p[k]) root.setProperty(v, p[k]);
-  document.documentElement.style.colorScheme = tg.colorScheme || "light";
   try { tg.setHeaderColor?.("bg_color"); tg.setBackgroundColor?.("bg_color"); } catch { /* older clients */ }
 }
 applyTheme();

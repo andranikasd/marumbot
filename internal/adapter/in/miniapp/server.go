@@ -198,6 +198,9 @@ func (s *Server) getBudget() http.Handler {
 				out["opening_major"] = major(b.Opening)
 				out["opening_as_of"] = b.OpeningAsOf.String()
 			}
+			if b.Reserve.Sign() > 0 {
+				out["reserve_major"] = major(b.Reserve)
+			}
 			if len(b.Overrides) > 0 {
 				cur := b.Monthly.Currency()
 				over := make(map[string]float64, len(b.Overrides))
@@ -297,6 +300,19 @@ func (s *Server) setBudget() http.Handler {
 				return
 			}
 		}
+		var reserve int64
+		if in.ReserveMajor != nil {
+			if reserve, err = in.ValidateReserve(curr); err != nil {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
+				return
+			}
+		}
+		if reserve > 0 && (opening == nil || reserve > *opening) {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{
+				jsonError: "protected reserve exceeds opening cash",
+			})
+			return
+		}
 
 		userID, err := s.Users.ByTelegramTag(ctx, s.Cipher.Tag(v.User.ID))
 		if err != nil {
@@ -310,6 +326,7 @@ func (s *Server) setBudget() http.Handler {
 		configuration := app.BudgetConfiguration{
 			UserID: userID, Currency: cur, MonthlyMinor: minor, PayDay: payDay,
 			OpeningAsOf: date.From(s.Clock.Now(), time.UTC), Overrides: overrides,
+			ReserveMinor: reserve,
 		}
 		if opening != nil {
 			configuration.OpeningMinor = *opening

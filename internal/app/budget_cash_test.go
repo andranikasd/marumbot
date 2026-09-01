@@ -16,14 +16,15 @@ func TestBudgetCashPlan(t *testing.T) {
 		Currency: "AMD", Set: true, PayDay: 5,
 		Monthly:   money.FromMinor(30_000_000, amd),
 		Opening:   money.FromMinor(10_000_000, amd),
+		Reserve:   money.FromMinor(2_000_000, amd),
 		Overrides: map[string]int64{"2026-03": 45_000_000},
 	}
 
 	sameMonth := date.MustNew(2026, 1, 20)
 	b.OpeningAsOf = date.MustNew(2026, 1, 15)
 	cp := b.CashPlan(sameMonth)
-	if cp.OpeningCash.Minor() != 10_000_000 {
-		t.Errorf("opening stated this month must count: %v", cp.OpeningCash)
+	if cp.OpeningCash.Minor() != 8_000_000 {
+		t.Errorf("opening minus protected reserve = %v, want 8000000 minor", cp.OpeningCash)
 	}
 	if cp.Monthly.Minor() != 30_000_000 || cp.PayDay != 5 {
 		t.Errorf("monthly/payday lost: %+v", cp)
@@ -50,5 +51,18 @@ func TestBudgetCashPlan(t *testing.T) {
 	in := plan.Input{ValuationDate: sameMonth, Cash: b.CashPlan(sameMonth)}
 	if in.Cash.MonthlyOverrides["2026-03"].Currency().Code != "AMD" {
 		t.Error("override lost its currency")
+	}
+}
+
+func TestBudgetCashPlanNeverSpendsTheProtectedReserve(t *testing.T) {
+	amd := money.MustLookup("AMD")
+	valuation := date.MustNew(2026, 9, 2)
+	b := Budget{
+		Monthly: money.FromMinor(30_000_000, amd), Set: true,
+		Opening: money.FromMinor(5_000_000, amd), Reserve: money.FromMinor(8_000_000, amd),
+		OpeningAsOf: valuation,
+	}
+	if got := b.CashPlan(valuation).OpeningCash.Minor(); got != 0 {
+		t.Fatalf("opening cash = %d, want zero when reserve exceeds cash", got)
 	}
 }

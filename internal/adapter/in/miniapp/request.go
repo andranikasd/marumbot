@@ -218,6 +218,8 @@ type BudgetRequest struct {
 	// OpeningMajor is cash on hand for loans today. Zero or absent withdraws
 	// the statement because this endpoint receives the complete form.
 	OpeningMajor *float64 `json:"opening_major"`
+	// ReserveMajor is the part of opening cash the plan must not spend.
+	ReserveMajor *float64 `json:"reserve_major"`
 	// Overrides are whole-month figures keyed "2006-01", in major units.
 	// An absent or empty object clears every stated month.
 	Overrides map[string]float64 `json:"overrides"`
@@ -251,6 +253,15 @@ func (r BudgetRequest) ValidateOpening(cur money.Currency) (int64, error) {
 	minor, err := budgetMinor(*r.OpeningMajor, cur, true)
 	if err != nil {
 		return 0, fmt.Errorf("%w: cash on hand", err)
+	}
+	return minor, nil
+}
+
+// ValidateReserve converts the protected cash floor. Only called when present.
+func (r BudgetRequest) ValidateReserve(cur money.Currency) (int64, error) {
+	minor, err := budgetMinor(*r.ReserveMajor, cur, true)
+	if err != nil {
+		return 0, fmt.Errorf("%w: protected reserve", err)
 	}
 	return minor, nil
 }

@@ -1,27 +1,29 @@
-/* Marum design system v2.
-   The look: a calm fintech card UI. One gradient hero per screen carries the
-   screen's headline number; everything else is elevated cards on a soft
-   ground. Colors derive from Telegram's theme so light and dark both feel
-   native, with a fixed brand gradient for the hero that reads in either. */
+/* Marum design system v3. The semantic tokens below are the only theme
+   boundary; components never need separate light and dark implementations. */
 
 /* Identity: a ledger, not a fintech toy. Deep bottle green is the colour of
    the institutions this app argues with; brass is the dram — it marks only
    money that works for the borrower: extras, savings, the payoff. One
    signature element, the freedom track: today → the debt-free date. */
 :root{
-  --bg:#f3f5f4; --fg:#14181f; --hint:#68727d; --link:#0e5a4a;
-  --btn:#0e5a4a; --btn-fg:#ffffff; --field:#ffffff; --card:#ffffff;
-  --accent:#0e5a4a; --danger:#c23b3b;
-  --ok:#0e5a4a; --warn:#a3651b; --brass:#c8922a;
-  --line:color-mix(in srgb, var(--fg) 10%, transparent);
-  --hero:#0e5a4a; --hero-deep:#0a4437;
-  --r:16px; --r-lg:22px;
-  --shadow:0 1px 2px rgba(20,24,31,.05), 0 6px 20px -8px rgba(20,24,31,.14);
+  --bg:#f7f4ed; --fg:#17201d; --hint:#66716d; --link:#123c32;
+  --btn:#123c32; --btn-fg:#fff; --field:#fff; --card:#fff;
+  --accent:#123c32; --danger:#b52f37; --ok:#197052; --warn:#94631e;
+  --brass:#b6924a; --line:#dce1de; --hero:#123c32;
+  --soft:#eef3f0; --success-bg:#edf6f1; --danger-bg:#fbefef;
+  --r-sm:12px; --r:16px; --r-lg:20px;
+  --shadow:0 1px 2px rgba(18,60,50,.04),0 10px 30px -22px rgba(18,60,50,.28);
 }
-@media (prefers-color-scheme: dark){
-  :root{ --bg:#101413; --fg:#e9ece9; --hint:#8e9995; --field:#181d1b; --card:#181d1b;
-    --accent:#3d9e87; --link:#3d9e87; --btn:#136a56; --hero:#0c4a3d; --hero-deep:#093a30;
-    --brass:#d3a03f; --shadow:0 1px 2px rgba(0,0,0,.4) }
+:root[data-theme="dark"]{
+  --bg:#0c1512; --fg:#f3f4ef; --hint:#aebbb5; --link:#67c5a6;
+  --btn:#1f765d; --field:#13211d; --card:#182923; --accent:#55b996;
+  --danger:#ff7f86; --ok:#65c99f; --warn:#e0b762; --brass:#d0aa57;
+  --line:#294038; --hero:#164f40; --soft:#17251f;
+  --success-bg:#153329; --danger-bg:#342024;
+  --shadow:0 10px 28px -20px rgba(0,0,0,.85);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme]){--bg:#0c1512;--fg:#f3f4ef;--hint:#aebbb5;--link:#67c5a6;--btn:#1f765d;--field:#13211d;--card:#182923;--accent:#55b996;--danger:#ff7f86;--ok:#65c99f;--warn:#e0b762;--brass:#d0aa57;--line:#294038;--hero:#164f40;--soft:#17251f;--success-bg:#153329;--danger-bg:#342024;--shadow:0 10px 28px -20px rgba(0,0,0,.85)}
 }
 
 *{box-sizing:border-box}
@@ -30,13 +32,13 @@ body{
   background:var(--bg); color:var(--fg);
   font:15px/1.5 -apple-system,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif;
   -webkit-font-smoothing:antialiased;
-  padding-bottom:96px;
+  min-height:100vh;padding-bottom:94px;
 }
-h1{font-size:22px;font-weight:700;letter-spacing:-.02em;margin:0 0 4px}
+h1{font-size:24px;font-weight:750;letter-spacing:-.025em;margin:0 0 4px}
 .lede{color:var(--hint);font-size:14px;margin:0 0 16px}
 .num,[data-num]{font-variant-numeric:tabular-nums}
 
-.screen{display:none;padding:18px 16px 30px;max-width:560px;margin:0 auto}
+.screen{display:none;padding:22px 16px 34px;max-width:560px;margin:0 auto}
 .screen.on{display:block;animation:rise .18s ease-out}
 @keyframes rise{from{opacity:.4;transform:translateY(6px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion: reduce){
@@ -47,7 +49,7 @@ h1{font-size:22px;font-weight:700;letter-spacing:-.02em;margin:0 0 4px}
 
 /* ---------- hero ---------- */
 .hero{
-  background:linear-gradient(180deg,var(--hero),var(--hero-deep));
+  background:var(--hero);
   color:#fff; border-radius:var(--r-lg); padding:18px 18px 16px;
   margin:0 0 16px; box-shadow:var(--shadow);
 }
@@ -63,6 +65,16 @@ h1{font-size:22px;font-weight:700;letter-spacing:-.02em;margin:0 0 4px}
 .hero .v small{font-size:14px;font-weight:600;opacity:.85;margin-left:4px;letter-spacing:0}
 .hero .save{margin-top:10px;font-size:13.5px;font-weight:600;color:#0a2f27;
   background:var(--brass);border-radius:10px;padding:6px 10px;display:inline-block}
+.budget-hero .budget-status{margin:10px 0 2px;padding:7px 10px;border-radius:10px;
+  background:rgba(255,255,255,.12);font-size:13px;font-weight:650}
+.budget-hero .budget-status.bad{background:rgba(181,47,55,.24);color:#fff0f0}
+.budget-hero .row{padding-top:13px;border-top:1px solid rgba(255,255,255,.22)}
+.budget-hero .cell+.cell{padding-left:16px;border-left:1px solid rgba(255,255,255,.22)}
+.hero-action{width:100%;min-height:44px;margin-top:16px;border:1px solid rgba(255,255,255,.5);
+  border-radius:var(--r-sm);background:transparent;color:#fff;font:inherit;font-weight:700;cursor:pointer}
+.hero-action:active{background:rgba(255,255,255,.1)}
+.usable{margin:10px 0 0;padding:10px 12px;border-radius:var(--r-sm);background:var(--success-bg);
+  color:var(--ok);font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums}
 /* The freedom track: today at one end, the debt-free date at the other. A
    dotted road with a flag — it is a promise with a date, not a meter that
    pretends progress it cannot measure. */
@@ -75,7 +87,7 @@ h1{font-size:22px;font-weight:700;letter-spacing:-.02em;margin:0 0 4px}
 /* ---------- cards ---------- */
 .card,.plan-summary,.summary,.field-card{
   background:var(--card); border-radius:var(--r); padding:14px 16px;
-  margin:0 0 12px; box-shadow:var(--shadow);
+  margin:0 0 12px; border:1px solid var(--line);box-shadow:var(--shadow);
 }
 .card h2{font-size:16.5px;margin:0;display:flex;justify-content:space-between;align-items:baseline;gap:12px}
 .card h2 .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}
@@ -124,7 +136,7 @@ h1{font-size:22px;font-weight:700;letter-spacing:-.02em;margin:0 0 4px}
 .field{margin:0 0 14px}
 label{display:block;font-size:13px;font-weight:600;color:var(--hint);margin:0 0 6px}
 input,select{
-  width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;
+  width:100%;min-height:48px;padding:12px 14px;border:1.5px solid var(--line);border-radius:var(--r-sm);
   background:var(--field);color:var(--fg);font:inherit;font-size:16px;
 }
 input:focus,select:focus{outline:none;border-color:var(--accent)}
@@ -142,7 +154,7 @@ input[aria-invalid="true"]{border-color:var(--danger)}
 .seg input:checked+label{background:var(--accent);color:#fff;box-shadow:var(--shadow)}
 .seg input:focus-visible+label{outline:2px solid var(--brass);outline-offset:2px}
 .cta{
-  display:block;width:100%;padding:14px;border:0;border-radius:14px;
+  display:block;width:100%;min-height:50px;padding:13px 14px;border:0;border-radius:var(--r-sm);
   background:var(--btn);color:var(--btn-fg);font:inherit;font-size:16px;font-weight:700;
   cursor:pointer;box-shadow:var(--shadow);
 }
@@ -165,7 +177,7 @@ input[aria-invalid="true"]{border-color:var(--danger)}
 .grouplbl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--hint);
   margin:16px 0 10px;display:flex;align-items:center;gap:8px}
 .grouplbl::after{content:"";flex:1;border-top:1px solid var(--line)}
-details.optfold{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);margin:0 0 12px}
+details.optfold{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);margin:0 0 12px}
 details.optfold summary{list-style:none;cursor:pointer;padding:13px 16px;display:flex;
   justify-content:space-between;align-items:center;gap:10px;font-size:13.5px;color:var(--hint)}
 details.optfold summary::-webkit-details-marker{display:none}
@@ -253,21 +265,20 @@ details.optfold .fold-body{padding:0 16px 6px}
 
 /* ---------- floating dock ---------- */
 nav.tabs{
-  position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:10;
-  display:flex;gap:2px;padding:6px;border-radius:999px;
-  background:color-mix(in srgb,var(--card) 82%, transparent);
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-  box-shadow:0 4px 24px -6px rgba(16,22,35,.28);
+  position:fixed;left:0;right:0;bottom:0;z-index:10;
+  display:flex;justify-content:center;gap:2px;padding:7px 8px calc(7px + env(safe-area-inset-bottom,0px));
+  border-top:1px solid var(--line);background:color-mix(in srgb,var(--card) 94%,transparent);
+  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
 }
 nav.tabs button{
   border:0;background:none;color:var(--hint);font:inherit;font-size:11px;font-weight:600;
-  padding:7px 13px;border-radius:999px;cursor:pointer;display:flex;flex-direction:column;
-  align-items:center;gap:2px;min-width:60px;
+  padding:6px 12px;border-radius:10px;cursor:pointer;display:flex;flex-direction:column;
+  align-items:center;gap:2px;min-width:70px;
 }
 nav.tabs button .ic{font-size:19px;line-height:1;display:block}
 nav.tabs button .ic svg{width:19px;height:19px;display:block;stroke:currentColor;fill:none;
   stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-nav.tabs button.on{background:var(--hero);color:#fff}
+nav.tabs button.on{background:var(--soft);color:var(--accent)}
 /* While the Telegram MainButton is up, the dock yields: two layers of chrome
    above the keyboard is one too many. */
 body.mb-on nav.tabs{display:none}

@@ -101,13 +101,18 @@ func Keys() []string {
 
 // buttonKeys maps a command kind to the catalogue key labelling its button.
 var buttonKeys = map[string]string{
-	"add":      "btn.add",
+	"add":      "btn.dashboard",
 	"loans":    "btn.loans",
 	"budget":   "btn.budget",
 	"language": "btn.language",
 	"advice":   "btn.advice",
 	"help":     "btn.help",
 }
+
+// DashboardButton labels the persistent Mini App entry point. It is not an
+// "add loan" command: the app opens on the loans overview and exposes every
+// workflow from there.
+func DashboardButton(l Locale) string { return T(l, "btn.dashboard") }
 
 // Button returns the label for a command in a locale.
 func Button(l Locale, kind string) string {

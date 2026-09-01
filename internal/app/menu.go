@@ -100,7 +100,7 @@ func PublishMenus(ctx context.Context, p MenuPublisher, miniAppURL string) error
 
 	if miniAppURL != "" {
 		// Armenian, because the button is global and cannot be per-user.
-		if err := p.SetChatMenuButton(ctx, i18n.T(i18n.Default, "btn.add"), miniAppURL); err != nil {
+		if err := p.SetChatMenuButton(ctx, i18n.DashboardButton(i18n.Default), miniAppURL); err != nil {
 			return fmt.Errorf("setting the menu button: %w", err)
 		}
 	}
