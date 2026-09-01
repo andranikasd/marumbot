@@ -149,7 +149,9 @@ func (w *Worker) PlanSheet(ctx context.Context, userID string, goal *plan.Goal) 
 		Cash:          plan.CashPlan{Monthly: budget.Monthly, PayDay: budget.PayDay},
 		Loans:         positions,
 	}
-	rep, err := plan.Search(in, g)
+	// The inputs above are read fresh; only the pure search is cached, keyed
+	// by a fingerprint of exactly those inputs.
+	rep, err := w.plans.search(in, g, w.Clock.Now())
 	if err != nil {
 		return Sheet{}, err
 	}

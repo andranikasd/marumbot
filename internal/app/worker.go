@@ -67,6 +67,9 @@ type Worker struct {
 	Convos    ConversationStore
 	Reminders ReminderStore
 	Plans     PlanStore
+	// plans caches the pure search by a fingerprint of its inputs; see
+	// plancache.go. Zero value ready.
+	plans searchCache
 	// lastRemind is when TickReminders last did the work, as unix nanos. Ticks
 	// arrive over HTTP, so a slow walk can overlap the next fire; the CAS both
 	// prevents the race and makes the overlapping tick a no-op.
