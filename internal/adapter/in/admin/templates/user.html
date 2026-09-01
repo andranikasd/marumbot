@@ -48,11 +48,10 @@
   <div class="hd">Loans <span class="tools muted">{{len .V.Loans}}</span></div>
   {{if .V.Loans}}
   <div class="scroll"><table>
-    <thead><tr><th>Name</th><th>Lender</th><th>Cur</th><th class="num">Balance</th><th>As of</th><th>Reliability</th><th>Created</th><th class="actions"></th></tr></thead>
+    <thead><tr><th>Name</th><th>Cur</th><th class="num">Balance</th><th>As of</th><th>Reliability</th><th>Created</th><th class="actions"></th></tr></thead>
     <tbody>{{range .V.Loans}}
       <tr {{if .ArchivedAt}}class="dim"{{end}}>
         <td><a href="/loans/{{.ID}}">{{.Name}}</a>{{if .ArchivedAt}} <span class="tag t-mute">archived</span>{{end}}</td>
-        <td>{{if .Lender}}{{.Lender}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="mono">{{.Currency}}</td>
         <td class="num">{{if .PrincipalMinor}}{{minor .PrincipalMinor .Currency}}{{else}}—{{end}}</td>
         <td class="nowrap">{{if .BalanceAsOf}}{{date .BalanceAsOf}}{{else}}<span class="muted">—</span>{{end}}</td>

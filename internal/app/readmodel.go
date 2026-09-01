@@ -38,7 +38,6 @@ type LoanRow struct {
 	ID             string
 	UserID         string
 	Name           string
-	Lender         *string
 	Currency       string
 	CreatedAt      time.Time
 	ArchivedAt     *time.Time
@@ -55,7 +54,6 @@ type LoanDetail struct {
 	UserID       string
 	Name         string
 	Description  string
-	Lender       *string
 	Currency     string
 	NextEventSeq int64
 	CreatedAt    time.Time

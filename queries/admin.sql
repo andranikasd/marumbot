@@ -29,7 +29,8 @@ ORDER BY u.created_at DESC
 LIMIT $1;
 
 -- name: ListLoans
-SELECT l.id, l.user_id, l.name, l.lender, l.currency, l.created_at, l.archived_at,
+-- No l.lender: deprecated by 00004, retained only until a drop migration.
+SELECT l.id, l.user_id, l.name, l.currency, l.created_at, l.archived_at,
        (SELECT count(*) FROM loan_events e WHERE e.loan_id = l.id)    AS event_count,
        (SELECT count(*) FROM loan_snapshots s WHERE s.loan_id = l.id) AS snapshot_count,
        st.reliability_state, st.principal_minor, st.balance_as_of
@@ -39,7 +40,7 @@ ORDER BY l.created_at DESC
 LIMIT $1;
 
 -- name: GetLoan
-SELECT l.id, l.user_id, l.name, coalesce(l.description, ''), l.lender, l.currency, l.next_event_seq, l.created_at, l.archived_at
+SELECT l.id, l.user_id, l.name, coalesce(l.description, ''), l.currency, l.next_event_seq, l.created_at, l.archived_at
 FROM loans l WHERE l.id = $1;
 
 -- name: ListContractsForLoan
@@ -199,7 +200,7 @@ SELECT u.id, u.locale, u.timezone, u.access_state, u.trial_ends_at, u.created_at
   FROM users u WHERE u.id = $1;
 
 -- name: ListLoansByUser
-SELECT l.id, l.user_id, l.name, l.lender, l.currency, l.created_at, l.archived_at,
+SELECT l.id, l.user_id, l.name, l.currency, l.created_at, l.archived_at,
        (SELECT count(*) FROM loan_events e WHERE e.loan_id = l.id)    AS event_count,
        (SELECT count(*) FROM loan_snapshots s WHERE s.loan_id = l.id) AS snapshot_count,
        st.reliability_state, st.principal_minor, st.balance_as_of

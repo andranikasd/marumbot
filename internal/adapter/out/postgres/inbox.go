@@ -105,6 +105,16 @@ func (s *Store) Fail(ctx context.Context, id, token, code string, retryAt time.T
 	return err
 }
 
+// PurgeCompletedBefore removes completed commands older than the cutoff. They
+// exist only for update-id dedup, which needs recent rows, not history.
+func (s *Store) PurgeCompletedBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	tag, err := s.pool.Exec(ctx, q("PurgeCompletedCommands"), cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 func nullable(s string) any {
 	if s == "" {
 		return nil
