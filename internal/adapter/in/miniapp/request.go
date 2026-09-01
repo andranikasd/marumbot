@@ -123,6 +123,91 @@ func (r LoanRequest) Validate(today date.Date) (app.LoanDraft, error) {
 	}, nil
 }
 
+// LoanEditRequest is what the edit form patches. The currency and the
+// original principal are deliberately absent: the first cannot change
+// without re-denominating the ledger, the second is history.
+type LoanEditRequest struct {
+	Name         string  `json:"name"`
+	Description  string  `json:"description"`
+	RatePercent  float64 `json:"rate_percent"`
+	Method       string  `json:"method"`
+	PrepayEffect string  `json:"prepay_effect"`
+	StartDate    string  `json:"start_date"`
+	MaturityDate string  `json:"maturity_date"`
+	PaymentDay   int     `json:"payment_day"`
+	// BalanceMajor restates what is owed today; zero means unchanged.
+	BalanceMajor float64 `json:"balance_major"`
+}
+
+// FullEdit reports whether the patch carries contract terms, or only the
+// borrower's own words. The old client sends name and description alone; a
+// missing start date is how the two shapes are told apart.
+func (r LoanEditRequest) FullEdit() bool { return r.StartDate != "" }
+
+// Validate turns the patch into an edit, against the currency the loan
+// already has. Same discipline as LoanRequest.Validate: the browser's checks
+// exist to be quick, these exist because the browser can be lied about.
+func (r LoanEditRequest) Validate(cur money.Currency) (app.LoanEdit, error) {
+	name := trimTo(r.Name, 60)
+	if name == "" {
+		return app.LoanEdit{}, fmt.Errorf("%w: no title", ErrInvalid)
+	}
+	if math.IsNaN(r.RatePercent) || r.RatePercent < 0 || r.RatePercent > 200 {
+		return app.LoanEdit{}, fmt.Errorf("%w: rate must be between 0 and 200", ErrInvalid)
+	}
+	whole := int64(r.RatePercent)
+	micro := int64(math.Round((r.RatePercent - float64(whole)) * 1_000_000))
+
+	start, err := date.Parse(r.StartDate)
+	if err != nil {
+		return app.LoanEdit{}, fmt.Errorf("%w: start date", ErrInvalid)
+	}
+	maturity, err := date.Parse(r.MaturityDate)
+	if err != nil {
+		return app.LoanEdit{}, fmt.Errorf("%w: maturity date", ErrInvalid)
+	}
+	if !maturity.After(start) {
+		return app.LoanEdit{}, fmt.Errorf("%w: maturity must follow the start", ErrInvalid)
+	}
+	if maturity.Year()-start.Year() > maxTermYears {
+		return app.LoanEdit{}, fmt.Errorf("%w: term exceeds %d years", ErrInvalid, maxTermYears)
+	}
+	if r.PaymentDay < 1 || r.PaymentDay > 31 {
+		return app.LoanEdit{}, fmt.Errorf("%w: payment day must be 1 to 31", ErrInvalid)
+	}
+	typ := model.Annuity
+	switch r.Method {
+	case "declining":
+		typ = model.DecliningPrincipal
+	case "annuity", "":
+	default:
+		return app.LoanEdit{}, fmt.Errorf("%w: unknown method %q", ErrInvalid, r.Method)
+	}
+	prepay, err := model.ParsePrepaymentEffect(r.PrepayEffect)
+	if err != nil {
+		return app.LoanEdit{}, fmt.Errorf("%w: prepayment effect", ErrInvalid)
+	}
+
+	e := app.LoanEdit{
+		Name:         name,
+		Description:  trimTo(r.Description, 200),
+		NominalRate:  money.RateFromPercent(whole, micro),
+		Type:         typ,
+		StartDate:    start,
+		MaturityDate: maturity,
+		PaymentDay:   r.PaymentDay,
+		PrepayEffect: prepay,
+	}
+	if r.BalanceMajor > 0 {
+		if math.IsNaN(r.BalanceMajor) || math.IsInf(r.BalanceMajor, 0) {
+			return app.LoanEdit{}, fmt.Errorf("%w: balance", ErrInvalid)
+		}
+		minor := int64(math.Round(r.BalanceMajor * math.Pow10(int(cur.Exponent))))
+		e.BalanceMinor = &minor
+	}
+	return e, nil
+}
+
 // BudgetRequest is what the budget form posts.
 type BudgetRequest struct {
 	MonthlyMajor float64 `json:"monthly_major"`

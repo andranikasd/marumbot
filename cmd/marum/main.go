@@ -137,12 +137,14 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		Plans:           store,
 		Shadow:          store,
 		Balances:        store,
+		Contracts:       store,
 	}
 	// The Mini App is served from the public listener under /app, so it shares
 	// the Worker's hostname and needs no second custom domain or certificate.
 	mini := &miniapp.Server{
 		BotToken: cfg.BotToken, Loans: store, Users: store, Budgets: store,
 		Editor: store, Reader: store, Required: worker, Filed: worker, Planner: worker,
+		Reviser: worker,
 		Version: cfg.Version,
 		Cipher:  cipher, Clock: sysclock.New(), Log: log,
 	}

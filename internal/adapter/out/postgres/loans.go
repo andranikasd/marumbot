@@ -352,6 +352,23 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 	return l, nil
 }
 
+// ReviseContract writes a new contract version and closes the current one.
+// Ownership lives in the query's predicate.
+func (s *Store) ReviseContract(ctx context.Context, loanID, userID string, c model.Contract, effectiveFrom date.Date) error {
+	var got string
+	err := s.pool.QueryRow(ctx, q("ReviseLoanContract"),
+		loanID, userID, uuid.NewString(), effectiveFrom.String(),
+		c.NominalRate.String(), dayCountName(c.DayCount), repaymentTypeName(c.Type),
+		c.StartDate.String(), c.MaturityDate.String(), c.PaymentDay,
+		roundingModeName(c.Rounding.Mode), c.Rounding.Unit,
+		prepaymentJSON(c.Prepayment),
+	).Scan(&got)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.ErrNotFound
+	}
+	return err
+}
+
 // RecordBalance stores the borrower's statement of what is owed, as a
 // snapshot anchored today. Ownership lives in the query's predicate.
 func (s *Store) RecordBalance(ctx context.Context, loanID, userID string, minor int64, asOf string) error {

@@ -76,6 +76,9 @@ type Worker struct {
 	// Balances stores the borrower's statement of what is owed after a
 	// payment; see paid.go. Optional: nil hides the paid flow.
 	Balances BalanceRecorder
+	// Contracts writes revised contract versions; see revise.go. Optional:
+	// nil limits editing to name and note.
+	Contracts ContractReviser
 	// lastRemind is when TickReminders last did the work, as unix nanos. Ticks
 	// arrive over HTTP, so a slow walk can overlap the next fire; the CAS both
 	// prevents the race and makes the overlapping tick a no-op.

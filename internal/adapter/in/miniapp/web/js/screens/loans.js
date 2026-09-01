@@ -1,6 +1,8 @@
-// My loans: the summary, then each loan as a card with rename and remove.
-// Contract terms are deliberately not editable — changing a rate rewrites
-// what every past balance meant, and the schema versions contracts for that.
+// My loans: the summary, then each loan as a card with edit and remove.
+// Contract terms ARE editable — the server never rewrites the current
+// version, it files a NEW contract version with its own effective date, so
+// every past balance keeps meaning what it meant. The currency alone is
+// fixed: re-denominating a ledger is archive-and-refile, not an edit.
 "use strict";
 import { haptic, toast, fmtMoney, fmtDate, confirmDialog } from "../core.js";
 import { T } from "../i18n.js";
@@ -84,32 +86,82 @@ function loanCard(loan) {
   }
 
   const form = document.createElement("div"); form.className = "edit";
+  const field = (labelKey, input) => {
+    const wrap = document.createElement("label"); wrap.className = "efield";
+    const cap = document.createElement("span"); cap.textContent = T(labelKey);
+    wrap.append(cap, input);
+    return wrap;
+  };
   const nameIn = document.createElement("input"); nameIn.value = loan.name; nameIn.maxLength = 60;
   const descIn = document.createElement("input"); descIn.value = loan.description || "";
   descIn.maxLength = 200; descIn.placeholder = T("description");
+  const rateIn = document.createElement("input"); rateIn.inputMode = "decimal";
+  rateIn.value = loan.rate_percent != null ? String(loan.rate_percent) : "";
+  const dayIn = document.createElement("input"); dayIn.inputMode = "numeric";
+  dayIn.value = loan.payment_day != null ? String(loan.payment_day) : "";
+  const startIn = document.createElement("input"); startIn.type = "date"; startIn.value = loan.start || "";
+  const matIn = document.createElement("input"); matIn.type = "date"; matIn.value = loan.maturity || "";
+  const methodIn = document.createElement("select");
+  for (const [v, k] of [["annuity", "method.annuity"], ["declining", "method.declining"]]) {
+    const o = document.createElement("option"); o.value = v; o.textContent = T(k); methodIn.append(o);
+  }
+  methodIn.value = loan.method || "annuity";
+  const prepayIn = document.createElement("select");
+  for (const [v, k] of [["", "prepay.unsure"], ["shorten_term", "prepay.shorten"], ["reduce_instalment", "prepay.reduce"]]) {
+    const o = document.createElement("option"); o.value = v; o.textContent = T(k); prepayIn.append(o);
+  }
+  prepayIn.value = loan.prepay_effect || "";
+  const balIn = document.createElement("input"); balIn.inputMode = "decimal";
+  balIn.placeholder = T("manage.balance_keep");
   const row = document.createElement("div"); row.className = "actions";
   const save = document.createElement("button"); save.type = "button"; save.textContent = T("manage.save");
   save.onclick = async () => {
     if (!nameIn.value.trim()) { nameIn.setAttribute("aria-invalid", "true"); haptic.bad(); return; }
+    const rate = Number(rateIn.value);
+    const day = Number(dayIn.value);
+    if (Number.isNaN(rate) || rate < 0 || rate > 200) { rateIn.setAttribute("aria-invalid", "true"); haptic.bad(); return; }
+    if (!Number.isInteger(day) || day < 1 || day > 31) { dayIn.setAttribute("aria-invalid", "true"); haptic.bad(); return; }
+    if (!startIn.value || !matIn.value || matIn.value <= startIn.value) { matIn.setAttribute("aria-invalid", "true"); haptic.bad(); return; }
+    const bal = balIn.value.trim() ? Number(balIn.value) : 0;
+    if (balIn.value.trim() && (Number.isNaN(bal) || bal < 0)) { balIn.setAttribute("aria-invalid", "true"); haptic.bad(); return; }
     save.disabled = true;
     const res = await api("api/loans/" + encodeURIComponent(loan.id), {
       method: "PATCH",
-      body: JSON.stringify({ name: nameIn.value.trim(), description: descIn.value.trim() }),
+      body: JSON.stringify({
+        name: nameIn.value.trim(), description: descIn.value.trim(),
+        rate_percent: rate, payment_day: day,
+        start_date: startIn.value, maturity_date: matIn.value,
+        method: methodIn.value, prepay_effect: prepayIn.value,
+        balance_major: bal,
+      }),
     });
     save.disabled = false;
     if (!res.ok) { haptic.bad(); return; }
-    loan.name = nameIn.value.trim(); loan.description = descIn.value.trim();
-    name.textContent = loan.name;
-    meta.firstChild.textContent = metaText();
     el.classList.remove("editing");
     haptic.ok();
     invalidate("api/");
     toast(T("saved"));
+    load(); // terms changed: the card's balance, schedule and dates all may follow
   };
   const cancel = document.createElement("button"); cancel.type = "button"; cancel.textContent = T("manage.cancel");
-  cancel.onclick = () => { nameIn.value = loan.name; descIn.value = loan.description || ""; el.classList.remove("editing"); };
+  cancel.onclick = () => {
+    nameIn.value = loan.name; descIn.value = loan.description || "";
+    rateIn.value = loan.rate_percent != null ? String(loan.rate_percent) : "";
+    dayIn.value = loan.payment_day != null ? String(loan.payment_day) : "";
+    startIn.value = loan.start || ""; matIn.value = loan.maturity || "";
+    methodIn.value = loan.method || "annuity"; prepayIn.value = loan.prepay_effect || "";
+    balIn.value = "";
+    el.classList.remove("editing");
+  };
   row.append(save, cancel);
-  form.append(nameIn, descIn, row);
+  form.append(
+    nameIn, descIn,
+    field("rate", rateIn), field("day", dayIn),
+    field("start", startIn), field("maturity", matIn),
+    field("method", methodIn), field("prepay", prepayIn),
+    field("manage.balance", balIn),
+    row,
+  );
   el.append(view, form);
   return el;
 }
