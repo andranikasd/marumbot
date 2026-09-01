@@ -1,26 +1,36 @@
+/* The admin wears the product's identity: deep bottle green — the colour of
+   the institutions Marum argues with — for chrome and actions, brass for the
+   marks that deserve the eye (focus, the active section, today). The ground
+   is a paper grey-green: a ledger desk, not a SaaS dashboard. Semantic
+   colours (ok/warn/stop) stay their own hues and never stand in for the
+   accent. */
 :root {
-  --bg: #f4f6f9; --panel: #ffffff; --ink: #172033; --muted: #5b6a85;
-  --line: #e1e6ee; --line-strong: #c5cedb;
-  --accent: #2456c9; --accent-ink: #ffffff; --accent-soft: #e8eefc;
-  --ok: #1f7a4d; --ok-soft: #e4f4ea;
+  --bg: #eff2ef; --panel: #ffffff; --ink: #161d1a; --muted: #5d6b64;
+  --line: #dfe5e0; --line-strong: #c2ccc4;
+  --accent: #0e5a4a; --accent-ink: #ffffff; --accent-soft: #e6efec;
+  --brass: #c8922a; --brass-ink: #7a5510; --brass-soft: #f7ecd8;
+  --ok: #22794b; --ok-soft: #e4f2e9;
   --warn: #9a5b12; --warn-soft: #fdf1df;
   --stop: #b02a2a; --stop-soft: #fbe7e7;
-  --side: #0f172a; --side-ink: #cbd5e1; --side-on: #ffffff; --side-hover: #1e293b;
-  --zebra: #f8fafc; --focus: #f59e0b;
-  --radius: 10px; --shadow: 0 1px 2px rgba(16, 24, 40, .06);
+  --side: #0a3a30; --side-deep: #072e26; --side-ink: #a8c4bb; --side-on: #f2efe6; --side-hover: #0f4a3d;
+  --zebra: #f6f8f6; --focus: #c8922a;
+  --radius: 10px; --shadow: 0 1px 2px rgba(16, 28, 24, .06);
   /* spacing scale: every margin and padding below is one of these */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+  /* the ledger face for the brand and page titles; no webfont, no fallback risk */
+  --serif: Georgia, "Times New Roman", "Noto Serif", serif;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0b1020; --panel: #121a2e; --ink: #e6eaf2; --muted: #a3b1c6;
-    --line: #223050; --line-strong: #364a75;
-    --accent: #8db0ff; --accent-ink: #0b1020; --accent-soft: #1a2747;
-    --ok: #7fd6a3; --ok-soft: #12291d;
+    --bg: #0d1210; --panel: #141b18; --ink: #e7ece9; --muted: #94a39b;
+    --line: #24302a; --line-strong: #3a4a42;
+    --accent: #3d9e87; --accent-ink: #0d1210; --accent-soft: #16332c;
+    --brass: #d3a03f; --brass-ink: #d3a03f; --brass-soft: #2c2312;
+    --ok: #6fcf97; --ok-soft: #14291d;
     --warn: #e8b26a; --warn-soft: #2b2113;
     --stop: #f49b9b; --stop-soft: #331a1a;
-    --side: #070b16; --side-ink: #a7b3c7; --side-on: #ffffff; --side-hover: #121a2e;
-    --zebra: #151e35; --focus: #fbbf24;
+    --side: #07231d; --side-deep: #051b16; --side-ink: #8fb3a8; --side-on: #f2efe6; --side-hover: #0c3129;
+    --zebra: #171f1b; --focus: #d3a03f;
     --shadow: none;
   }
 }
@@ -40,29 +50,42 @@ code, .mono { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; fon
 .ago { color: var(--muted); font-size: 12px; margin-left: var(--s1); white-space: nowrap; }
 abbr[title] { text-decoration: none; cursor: help; border-bottom: 1px dotted var(--line-strong); }
 
-/* keyboard focus is the one state that must never be subtle */
+/* keyboard focus is the one state that must never be subtle: brass */
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
 input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: 0; }
 
 /* ---------- shell ---------- */
 .shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100%; }
 aside.side {
-  background: var(--side); color: var(--side-ink); padding: 18px var(--s3);
+  background: linear-gradient(180deg, var(--side), var(--side-deep));
+  color: var(--side-ink); padding: 18px var(--s3);
   display: flex; flex-direction: column; gap: var(--s1); position: sticky; top: 0; height: 100vh;
 }
-aside .brand { color: var(--side-on); font-weight: 700; font-size: 17px; letter-spacing: -.3px; padding: var(--s1) 10px 14px; }
-aside .brand span { color: var(--side-ink); font-weight: 400; font-size: 13px; margin-left: 6px; }
+aside .brand {
+  color: var(--side-on); font-family: var(--serif); font-weight: 700; font-size: 19px;
+  letter-spacing: -.2px; padding: var(--s1) 10px 14px;
+}
+/* the brass dot: the brand mark, the same one the borrower sees on the freedom track */
+aside .brand::before {
+  content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--brass); margin-right: 9px;
+}
+aside .brand span { color: var(--side-ink); font-family: inherit; font-weight: 400; font-size: 13px; margin-left: 6px; }
 aside .group { color: var(--side-ink); opacity: .7; font-size: 11px; text-transform: uppercase; letter-spacing: .8px; padding: var(--s3) 10px var(--s1); }
 aside a.nav {
   display: flex; align-items: center; gap: 10px; padding: var(--s2) 10px; border-radius: 8px;
   color: var(--side-ink); font-size: 14px;
 }
 aside a.nav:hover { background: var(--side-hover); text-decoration: none; color: var(--side-on); }
-aside a.nav[aria-current=page] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+/* the open section carries the brass mark, not a filled slab: a bookmark, not a button */
+aside a.nav[aria-current=page] {
+  background: var(--side-hover); color: var(--side-on); font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--brass);
+}
 aside a.nav .ic { width: 18px; text-align: center; opacity: .9; }
 aside a.nav .count {
   margin-left: auto; font-size: 11px; padding: 1px 7px; border-radius: 999px;
-  background: rgba(255,255,255,.14); color: var(--side-on);
+  background: rgba(242,239,230,.14); color: var(--side-on);
 }
 aside a.nav .count.hot { background: var(--stop); color: #fff; }
 aside .foot { margin-top: auto; padding: 10px; font-size: 12px; opacity: .8; }
@@ -74,16 +97,30 @@ header.bar {
   background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2;
 }
 header.bar .heading { min-width: 0; }
-header.bar h1 { font-size: 17px; margin: 0; letter-spacing: -.2px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+header.bar h1 {
+  font-family: var(--serif); font-size: 18px; margin: 0; letter-spacing: -.2px; font-weight: 650;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 header.bar .actions { display: flex; gap: var(--s2); align-items: center; margin-left: var(--s2); }
 header.bar .actions form { display: inline; }
 header.bar .actions button { padding: 6px 12px; font-size: 13px; }
 header.bar form.search { margin-left: auto; display: flex; gap: 6px; }
 header.bar form.search input { width: 260px; }
-header.bar .env { font-size: 11.5px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--muted); }
+header.bar .env {
+  font-size: 11.5px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--line-strong); color: var(--brass-ink); background: var(--brass-soft);
+}
 main { padding: var(--s5) 26px 60px; max-width: 1360px; }
 p.lead { color: var(--muted); margin: 0 0 var(--s4); max-width: 900px; }
-h2 { font-size: 12.5px; margin: var(--s5) 0 10px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .7px; }
+/* section rules borrow the freedom track: a dotted road with a brass origin */
+h2 {
+  font-size: 12.5px; margin: var(--s5) 0 10px; color: var(--muted); font-weight: 700;
+  text-transform: uppercase; letter-spacing: .7px;
+  display: flex; align-items: center; gap: 10px;
+}
+h2::after {
+  content: ""; flex: 1; border-top: 2px dotted color-mix(in srgb, var(--accent) 30%, transparent);
+}
 h2:first-child { margin-top: 0; }
 .crumbs { font-size: 12.5px; color: var(--muted); margin: 0 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .crumbs a { color: var(--muted); }
@@ -116,7 +153,7 @@ h2:first-child { margin-top: 0; }
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 14px var(--s4); box-shadow: var(--shadow);
 }
-.card .n { font-size: 26px; font-weight: 650; letter-spacing: -.6px; line-height: 1.15; }
+.card .n { font-size: 26px; font-weight: 650; letter-spacing: -.6px; line-height: 1.15; font-variant-numeric: tabular-nums; }
 .card .k { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
 .card .sub { color: var(--muted); font-size: 12px; margin-top: 6px; }
 .card.alert { border-color: var(--stop); background: var(--stop-soft); }
@@ -248,9 +285,10 @@ button.link.danger { color: var(--stop); background: none; }
 .chart .axis { display: flex; flex-direction: column; justify-content: space-between; font-size: 10.5px; color: var(--muted); text-align: right; padding-bottom: 20px; font-variant-numeric: tabular-nums; }
 .bars { display: flex; align-items: flex-end; gap: var(--s1); height: 96px; padding: 6px 0 0; border-left: 1px solid var(--line); padding-left: 6px; }
 .bars .b { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; min-width: 0; }
-.bars .b i { display: block; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; opacity: .75; }
+.bars .b i { display: block; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; opacity: .7; }
 .bars .b:hover i { opacity: 1; }
-.bars .b.today i { opacity: 1; background: var(--ok); }
+/* today is the brass mark on the chart, the same mark as everywhere else */
+.bars .b.today i { opacity: 1; background: var(--brass); }
 .bars .b.today span { color: var(--ink); font-weight: 700; }
 .bars .b span { font-size: 10px; color: var(--muted); text-align: center; margin-top: var(--s1); overflow: hidden; white-space: nowrap; }
 .chart-total { font-size: 13px; color: var(--muted); }
@@ -259,7 +297,8 @@ button.link.danger { color: var(--stop); background: none; }
 .steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .steps li { display: grid; grid-template-columns: 96px 1fr; gap: var(--s3); padding: var(--s2) 10px; border: 1px solid var(--line); border-radius: 8px; }
 .steps li .d { font-family: ui-monospace, Menlo, monospace; color: var(--muted); font-size: 13px; }
-.steps li.extra { border-color: var(--ok); background: var(--ok-soft); }
+/* an extra payment is the borrower's money working: brass, not semantic green */
+.steps li.extra { border-color: var(--brass); background: var(--brass-soft); }
 details summary { cursor: pointer; color: var(--accent); font-size: 13px; }
 details.fold > summary { padding: var(--s3) var(--s4); font-weight: 500; border-top: 1px solid var(--line); }
 details.fold[open] > summary { border-bottom: 1px solid var(--line); }
@@ -278,8 +317,8 @@ pre.support {
 .timeline li .when { display: block; color: var(--muted); font-size: 12px; }
 .timeline li .err { color: var(--stop); }
 .login { max-width: 360px; margin: 14vh auto; padding: 0 var(--s4); }
-.login .panel { padding: 22px; }
-.login h1 { text-align: center; margin: 0 0 18px; font-size: 20px; }
+.login .panel { padding: 22px; border-top: 3px solid var(--accent); }
+.login h1 { text-align: center; margin: 0 0 18px; font-size: 22px; font-family: var(--serif); }
 footer { color: var(--muted); font-size: 12.5px; padding: 18px 26px; }
 
 /* ---------- print: a loan page on paper is the schedule and the facts, nothing to click ---------- */
@@ -295,5 +334,6 @@ footer { color: var(--muted); font-size: 12.5px; padding: 18px 26px; }
   tbody tr:nth-child(even) td, tbody tr:hover td { background: none; }
   pre.explain { display: none; }
   a { color: inherit; }
+  h2::after { border-color: #999; }
   .grid2 { grid-template-columns: 1fr 1fr; }
 }
