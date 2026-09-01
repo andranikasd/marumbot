@@ -14,7 +14,8 @@
 # because by then the container is genuinely up and a failure is a real failure.
 set -euo pipefail
 
-base="${1:?usage: smoke.sh <base-url>}"
+base="${1:?usage: smoke.sh <base-url> <expected-version>}"
+expected_version="${2:?usage: smoke.sh <base-url> <expected-version>}"
 deadline_s="${SMOKE_DEADLINE_S:-240}"
 
 fail() { echo "::error::$*"; exit 1; }
@@ -53,7 +54,8 @@ status() {
 echo "→ liveness (waiting up to ${deadline_s}s for the container to start)"
 started=$(date +%s)
 attempt=0
-until curl -sf --max-time 15 "$base/healthz" >/dev/null 2>&1; do
+until health=$(curl -sf --max-time 15 "$base/healthz" 2>/dev/null) && \
+      echo "$health" | grep -Fq "\"version\":\"$expected_version\""; do
   attempt=$((attempt + 1))
   elapsed=$(( $(date +%s) - started ))
   if [ "$elapsed" -ge "$deadline_s" ]; then
@@ -66,6 +68,7 @@ until curl -sf --max-time 15 "$base/healthz" >/dev/null 2>&1; do
   sleep 5
 done
 echo "  live after $(( $(date +%s) - started ))s"
+echo "  application version $expected_version"
 
 echo "→ readiness"
 ready=$(get "$base/readyz") || fail "readyz did not answer"
@@ -97,7 +100,7 @@ echo "→ app shell and modules"
 # instance happened to answer first.
 shell_ok=""
 for attempt in 1 2 3 4 5 6 7 8; do
-  if echo "$page" | grep -Eq 'a/[^"]+/js/main\.js'; then shell_ok=yes; break; fi
+  if echo "$page" | grep -Fq "a/$expected_version/js/main.js"; then shell_ok=yes; break; fi
   sleep 8
   page=$(get "$base/app/") || true
 done

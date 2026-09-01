@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -122,11 +123,12 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	}
 
 	bot := telegramclient.New(cfg.BotToken)
+	clock := sysclock.New()
 	worker := &app.Worker{
 		Inbox: store, Users: store, Loans: store, Editor: store, Budgets: store, Convos: store,
 		Chats:           postgres.ChatLookup{Store: store, Cipher: cipher},
 		Send:            bot,
-		Clock:           sysclock.New(),
+		Clock:           clock,
 		Owner:           cfg.InstanceID,
 		Log:             log,
 		MiniApp:         cfg.MiniAppURL,
@@ -146,19 +148,19 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		Editor: store, Reader: store, Required: worker, Filed: worker, Planner: worker,
 		Reviser: worker, BudgetConfig: store,
 		Version: cfg.Version,
-		Cipher:  cipher, Clock: sysclock.New(), Log: log,
+		Cipher:  cipher, Clock: clock, Log: log,
 	}
 	hook := &telegram.Webhook{
 		Inbox: store, Users: store, Cipher: cipher,
 		ServiceToken: cfg.ServiceToken, WebhookSecret: cfg.WebhookSecret,
 		Timezone: cfg.DefaultTimezone,
-		Clock:    sysclock.New(), Handle: worker.HandleOne, Callbacks: bot, Log: log,
+		Clock:    clock, Handle: worker.HandleOne, Callbacks: bot, Log: log,
 	}
 
 	public := &http.Server{
 		Addr: cfg.Addr,
 		Handler: otelhttp.NewHandler(
-			publicRoutes(adminSvc, hook, worker, mini, store, cfg.ServiceToken, log),
+			publicRoutes(adminSvc, hook, worker, mini, store, cfg.ServiceToken, cfg.Version, log),
 			"marum", otelhttp.WithFilter(notHealthCheck)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -169,7 +171,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	if cfg.AdminEnabled() {
 		srv, err := admin.New(adminSvc, admin.Config{
 			User: cfg.AdminUser, PasswordHash: cfg.AdminPassHash,
-			Version: cfg.Version, Env: cfg.Env, Now: time.Now,
+			Version: cfg.Version, Env: cfg.Env, Now: clock.Now,
 		}, log)
 		if err != nil {
 			return fmt.Errorf("admin interface: %w", err)
@@ -186,8 +188,11 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		log.Warn("admin interface disabled: MARUM_ADMIN_PASSWORD_HASH is not set")
 	}
 
+	var background sync.WaitGroup
 	for _, s := range servers {
+		background.Add(1)
 		go func(s *http.Server) {
+			defer background.Done()
 			if err := s.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				log.Error("listener failed", "addr", s.Addr, "err", err)
 				stop()
@@ -201,8 +206,10 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	//
 	// Not fatal: a bot with no suggestions is worse to use but still works, and
 	// refusing to start because Telegram was briefly busy is worse than that.
+	background.Add(1)
 	go func() {
-		menuCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer background.Done()
+		menuCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		if err := app.PublishMenus(menuCtx, bot, cfg.MiniAppURL+"?v="+neturl.QueryEscape(cfg.Version)); err != nil {
 			log.Warn("publishing the command menus failed", "err", err)
@@ -225,11 +232,12 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 			log.Error("graceful shutdown failed", "addr", s.Addr, "err", err)
 		}
 	}
+	background.Wait()
 	return nil
 }
 
 func publicRoutes(a *app.Admin, hook *telegram.Webhook, w *app.Worker,
-	mini *miniapp.Server, users app.UserLister, serviceToken string, log *slog.Logger,
+	mini *miniapp.Server, users app.UserLister, serviceToken, version string, log *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
 
@@ -252,7 +260,7 @@ func publicRoutes(a *app.Admin, hook *telegram.Webhook, w *app.Worker,
 	// Liveness performs no database call: a probe that depends on Postgres
 	// turns a database blip into a restart loop.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "version": version})
 	})
 
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
@@ -265,6 +273,7 @@ func publicRoutes(a *app.Admin, hook *telegram.Webhook, w *app.Worker,
 			"status":            map[bool]string{true: "ok", false: "degraded"}[h.DatabaseOK],
 			"database":          h.DatabaseOK,
 			"migration_version": h.MigrationVersion,
+			"version":           version,
 		})
 	})
 
@@ -273,7 +282,7 @@ func publicRoutes(a *app.Admin, hook *telegram.Webhook, w *app.Worker,
 	// process-local state that dies with the process.
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
 		h := a.Health(r.Context())
-		body := map[string]any{"database": h.DatabaseOK, "migration_version": h.MigrationVersion}
+		body := map[string]any{"database": h.DatabaseOK, "migration_version": h.MigrationVersion, "version": version}
 		if o, err := a.Overview(r.Context()); err == nil {
 			body["oldest_pending_command_s"] = o.OldestCommandAgeS
 			body["oldest_pending_delivery_s"] = o.OldestDeliveryAgeS
@@ -366,6 +375,6 @@ func printPasswordHash() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(h)
+	fmt.Println(h) //nolint:forbidigo // CLI output before application logging exists.
 	return nil
 }

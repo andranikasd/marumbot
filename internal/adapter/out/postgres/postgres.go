@@ -55,15 +55,11 @@ func (s *Store) Close() { s.pool.Close() }
 // into a restart loop.
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
-// Pool exposes the underlying pool for packages that need transactions.
-func (s *Store) Pool() *pgxpool.Pool { return s.pool }
-
 // MigrationVersion returns the applied schema version, so readiness can refuse
 // to serve against a schema the binary does not expect.
 func (s *Store) MigrationVersion(ctx context.Context) (int64, error) {
 	var v int64
-	err := s.pool.QueryRow(ctx,
-		`SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&v)
+	err := s.pool.QueryRow(ctx, q("MigrationVersion")).Scan(&v)
 	return v, err
 }
 

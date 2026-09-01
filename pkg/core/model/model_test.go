@@ -192,13 +192,13 @@ func TestContract_Validate(t *testing.T) {
 		t.Fatalf("valid contract rejected: %v", err)
 	}
 	mutations := map[string]func(*Contract){
-		"maturity before start": func(c *Contract) { c.MaturityDate = d("2025-01-01") },
-		"payment day 0":         func(c *Contract) { c.PaymentDay = 0 },
-		"payment day 32":        func(c *Contract) { c.PaymentDay = 32 },
-		"negative rate":         func(c *Contract) { c.NominalRate = -1 },
-		"declining principal":   func(c *Contract) { c.Type = DecliningPrincipal },
-		"zero rounding unit":    func(c *Contract) { c.Rounding.Unit = 0 },
-		"scheduled but zero":    func(c *Contract) { c.HasScheduled = true },
+		"maturity before start":  func(c *Contract) { c.MaturityDate = d("2025-01-01") },
+		"payment day 0":          func(c *Contract) { c.PaymentDay = 0 },
+		"payment day 32":         func(c *Contract) { c.PaymentDay = 32 },
+		"negative rate":          func(c *Contract) { c.NominalRate = -1 },
+		"unknown repayment type": func(c *Contract) { c.Type = RepaymentType(99) },
+		"zero rounding unit":     func(c *Contract) { c.Rounding.Unit = 0 },
+		"scheduled but zero":     func(c *Contract) { c.HasScheduled = true },
 	}
 	for name, mutate := range mutations {
 		c := base
@@ -206,6 +206,11 @@ func TestContract_Validate(t *testing.T) {
 		if err := c.Validate(); err == nil {
 			t.Errorf("%s: should be rejected", name)
 		}
+	}
+	declining := base
+	declining.Type = DecliningPrincipal
+	if err := declining.Validate(); err != nil {
+		t.Errorf("declining contract rejected: %v", err)
 	}
 }
 

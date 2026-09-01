@@ -200,10 +200,10 @@ func (r LoanEditRequest) Validate(cur money.Currency) (app.LoanEdit, error) {
 		PrepayEffect: prepay,
 	}
 	if r.BalanceMajor > 0 {
-		if math.IsNaN(r.BalanceMajor) || math.IsInf(r.BalanceMajor, 0) {
-			return app.LoanEdit{}, fmt.Errorf("%w: balance", ErrInvalid)
+		minor, err := budgetMinor(r.BalanceMajor, cur, false)
+		if err != nil {
+			return app.LoanEdit{}, fmt.Errorf("%w: balance", err)
 		}
-		minor := int64(math.Round(r.BalanceMajor * math.Pow10(int(cur.Exponent))))
 		e.BalanceMinor = &minor
 	}
 	return e, nil

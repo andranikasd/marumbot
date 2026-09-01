@@ -173,7 +173,7 @@ func (s *Server) createLoan() http.Handler {
 			if err := s.Filed.OnLoanFiled(ctx, userID, id); err != nil {
 				// The loan exists; reminders will be rebuilt by the next
 				// tick. Worth a log line, not a failed create.
-				s.Log.WarnContext(ctx, "setting up reminders failed", "loan", id, "error", err)
+				s.Log.WarnContext(ctx, "setting up reminders failed", "error", err)
 			}
 		}
 		writeJSON(w, http.StatusCreated, map[string]string{"id": id})

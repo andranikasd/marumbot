@@ -37,7 +37,17 @@ type LoanEdit struct {
 // ContractReviser writes a new contract version. Ownership is enforced in the
 // query's predicate, like every loan write.
 type ContractReviser interface {
-	ReviseContract(ctx context.Context, loanID, userID string, c model.Contract, effectiveFrom date.Date) error
+	ApplyLoanRevision(ctx context.Context, loanID, userID string, revision LoanRevision) error
+}
+
+// LoanRevision is one atomic borrower edit. Nil fields mean that part did not
+// change; persistence must commit every supplied part together or none of it.
+type LoanRevision struct {
+	Name, Description string
+	Rename            bool
+	Contract          *model.Contract
+	BalanceMinor      *int64
+	EffectiveFrom     date.Date
 }
 
 // ReviseLoan applies a full edit: words overwritten, terms versioned when
@@ -51,12 +61,6 @@ func (w *Worker) ReviseLoan(ctx context.Context, loanID, userID string, e LoanEd
 	ln, err := w.Editor.LoanForUser(ctx, loanID, userID)
 	if err != nil {
 		return err
-	}
-
-	if e.Name != ln.Name || e.Description != ln.Description {
-		if err := w.Editor.UpdateLoan(ctx, loanID, userID, e.Name, e.Description); err != nil {
-			return fmt.Errorf("renaming: %w", err)
-		}
 	}
 
 	next := ln.Contract
@@ -74,15 +78,17 @@ func (w *Worker) ReviseLoan(ctx context.Context, loanID, userID string, e LoanEd
 		next.MaturityDate != ln.Contract.MaturityDate ||
 		next.PaymentDay != ln.Contract.PaymentDay ||
 		next.Prepayment.Effect != ln.Contract.Prepayment.Effect
-	if termsChanged {
-		if err := w.Contracts.ReviseContract(ctx, loanID, userID, next, today); err != nil {
-			return fmt.Errorf("revising the contract: %w", err)
-		}
+	revision := LoanRevision{
+		Name: e.Name, Description: e.Description,
+		Rename:       e.Name != ln.Name || e.Description != ln.Description,
+		BalanceMinor: e.BalanceMinor, EffectiveFrom: today,
 	}
-
-	if e.BalanceMinor != nil && w.Balances != nil {
-		if err := w.Balances.RecordBalance(ctx, loanID, userID, *e.BalanceMinor, today.String()); err != nil {
-			return fmt.Errorf("recording the balance: %w", err)
+	if termsChanged {
+		revision.Contract = &next
+	}
+	if revision.Rename || revision.Contract != nil || revision.BalanceMinor != nil {
+		if err := w.Contracts.ApplyLoanRevision(ctx, loanID, userID, revision); err != nil {
+			return fmt.Errorf("applying loan revision: %w", err)
 		}
 	}
 
@@ -92,13 +98,13 @@ func (w *Worker) ReviseLoan(ctx context.Context, loanID, userID string, e LoanEd
 	// the edit itself has already happened.
 	if termsChanged && w.Reminders != nil {
 		if err := w.Reminders.CancelRemindersForLoan(ctx, loanID); err != nil {
-			w.Log.WarnContext(ctx, "cancelling stale reminders failed", "loan", loanID, "error", err)
+			w.Log.WarnContext(ctx, "cancelling stale reminders failed", "error", err)
 		}
 		if err := w.Reminders.EnsureDefaultReminders(ctx, loanID); err != nil {
-			w.Log.WarnContext(ctx, "restoring reminder rules failed", "loan", loanID, "error", err)
+			w.Log.WarnContext(ctx, "restoring reminder rules failed", "error", err)
 		}
 		if err := w.ScheduleForUser(ctx, userID); err != nil {
-			w.Log.WarnContext(ctx, "rescheduling reminders failed", "loan", loanID, "error", err)
+			w.Log.WarnContext(ctx, "rescheduling reminders failed", "error", err)
 		}
 	}
 	return nil

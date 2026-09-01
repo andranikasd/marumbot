@@ -235,3 +235,5 @@ SELECT id, user_id, delivery_kind, status, priority, scheduled_at, next_attempt_
        attempts, telegram_message_id, sent_at, last_error_code
   FROM notification_deliveries WHERE user_id = $1
  ORDER BY scheduled_at DESC LIMIT $2;
+-- name: MigrationVersion
+SELECT max(version_id) FROM goose_db_version WHERE is_applied;

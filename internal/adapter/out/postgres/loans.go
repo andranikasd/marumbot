@@ -120,37 +120,53 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 			return nil, err
 		}
 		if l.Excess, err = allocation.ParseExcessRule(excess); err != nil {
-			return nil, fmt.Errorf("loan %s: %w", l.ID, err)
+			return nil, fmt.Errorf("decoding allocation policy: %w", err)
 		}
 
 		cur, err := money.Lookup(code)
 		if err != nil {
-			return nil, fmt.Errorf("loan %s: %w", l.ID, err)
+			return nil, fmt.Errorf("decoding currency: %w", err)
 		}
 		prepayment, err := parsePrepayment(prepay, cur)
 		if err != nil {
-			return nil, fmt.Errorf("loan %s: %w", l.ID, err)
+			return nil, fmt.Errorf("decoding prepayment terms: %w", err)
 		}
 		startDate, err := date.Parse(start)
 		if err != nil {
-			return nil, fmt.Errorf("loan %s start date: %w", l.ID, err)
+			return nil, fmt.Errorf("decoding loan start date: %w", err)
 		}
 		maturityDate, err := date.Parse(maturity)
 		if err != nil {
-			return nil, fmt.Errorf("loan %s maturity date: %w", l.ID, err)
+			return nil, fmt.Errorf("decoding loan maturity date: %w", err)
 		}
 
+		parsedRate, err := parseRate(rate)
+		if err != nil {
+			return nil, fmt.Errorf("decoding loan rate: %w", err)
+		}
+		parsedDayCount, err := dayCountFrom(dayCount)
+		if err != nil {
+			return nil, fmt.Errorf("decoding loan day count: %w", err)
+		}
+		parsedType, err := repaymentTypeFrom(repayment)
+		if err != nil {
+			return nil, fmt.Errorf("decoding loan repayment type: %w", err)
+		}
+		parsedMode, err := roundingModeFrom(mode)
+		if err != nil {
+			return nil, fmt.Errorf("decoding loan rounding mode: %w", err)
+		}
 		l.Contract = model.Contract{
 			LoanID:       model.ID(l.ID),
 			Version:      1,
 			Currency:     cur,
-			NominalRate:  parseRate(rate),
-			DayCount:     dayCountFrom(dayCount),
-			Type:         repaymentTypeFrom(repayment),
+			NominalRate:  parsedRate,
+			DayCount:     parsedDayCount,
+			Type:         parsedType,
 			StartDate:    startDate,
 			MaturityDate: maturityDate,
 			PaymentDay:   int(day),
-			Rounding:     money.Policy{Mode: roundingModeFrom(mode), Unit: int64(unit)},
+			Rounding:     money.Policy{Mode: parsedMode, Unit: int64(unit)},
 			Prepayment:   prepayment,
 		}
 		if first != nil {
@@ -168,7 +184,7 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 			if err != nil {
 				// A zero AsOf silently anchors the schedule at the start date,
 				// which shows wrong amounts; a bad stored date must surface.
-				return nil, fmt.Errorf("loan %s as_of: %w", l.ID, err)
+				return nil, fmt.Errorf("decoding loan balance date: %w", err)
 			}
 			l.AsOf = d
 		}
@@ -184,44 +200,61 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 //
 // The column stores 0.140000000 for 14 per cent -- a fraction, not a
 // percentage. Rendering it directly produced "Rate: 0.140000000%".
-func parseRate(s string) money.Rate {
+func parseRate(s string) (money.Rate, error) {
 	whole, frac, _ := strings.Cut(s, ".")
-	w, _ := strconv.ParseInt(whole, 10, 64)
+	w, err := strconv.ParseInt(whole, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid rate %q: %w", s, err)
+	}
+	if len(frac) > 9 {
+		return 0, fmt.Errorf("invalid rate precision %q", s)
+	}
 	frac = (frac + "000000000")[:9]
-	f, _ := strconv.ParseInt(frac, 10, 64)
-	return money.Rate(w*1_000_000_000 + f)
+	f, err := strconv.ParseInt(frac, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid rate %q: %w", s, err)
+	}
+	return money.Rate(w*1_000_000_000 + f), nil
 }
 
-func dayCountFrom(s string) money.DayCount {
+func dayCountFrom(s string) (money.DayCount, error) {
 	switch s {
+	case "act365":
+		return money.Actual365, nil
 	case "act360":
-		return money.Actual360
+		return money.Actual360, nil
 	case "30_360":
-		return money.Thirty360
+		return money.Thirty360, nil
 	case "act_act":
-		return money.ActualActual
+		return money.ActualActual, nil
 	default:
-		return money.Actual365
+		return 0, fmt.Errorf("unknown day count %q", s)
 	}
 }
 
-func repaymentTypeFrom(s string) model.RepaymentType {
-	if s == "declining" {
-		return model.DecliningPrincipal
-	}
-	return model.Annuity
-}
-
-func roundingModeFrom(s string) money.Mode {
+func repaymentTypeFrom(s string) (model.RepaymentType, error) {
 	switch s {
-	case "half_even":
-		return money.HalfEven
-	case "down":
-		return money.Down
-	case "up":
-		return money.Up
+	case "annuity":
+		return model.Annuity, nil
+	case "declining":
+		return model.DecliningPrincipal, nil
 	default:
-		return money.HalfUp
+		return 0, fmt.Errorf("unknown repayment type %q", s)
+	}
+}
+
+func roundingModeFrom(s string) (money.Mode, error) {
+	switch s {
+	case "half_up":
+		return money.HalfUp, nil
+	case "half_even":
+		return money.HalfEven, nil
+	case "down":
+		return money.Down, nil
+	case "up":
+		return money.Up, nil
+	default:
+		return 0, fmt.Errorf("unknown rounding mode %q", s)
 	}
 }
 
@@ -362,11 +395,12 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 		trust     *string
 		excess    string
 		prepay    string
+		first     *int64
 	)
 	err := s.pool.QueryRow(ctx, q("GetLoanForUser"), loanID, userID).Scan(
 		&l.ID, &l.Name, &l.Description, &code,
 		&rate, &repayment, &dayCount, &start, &maturity, &day,
-		&mode, &unit, &principal, &asOf, &trust, &excess, &prepay)
+		&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return app.UserLoan{}, app.ErrNotFound
 	}
@@ -374,7 +408,7 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 		return app.UserLoan{}, err
 	}
 	if l.Excess, err = allocation.ParseExcessRule(excess); err != nil {
-		return app.UserLoan{}, fmt.Errorf("loan %s: %w", l.ID, err)
+		return app.UserLoan{}, fmt.Errorf("decoding allocation policy: %w", err)
 	}
 	cur, err := money.Lookup(code)
 	if err != nil {
@@ -382,22 +416,38 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 	}
 	prepayment, err := parsePrepayment(prepay, cur)
 	if err != nil {
-		return app.UserLoan{}, fmt.Errorf("loan %s: %w", l.ID, err)
+		return app.UserLoan{}, fmt.Errorf("decoding prepayment terms: %w", err)
 	}
 	startDate, err := date.Parse(start)
 	if err != nil {
-		return app.UserLoan{}, fmt.Errorf("loan %s start date: %w", l.ID, err)
+		return app.UserLoan{}, fmt.Errorf("decoding loan start date: %w", err)
 	}
 	maturityDate, err := date.Parse(maturity)
 	if err != nil {
-		return app.UserLoan{}, fmt.Errorf("loan %s maturity date: %w", l.ID, err)
+		return app.UserLoan{}, fmt.Errorf("decoding loan maturity date: %w", err)
+	}
+	parsedRate, err := parseRate(rate)
+	if err != nil {
+		return app.UserLoan{}, fmt.Errorf("decoding loan rate: %w", err)
+	}
+	parsedDayCount, err := dayCountFrom(dayCount)
+	if err != nil {
+		return app.UserLoan{}, fmt.Errorf("decoding loan day count: %w", err)
+	}
+	parsedType, err := repaymentTypeFrom(repayment)
+	if err != nil {
+		return app.UserLoan{}, fmt.Errorf("decoding loan repayment type: %w", err)
+	}
+	parsedMode, err := roundingModeFrom(mode)
+	if err != nil {
+		return app.UserLoan{}, fmt.Errorf("decoding loan rounding mode: %w", err)
 	}
 	l.Contract = model.Contract{
 		LoanID: model.ID(l.ID), Version: 1, Currency: cur,
-		NominalRate: parseRate(rate), DayCount: dayCountFrom(dayCount),
-		Type: repaymentTypeFrom(repayment), StartDate: startDate,
+		NominalRate: parsedRate, DayCount: parsedDayCount,
+		Type: parsedType, StartDate: startDate,
 		MaturityDate: maturityDate, PaymentDay: int(day),
-		Rounding:   money.Policy{Mode: roundingModeFrom(mode), Unit: int64(unit)},
+		Rounding:   money.Policy{Mode: parsedMode, Unit: int64(unit)},
 		Prepayment: prepayment,
 	}
 	if principal != nil {
@@ -405,10 +455,15 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 	} else {
 		l.Balance = money.Zero(cur)
 	}
+	if first != nil {
+		l.OriginalPrincipal = money.FromMinor(*first, cur)
+	} else {
+		l.OriginalPrincipal = money.Zero(cur)
+	}
 	if asOf != nil {
 		d, err := date.Parse(*asOf)
 		if err != nil {
-			return app.UserLoan{}, fmt.Errorf("loan %s as_of: %w", l.ID, err)
+			return app.UserLoan{}, fmt.Errorf("decoding loan balance date: %w", err)
 		}
 		l.AsOf = d
 	}
@@ -418,16 +473,25 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 	return l, nil
 }
 
-// ReviseContract writes a new contract version and closes the current one.
-// Ownership lives in the query's predicate.
-func (s *Store) ReviseContract(ctx context.Context, loanID, userID string, c model.Contract, effectiveFrom date.Date) error {
+// ApplyLoanRevision persists every part of one edit in a single SQL statement.
+func (s *Store) ApplyLoanRevision(ctx context.Context, loanID, userID string, r app.LoanRevision) error {
+	c := model.Contract{}
+	terms := r.Contract != nil
+	if terms {
+		c = *r.Contract
+	}
+	balance := int64(0)
+	hasBalance := r.BalanceMinor != nil
+	if hasBalance {
+		balance = *r.BalanceMinor
+	}
 	var got string
-	err := s.pool.QueryRow(ctx, q("ReviseLoanContract"),
-		loanID, userID, uuid.NewString(), effectiveFrom.String(),
-		c.NominalRate.String(), dayCountName(c.DayCount), repaymentTypeName(c.Type),
-		c.StartDate.String(), c.MaturityDate.String(), c.PaymentDay,
-		roundingModeName(c.Rounding.Mode), c.Rounding.Unit,
-		prepaymentJSON(c.Prepayment),
+	err := s.pool.QueryRow(ctx, q("ApplyLoanRevision"),
+		loanID, userID, r.Rename, r.Name, r.Description,
+		terms, uuid.NewString(), r.EffectiveFrom.String(), c.NominalRate.String(),
+		dayCountName(c.DayCount), repaymentTypeName(c.Type), c.StartDate.String(),
+		c.MaturityDate.String(), c.PaymentDay, roundingModeName(c.Rounding.Mode),
+		c.Rounding.Unit, prepaymentJSON(c.Prepayment), hasBalance, uuid.NewString(), balance,
 	).Scan(&got)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return app.ErrNotFound

@@ -577,7 +577,11 @@ func (s *Server) commands(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	counts, _ := s.admin.CommandCounts(r.Context())
+	counts, err := s.admin.CommandCounts(r.Context())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	s.render(w, r, "commands.html", map[string]any{
 		keyTitle: "Command inbox", keyNav: "commands", keyRows: rows,
 		"Status": status, "Statuses": withAll(counts, []string{"pending", "leased", "completed", "dead"}),
@@ -598,7 +602,11 @@ func (s *Server) deliveries(w http.ResponseWriter, r *http.Request) {
 			rows = append(rows, d)
 		}
 	}
-	counts, _ := s.admin.DeliveryCounts(r.Context())
+	counts, err := s.admin.DeliveryCounts(r.Context())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	s.render(w, r, "deliveries.html", map[string]any{
 		keyTitle: "Delivery outbox", keyNav: "deliveries", keyRows: rows,
 		"Status": status, "Statuses": withAll(counts, []string{"pending", "sent", "dead"}),

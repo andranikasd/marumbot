@@ -95,7 +95,7 @@ func (h *Webhook) Handler() http.Handler {
 		if err := h.accept(ctx, u); err != nil {
 			// 500 makes Telegram retry, which is what we want: the update is
 			// not yet recorded anywhere, so dropping it would lose it.
-			h.Log.ErrorContext(ctx, "recording update failed", "error", err, "update_id", u.UpdateID)
+			h.Log.ErrorContext(ctx, "recording update failed", "error", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -142,7 +142,7 @@ func (h *Webhook) accept(ctx context.Context, u Update) error {
 	if !accepted {
 		// A repeat. Telegram retries until acknowledged, so this is ordinary
 		// traffic and the only correct response is to do nothing again.
-		h.Log.DebugContext(ctx, "duplicate update ignored", "update_id", u.UpdateID)
+		h.Log.DebugContext(ctx, "duplicate update ignored")
 		return nil
 	}
 
@@ -162,8 +162,7 @@ func (h *Webhook) accept(ctx context.Context, u Update) error {
 		handleCtx, cancel := context.WithTimeout(ctx, drainBudget)
 		defer cancel()
 		if err := h.Handle(handleCtx, id); err != nil {
-			h.Log.WarnContext(ctx, "immediate handling failed; the tick will retry",
-				"error", err, "update_id", u.UpdateID)
+			h.Log.WarnContext(ctx, "immediate handling failed; the tick will retry", "error", err)
 		}
 	}
 	return nil

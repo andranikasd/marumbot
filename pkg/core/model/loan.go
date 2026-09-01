@@ -20,7 +20,7 @@ type RepaymentType uint8
 
 // The repayment types the engine understands.
 const (
-	Annuity            RepaymentType = iota // level instalment; the MVP's only type
+	Annuity            RepaymentType = iota // level instalment
 	DecliningPrincipal                      // equal principal, falling instalment; not yet exposed
 )
 
@@ -186,8 +186,8 @@ func (c Contract) Validate() error {
 		return fmt.Errorf("%w: contract version needs an effective date", ErrInvalid)
 	case !c.EffectiveThru.IsZero() && c.EffectiveThru.Before(c.EffectiveFrom):
 		return fmt.Errorf("%w: effective range ends before it starts", ErrInvalid)
-	case c.Type != Annuity:
-		return fmt.Errorf("%w: only annuity loans are supported", ErrInvalid)
+	case c.Type != Annuity && c.Type != DecliningPrincipal:
+		return fmt.Errorf("%w: unsupported repayment type", ErrInvalid)
 	case c.HasScheduled && c.ScheduledPayment.Sign() <= 0:
 		return fmt.Errorf("%w: scheduled payment must be positive when supplied", ErrInvalid)
 	case c.Rounding.Unit < 1:

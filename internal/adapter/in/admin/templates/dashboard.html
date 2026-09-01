@@ -7,6 +7,7 @@
   <span class="item">Checked <b>{{stamp .Now}}</b></span>
 </div>
 {{if not .D.Health.DatabaseOK}}<div class="note bad">Database unreachable: {{.D.Health.DatabaseError}}</div>{{end}}
+{{range .D.Warnings}}<div class="note bad">{{.}}</div>{{end}}
 
 <div class="cards">
   <a class="card" href="/users"><div class="n">{{.D.Overview.Users}}</div><div class="k">users</div><div class="sub">{{sum .D.UsersByDay}} joined in 14 days</div></a>

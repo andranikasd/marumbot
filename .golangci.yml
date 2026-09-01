@@ -140,10 +140,6 @@ linters:
       - path: internal/adapter/out/sysclock/
         linters:
           - forbidigo
-      # main may print before the logger exists.
-      - path: cmd/marum/main\.go
-        linters:
-          - forbidigo
       # Test fixtures construct domain values directly and print diagnostics.
       - path: _test\.go
         linters:

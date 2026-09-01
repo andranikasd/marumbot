@@ -486,13 +486,12 @@ func (w *Worker) positions(ctx context.Context, loans []UserLoan) ([]plan.Positi
 			started = true
 		}
 		if ln.Contract.Currency.Code != cur.Code {
-			w.Log.WarnContext(ctx, "skipping a loan in another currency",
-				"loan", ln.ID, "currency", ln.Contract.Currency.Code)
+			w.Log.WarnContext(ctx, "skipping a loan in another currency", "currency", ln.Contract.Currency.Code)
 			continue
 		}
 		s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
 		if err != nil || len(s.Rows) == 0 {
-			w.Log.WarnContext(ctx, "cannot project a loan", "loan", ln.ID, "error", err)
+			w.Log.WarnContext(ctx, "cannot project a loan", "error", err)
 			continue
 		}
 		if owed, err = owed.Add(ln.Balance); err != nil {

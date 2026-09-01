@@ -120,6 +120,26 @@ The order is not negotiable:
 4. **Roll back the binary** if the smoke fails. The schema stays expanded,
    which is safe precisely because it is backward compatible.
 
+### Proving the new version is live
+
+The workflow passes the expected release string to the smoke test. A rollout
+is successful only when both the Go container and the edge-served Mini App
+report that exact string; reaching any healthy older deployment is a failure.
+
+For a manual check, compare the workflow's stamped version with both surfaces:
+
+```bash
+curl -fsS "$PUBLIC_URL/healthz"
+curl -fsS "$PUBLIC_URL/app/" | grep "a/$VERSION/js/main.js"
+```
+
+`healthz` returns a `version` field for the running binary. The Mini App also
+shows the asset version in its build badge. If those values differ, the Worker
+and container are from different rollouts; do not wait for caches to expire.
+The shell is served with `no-store`, and assets are immutable only under their
+versioned URL, so an exact-version mismatch is a deployment failure rather
+than an expected cache delay.
+
 ## The admin interface is never public
 
 The Worker returns 404 for `/admin`. Reach it over a private path — an SSH

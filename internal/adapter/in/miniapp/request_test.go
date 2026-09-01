@@ -96,6 +96,17 @@ func TestValidateRejectsNonFiniteNumbers(t *testing.T) {
 	}
 }
 
+func TestLoanEditRejectsOversizedBalance(t *testing.T) {
+	r := LoanEditRequest{
+		Name: "Car", RatePercent: 10, Method: "annuity",
+		StartDate: "2026-01-01", MaturityDate: "2028-01-01", PaymentDay: 1,
+		BalanceMajor: 1e18,
+	}
+	if _, err := r.Validate(money.MustLookup("AMD")); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("oversized balance: got %v, want ErrInvalid", err)
+	}
+}
+
 // A lender name is displayed. Overlong input is truncated rather than refused,
 // because a paste with trailing whitespace is a user error worth absorbing.
 func TestTitleIsTruncated(t *testing.T) {
