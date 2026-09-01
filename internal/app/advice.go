@@ -191,7 +191,11 @@ func (w *Worker) refuse(ctx context.Context, chat int64, l i18n.Locale, err erro
 	var un *plan.UnsupportedError
 	var tr *plan.TruncatedError
 	var mc *plan.MixedCurrencyError
+	var st *plan.StaleBalanceError
 	switch {
+	case errors.As(err, &st):
+		return w.Send.SendMessage(ctx, chat,
+			i18n.T(l, "advice.refuse.stale", st.AsOf.String()), w.mainMenu(l))
 	case errors.As(err, &inf):
 		return w.Send.SendMessage(ctx, chat,
 			i18n.T(l, "advice.refuse.infeasible", inf.On.String(), bare(inf.Required), bare(inf.Shortfall)), w.budgetMarkup(l))

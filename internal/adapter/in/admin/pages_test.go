@@ -175,7 +175,9 @@ func (fakeStore) LoansForUser(context.Context, string, int32) ([]app.UserLoan, e
 			NominalRate: money.RateFromPercent(18, 0), DayCount: money.Actual365, Type: model.Annuity,
 			StartDate: start, MaturityDate: date.MustNew(2029, 1, 15), PaymentDay: 15, Rounding: money.DefaultPolicy(amd),
 		},
-		Balance: money.FromMinor(300000000, amd), AsOf: start, Trust: "user_entered",
+		// Anchored within the planner's staleness bound of the fixed clock
+		// (2026-08-28): a January anchor would now rightly refuse to plan.
+		Balance: money.FromMinor(300000000, amd), AsOf: date.MustNew(2026, 7, 15), Trust: "user_entered",
 		Excess: allocation.ExcessReducePrincipal,
 	}}, nil
 }

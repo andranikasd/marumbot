@@ -48,6 +48,21 @@ func (e *InfeasibleError) Error() string {
 		e.On, e.LoanID, e.Required, e.Available, e.Shortfall)
 }
 
+// StaleBalanceError refuses to plan on a balance so old that the plan would
+// rest mostly on assumed payments. A plan is only as true as its anchor, and
+// past a few assumed instalments the honest answer is "confirm the balance",
+// not a recommendation built on payments nobody has verified.
+type StaleBalanceError struct {
+	LoanID  string
+	AsOf    date.Date
+	Assumed int
+}
+
+func (e *StaleBalanceError) Error() string {
+	return fmt.Sprintf("plan: loan %s: balance anchored %s needs %d assumed instalments; confirm the balance",
+		e.LoanID, e.AsOf, e.Assumed)
+}
+
 // MixedCurrencyError refuses a portfolio the engine cannot value in one unit.
 type MixedCurrencyError struct{ Have, Want string }
 

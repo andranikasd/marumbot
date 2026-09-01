@@ -11,16 +11,71 @@ import (
 	"github.com/andranikasd/marumbot/pkg/core/money"
 )
 
-// contractFor returns the version in force on d. Effective periods must not
-// overlap, which the store enforces; if none covers the date, replay stops
-// rather than picking one.
+// contractFor returns the version in force on d. When a revision starts the
+// day its predecessor ends -- the shape every revision writes -- both cover
+// that one date, so the version with the latest effective_from wins: the new
+// terms govern from their own first day, deterministically, regardless of
+// slice order. If none covers the date, replay stops rather than picking one.
 func contractFor(versions []model.Contract, d date.Date) (model.Contract, error) {
+	var best model.Contract
+	found := false
 	for _, c := range versions {
-		if c.CoversDate(d) {
-			return c, nil
+		if !c.CoversDate(d) {
+			continue
+		}
+		if !found || c.EffectiveFrom.After(best.EffectiveFrom) {
+			best, found = c, true
 		}
 	}
-	return model.Contract{}, fmt.Errorf("%w: %s", ErrNoContract, d)
+	if !found {
+		return model.Contract{}, fmt.Errorf("%w: %s", ErrNoContract, d)
+	}
+	return best, nil
+}
+
+// accrueAcross accrues interest over (from, to], splitting the interval at
+// every contract-version boundary inside it, so a rate or day-count change
+// mid-interval charges each day under the terms actually in force on it.
+// Accruing the whole span under one version -- whichever the interval
+// happened to end in -- was wrong by the difference between the versions,
+// and loan revisions make that interval an ordinary occurrence.
+//
+// Each segment is rounded like a segment always was: the per-event rounding
+// this ledger has done since the first version, applied at version edges too.
+func accrueAcross(pos model.Buckets, versions []model.Contract, from, to date.Date) (money.Amount, error) {
+	total := money.Zero(pos.Currency())
+	segStart := from
+	for segStart.Before(to) {
+		// The version covering the day after segStart governs the segment,
+		// which runs to the end of that version's own effective range (its
+		// last covered day) or to `to`, whichever comes first. A revision
+		// closes its predecessor on the day it starts, so the boundary day's
+		// single day of interest accrues under the old terms and the new
+		// terms take over from the next day -- one rule, applied every time.
+		c, err := contractFor(versions, date.AddDays(segStart, 1))
+		if err != nil {
+			return money.Amount{}, err
+		}
+		segEnd := to
+		if !c.EffectiveThru.IsZero() && c.EffectiveThru.Before(to) {
+			segEnd = c.EffectiveThru
+		}
+		if !segEnd.After(segStart) {
+			// A zero-length or inverted segment means the version table is
+			// malformed; stopping beats looping forever.
+			return money.Amount{}, fmt.Errorf("%w: version %d covers no days after %s",
+				ErrNoContract, c.Version, segStart)
+		}
+		part, err := accrue(pos, c, segStart, segEnd)
+		if err != nil {
+			return money.Amount{}, err
+		}
+		if total, err = total.Add(part); err != nil {
+			return money.Amount{}, err
+		}
+		segStart = segEnd
+	}
+	return total, nil
 }
 
 // accrue returns the interest earned on the outstanding principal between two
