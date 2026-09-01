@@ -231,14 +231,20 @@ func (s *Store) SetBudget(ctx context.Context, userID, currency string, minor in
 	return s.pool.QueryRow(ctx, q("SetBudget"), userID, currency, minor, payDay).Scan(&got)
 }
 
-// Budget returns the borrower's largest recorded budget, or Set=false when
-// there is none. Absent is a state the caller must handle, not an error: a user
-// who has not set a budget is the normal case, not a fault.
+// Budget returns the borrower's most recently stated budget, or Set=false
+// when there is none. Absent is a state the caller must handle, not an error:
+// a user who has not set a budget is the normal case, not a fault.
 func (s *Store) Budget(ctx context.Context, userID string) (app.Budget, error) {
-	var b app.Budget
-	var minor int64
-	var payDay int16
-	err := s.pool.QueryRow(ctx, q("GetBudget"), userID).Scan(&b.Currency, &minor, &payDay)
+	var (
+		b        app.Budget
+		minor    int64
+		payDay   int16
+		overRaw  string
+		opening  int64
+		openedOn *string
+	)
+	err := s.pool.QueryRow(ctx, q("GetBudget"), userID).Scan(
+		&b.Currency, &minor, &payDay, &overRaw, &opening, &openedOn)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return app.Budget{}, nil
 	}
@@ -250,7 +256,47 @@ func (s *Store) Budget(ctx context.Context, userID string) (app.Budget, error) {
 		return app.Budget{}, err
 	}
 	b.Monthly, b.Set, b.PayDay = money.FromMinor(minor, cur), true, int(payDay)
+	if overRaw != "" && overRaw != "{}" {
+		if err := json.Unmarshal([]byte(overRaw), &b.Overrides); err != nil {
+			return app.Budget{}, fmt.Errorf("budget overrides: %w", err)
+		}
+	}
+	b.Opening = money.FromMinor(opening, cur)
+	if openedOn != nil {
+		d, err := date.Parse(*openedOn)
+		if err != nil {
+			return app.Budget{}, fmt.Errorf("budget opening_as_of: %w", err)
+		}
+		b.OpeningAsOf = d
+	}
 	return b, nil
+}
+
+// SetOpening states cash on hand for loans, stamped with the day it was said.
+func (s *Store) SetOpening(ctx context.Context, userID, currency string, minor int64, asOf string) error {
+	var got int64
+	err := s.pool.QueryRow(ctx, q("SetBudgetOpening"), userID, currency, minor, asOf).Scan(&got)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.ErrNotFound // no budget row for this currency yet
+	}
+	return err
+}
+
+// SetOverrides replaces the whole per-month budget document.
+func (s *Store) SetOverrides(ctx context.Context, userID, currency string, overrides map[string]int64) error {
+	if overrides == nil {
+		overrides = map[string]int64{}
+	}
+	raw, err := json.Marshal(overrides)
+	if err != nil {
+		return err
+	}
+	var got string
+	err = s.pool.QueryRow(ctx, q("SetBudgetOverrides"), userID, currency, string(raw)).Scan(&got)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.ErrNotFound
+	}
+	return err
 }
 
 // UpdateLoan renames a loan the borrower owns.

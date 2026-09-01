@@ -259,7 +259,7 @@ func (a *Admin) planFor(ctx context.Context, userID string, now time.Time) (*Pla
 	}
 	in := plan.Input{
 		ValuationDate: date.From(now, time.UTC),
-		Cash:          plan.CashPlan{Monthly: budget.Monthly, PayDay: budget.PayDay},
+		Cash:          budget.CashPlan(date.From(now, time.UTC)),
 		Loans:         positions,
 	}
 	rep, err := plan.Search(in, plan.Goal{Kind: plan.LeastInterest})

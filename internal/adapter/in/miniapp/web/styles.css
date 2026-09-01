@@ -99,6 +99,14 @@ h1{font-size:22px;font-weight:700;letter-spacing:-.02em;margin:0 0 4px}
   text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
 .card .edit .efield input,.card .edit .efield select{margin-bottom:0}
 
+/* per-month budget rows */
+.row.override{margin-bottom:8px;align-items:center}
+.row.override .o-month{flex:1.2;min-width:0}
+.row.override .o-amount{flex:1;min-width:0}
+.row.override .o-del{background:none;border:0;padding:0 4px;font-size:16px;
+  color:var(--hint);cursor:pointer}
+#override-add{margin-top:2px}
+
 /* summary chips row (loans screen) */
 .statgrid{display:flex;gap:10px;margin:0 0 14px}
 .statgrid .stat{flex:1;background:var(--card);border-radius:var(--r);padding:10px 12px;box-shadow:var(--shadow)}

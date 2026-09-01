@@ -284,6 +284,54 @@ func TestBudgetPrefersTheLatestStatement(t *testing.T) {
 	}
 }
 
+// TestBudgetTuning: cash on hand and the per-month document round-trip, and
+// the whole-document replace really replaces.
+func TestBudgetTuning(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	userID := newUser(t, s)
+
+	if err := s.SetBudget(ctx, userID, "AMD", 300_000_00, 5); err != nil {
+		t.Fatalf("setting the budget: %v", err)
+	}
+	if err := s.SetOpening(ctx, userID, "AMD", 120_000_00, "2026-09-01"); err != nil {
+		t.Fatalf("stating cash on hand: %v", err)
+	}
+	if err := s.SetOverrides(ctx, userID, "AMD", map[string]int64{
+		"2026-12": 400_000_00, "2027-01": 150_000_00,
+	}); err != nil {
+		t.Fatalf("stating month budgets: %v", err)
+	}
+
+	b, err := s.Budget(ctx, userID)
+	if err != nil {
+		t.Fatalf("reading the budget: %v", err)
+	}
+	if b.Opening.Minor() != 120_000_00 || b.OpeningAsOf.String() != "2026-09-01" {
+		t.Errorf("opening lost: %v as of %v", b.Opening, b.OpeningAsOf)
+	}
+	if len(b.Overrides) != 2 || b.Overrides["2026-12"] != 400_000_00 || b.Overrides["2027-01"] != 150_000_00 {
+		t.Errorf("overrides lost: %+v", b.Overrides)
+	}
+
+	// Replacement replaces: a removed month must not survive the write.
+	if err := s.SetOverrides(ctx, userID, "AMD", map[string]int64{"2026-12": 350_000_00}); err != nil {
+		t.Fatalf("replacing month budgets: %v", err)
+	}
+	b, err = s.Budget(ctx, userID)
+	if err != nil {
+		t.Fatalf("re-reading: %v", err)
+	}
+	if len(b.Overrides) != 1 || b.Overrides["2026-12"] != 350_000_00 {
+		t.Errorf("replacement merged instead of replacing: %+v", b.Overrides)
+	}
+
+	// Tuning a currency with no budget row is a typed miss, not a silent noop.
+	if err := s.SetOpening(ctx, userID, "USD", 1, "2026-09-01"); !errors.Is(err, app.ErrNotFound) {
+		t.Errorf("opening without a budget row: want ErrNotFound, got %v", err)
+	}
+}
+
 // TestUpsertFirstContactRace: ten concurrent first contacts for the same
 // identity must resolve to one account, with no unique-violation errors.
 func TestUpsertFirstContactRace(t *testing.T) {

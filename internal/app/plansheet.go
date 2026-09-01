@@ -146,7 +146,7 @@ func (w *Worker) PlanSheet(ctx context.Context, userID string, goal *plan.Goal) 
 
 	in := plan.Input{
 		ValuationDate: date.From(w.Clock.Now(), time.UTC),
-		Cash:          plan.CashPlan{Monthly: budget.Monthly, PayDay: budget.PayDay},
+		Cash:          budget.CashPlan(date.From(w.Clock.Now(), time.UTC)),
 		Loans:         positions,
 	}
 	// The inputs above are read fresh; only the pure search is cached, keyed

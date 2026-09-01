@@ -3,6 +3,7 @@ package miniapp
 import (
 	"fmt"
 	"math"
+	"regexp"
 
 	"github.com/andranikasd/marumbot/internal/app"
 	"github.com/andranikasd/marumbot/pkg/core/date"
@@ -214,7 +215,19 @@ type BudgetRequest struct {
 	Currency     string  `json:"currency"`
 	// PayDay is the day of the month the money arrives; 0 means not stated.
 	PayDay int `json:"pay_day"`
+	// OpeningMajor is cash on hand for loans today. Absent means untouched;
+	// zero withdraws the statement.
+	OpeningMajor *float64 `json:"opening_major"`
+	// Overrides are whole-month figures keyed "2006-01", in major units.
+	// Absent means untouched; an empty object clears every stated month.
+	Overrides map[string]float64 `json:"overrides"`
 }
+
+// maxOverrideMonths bounds the document. Three years of stated months is a
+// plan horizon, not a budget; beyond it is a client bug.
+const maxOverrideMonths = 36
+
+var monthKeyRe = regexp.MustCompile(`^\d{4}-(0[1-9]|1[0-2])$`)
 
 // Validate turns a posted budget into minor units and a pay day.
 func (r BudgetRequest) Validate() (string, int64, int, error) {
@@ -233,4 +246,42 @@ func (r BudgetRequest) Validate() (string, int64, int, error) {
 		return "", 0, 0, fmt.Errorf("%w: pay day %d out of range", ErrInvalid, r.PayDay)
 	}
 	return cur.Code, int64(minor), r.PayDay, nil
+}
+
+// ValidateOpening converts the stated cash on hand. Only called when the
+// field is present.
+func (r BudgetRequest) ValidateOpening(cur money.Currency) (int64, error) {
+	v := *r.OpeningMajor
+	if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
+		return 0, fmt.Errorf("%w: cash on hand cannot be negative", ErrInvalid)
+	}
+	minor := math.Round(v * math.Pow10(int(cur.Exponent)))
+	if minor > float64(math.MaxInt64/1000) {
+		return 0, fmt.Errorf("%w: cash on hand too large", ErrInvalid)
+	}
+	return int64(minor), nil
+}
+
+// ValidateOverrides converts the per-month document to minor units. Only
+// called when the field is present.
+func (r BudgetRequest) ValidateOverrides(cur money.Currency) (map[string]int64, error) {
+	if len(r.Overrides) > maxOverrideMonths {
+		return nil, fmt.Errorf("%w: more than %d stated months", ErrInvalid, maxOverrideMonths)
+	}
+	out := make(map[string]int64, len(r.Overrides))
+	scale := math.Pow10(int(cur.Exponent))
+	for k, v := range r.Overrides {
+		if !monthKeyRe.MatchString(k) {
+			return nil, fmt.Errorf("%w: %q is not a month", ErrInvalid, k)
+		}
+		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
+			return nil, fmt.Errorf("%w: the %s budget cannot be negative", ErrInvalid, k)
+		}
+		minor := math.Round(v * scale)
+		if minor > float64(math.MaxInt64/1000) {
+			return nil, fmt.Errorf("%w: the %s budget is too large", ErrInvalid, k)
+		}
+		out[k] = int64(minor)
+	}
+	return out, nil
 }
