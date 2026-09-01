@@ -43,6 +43,17 @@ test: ## Unit and golden tests, race detector on
 test-short: ## Tests without the race detector
 	$(RUN) $(GO_ALPINE) go test -count=1 ./...
 
+# The store integration tests run against the compose postgres with the
+# migrations applied -- the same shape as the CI `store` job. They skip
+# themselves everywhere TEST_DATABASE_URL is unset, so `make test` stays
+# socket-free.
+test-store: goose-image ## Store integration tests against the local database
+	docker compose up -d --wait postgres
+	$(GOOSE) up
+	$(RUN) --network marum_default \
+		-e TEST_DATABASE_URL="postgres://marum:marum@postgres:5432/marum?sslmode=disable" \
+		$(GO_IMAGE) go test -count=1 ./internal/adapter/out/postgres/
+
 vet: ## go vet
 	$(RUN) $(GO_ALPINE) go vet ./...
 
@@ -127,6 +138,6 @@ tf-validate: ## Check the Terraform configuration without contacting Cloudflare
 shell: ## psql into the local database
 	docker compose exec postgres psql -U marum -d marum
 
-.PHONY: help up down reset logs test test-short vet lint fmt tidy shell \
+.PHONY: help up down reset logs test test-short test-store vet lint fmt tidy shell \
 	goose-image migrate migrate-down migrate-status migrate-check seed admin-password up-core load grafana \
 	tf-init tf-plan tf-apply tf-output tf-fmt tf-validate

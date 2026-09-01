@@ -165,6 +165,39 @@ jobs:
           goose -dir migrations up
           goose -dir migrations status
 
+  store:
+    name: Store against a real schema
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: marum
+          POSTGRES_PASSWORD: marum
+          POSTGRES_DB: marum
+        options: >-
+          --health-cmd "pg_isready -U marum" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+        ports: ["5432:5432"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: "${{ env.GO_VERSION }}", cache: true }
+      - name: Install goose
+        run: go install github.com/pressly/goose/v3/cmd/goose@v3.24.1
+      - name: Migrate
+        env:
+          GOOSE_DRIVER: postgres
+          GOOSE_DBSTRING: postgres://marum:marum@localhost:5432/marum?sslmode=disable
+        run: goose -dir migrations up
+      # The store maps SQL columns to struct fields by position; only a query
+      # run against the real schema can prove the two agree. The unit suite
+      # cannot see a scan drift, and the worst audit finding was exactly one.
+      - name: Store integration tests
+        env:
+          TEST_DATABASE_URL: postgres://marum:marum@localhost:5432/marum?sslmode=disable
+        run: go test -race -count=1 ./internal/adapter/out/postgres/
+
   edge:
     name: Worker and wrangler config
     runs-on: ubuntu-latest
