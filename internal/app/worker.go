@@ -73,6 +73,9 @@ type Worker struct {
 	// Shadow stores silent recommendations for the field gates; see shadow.go.
 	// Optional: nil disables the walk.
 	Shadow ShadowStore
+	// Balances stores the borrower's statement of what is owed after a
+	// payment; see paid.go. Optional: nil hides the paid flow.
+	Balances BalanceRecorder
 	// lastRemind is when TickReminders last did the work, as unix nanos. Ticks
 	// arrive over HTTP, so a slow walk can overlap the next fire; the CAS both
 	// prevents the race and makes the overlapping tick a no-op.
@@ -292,6 +295,15 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 					return nil
 				}
 				return w.Send.SendMessage(ctx, chat, i18n.T(l, "budget.not_a_number"), w.mainMenu(l))
+			case strings.HasPrefix(state, StateAwaitingBalance+":"):
+				taken, err := w.takeBalance(ctx, c.UserID, chat, l, state, p.Text)
+				if err != nil {
+					return err
+				}
+				if taken {
+					return nil
+				}
+				return w.Send.SendMessage(ctx, chat, i18n.T(l, "paid.not_a_number"), w.mainMenu(l))
 			case state == StateAwaitingReliefCap:
 				taken, err := w.takeReliefCap(ctx, c.UserID, chat, l, p.Text)
 				if err != nil {
@@ -399,6 +411,20 @@ func (w *Worker) callback(ctx context.Context, userID string, chat int64, data s
 		return w.showWorking(ctx, userID, chat, i18n.Locale(locale), data[5:])
 	}
 
+	if strings.HasPrefix(data, "paid:") {
+		locale, _, err := w.Users.Locale(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("reading locale: %w", err)
+		}
+		return w.askPaidBalance(ctx, userID, chat, i18n.Locale(locale), data[5:])
+	}
+	if data == "paidskip" {
+		locale, _, err := w.Users.Locale(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("reading locale: %w", err)
+		}
+		return w.skipPaidBalance(ctx, userID, chat, i18n.Locale(locale))
+	}
 	if strings.HasPrefix(data, "approve:") {
 		locale, _, err := w.Users.Locale(ctx, userID)
 		if err != nil {
