@@ -12,10 +12,13 @@ function applyTheme() {
   if (!tg) return;
   const p = tg.themeParams || {};
   const root = document.documentElement.style;
+  // Telegram supplies only the ground: background, ink, hint, surfaces.
+  // Accent, buttons and links stay brand green in every client theme —
+  // mapping them too painted half the screen Telegram blue under a green
+  // hero, two brands on one screen.
   const map = {
-    bg_color: "--bg", text_color: "--fg", hint_color: "--hint", link_color: "--link",
-    button_color: "--btn", button_text_color: "--btn-fg", secondary_bg_color: "--field",
-    section_bg_color: "--card", accent_text_color: "--accent", destructive_text_color: "--danger",
+    bg_color: "--bg", text_color: "--fg", hint_color: "--hint",
+    secondary_bg_color: "--field", section_bg_color: "--card",
   };
   for (const [k, v] of Object.entries(map)) if (p[k]) root.setProperty(v, p[k]);
   document.documentElement.style.colorScheme = tg.colorScheme || "light";
@@ -58,12 +61,14 @@ export function toast(msg) {
 
 // One MainButton, owned by whichever screen is on. A screen calls
 // mainButton.own(handler) on show; the kernel routes the click to the
-// current owner and hides the button on every switch.
+// current owner and hides the button on every switch. While the button is
+// up the tab dock hides (body.mb-on): one save action, one layer of chrome.
 let mbHandler = null;
+const mbOn = (on) => document.body.classList.toggle("mb-on", on);
 export const mainButton = {
   own(handler) { mbHandler = handler; },
-  show(label) { tg?.MainButton.setText(label); tg?.MainButton.show(); },
-  hide() { tg?.MainButton.hide(); },
+  show(label) { tg?.MainButton.setText(label); tg?.MainButton.show(); mbOn(!!tg); },
+  hide() { tg?.MainButton.hide(); mbOn(false); },
   busy(label) { tg?.MainButton.showProgress(); tg?.MainButton.setText(label); },
   done(label) { tg?.MainButton.hideProgress(); tg?.MainButton.setText(label); },
 };
