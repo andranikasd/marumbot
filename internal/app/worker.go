@@ -18,6 +18,7 @@ import (
 	"github.com/andranikasd/marumbot/internal/i18n"
 	"github.com/andranikasd/marumbot/internal/obs"
 	"github.com/andranikasd/marumbot/pkg/core/amortisation"
+	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/money"
 	"github.com/andranikasd/marumbot/pkg/core/plan"
 )
@@ -345,6 +346,7 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 
 	var b strings.Builder
 	rows := [][]map[string]any{}
+	today := date.From(w.Clock.Now(), time.UTC)
 	b.WriteString("<b>" + i18n.T(l, "loans.title") + "</b>\n")
 	for _, ln := range loans {
 		b.WriteString("\n<b>" + html.EscapeString(ln.Name) + "</b>\n")
@@ -354,7 +356,7 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 		b.WriteString(i18n.T(l, "loan.balance", ln.Balance.String(), percent(ln.Contract.NominalRate)) + "\n")
 
 		if s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf); err == nil && len(s.Rows) > 0 {
-			b.WriteString(i18n.T(l, "loan.next", s.Rows[0].Due.String(), s.Rows[0].Payment.String()) + "\n")
+			b.WriteString(i18n.T(l, "loan.next", shortDate(l, s.Rows[0].Due, today), s.Rows[0].Payment.String()) + "\n")
 			b.WriteString(i18n.T(l, "loan.remaining", len(s.Rows)) + "\n")
 		} else if err != nil {
 			// Say the schedule is unavailable rather than omitting the line: a
@@ -364,7 +366,7 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 		}
 
 		if !ln.Confirmed() {
-			b.WriteString("<i>" + i18n.T(l, "reliability.yours", ln.AsOf.String()) + "</i>\n")
+			b.WriteString("<i>" + i18n.T(l, "reliability.yours", shortDate(l, ln.AsOf, today)) + "</i>\n")
 		}
 		rows = append(rows, []map[string]any{{
 			keyText:     i18n.T(l, "working.button", ln.Name),

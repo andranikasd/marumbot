@@ -10,6 +10,7 @@ import (
 
 	"github.com/andranikasd/marumbot/internal/i18n"
 	"github.com/andranikasd/marumbot/pkg/core/amortisation"
+	"github.com/andranikasd/marumbot/pkg/core/date"
 )
 
 // DueReminder is one reminder whose moment has arrived.
@@ -165,7 +166,7 @@ func (w *Worker) SendDueReminders(ctx context.Context, limit int32) (int, error)
 			continue
 		}
 
-		text := reminderText(book, d)
+		text := reminderText(book, d, date.From(w.Clock.Now(), time.UTC))
 
 		// The reminder carries its own button: "I paid". Closing the loop at
 		// the moment of payment is what turns projections into statements.
@@ -240,20 +241,24 @@ func (w *Worker) reminderBook(ctx context.Context, userID string) *reminderBook 
 // reminderText is the whole reminder: date, amount, loan. The amount is the
 // instalment the schedule puts on that date; when it cannot be projected the
 // reminder still goes out, without a figure.
-func reminderText(book *reminderBook, d DueReminder) string {
+//
+// The date is humanised: "15 Sep" reads as a day, "2026-09-15" reads as an
+// ID. The stored ISO form still keys the same-day lookup below.
+func reminderText(book *reminderBook, d DueReminder, today date.Date) string {
 	l := book.locale
 	name := html.EscapeString(d.LoanName)
+	when := shortDate(l, mustParseDate(d.DueDate), today)
 	var text string
 	if amount, ok := instalmentOn(book, d); ok {
 		if d.OffsetDays < 0 {
-			text = i18n.T(l, "reminder.due_soon", d.DueDate, amount, name)
+			text = i18n.T(l, "reminder.due_soon", when, amount, name)
 		} else {
-			text = i18n.T(l, "reminder.due_today", d.DueDate, amount, name)
+			text = i18n.T(l, "reminder.due_today", when, amount, name)
 		}
 	} else if d.OffsetDays < 0 {
-		text = i18n.T(l, "reminder.due_soon_plain", d.DueDate, name)
+		text = i18n.T(l, "reminder.due_soon_plain", when, name)
 	} else {
-		text = i18n.T(l, "reminder.due_today_plain", d.DueDate, name)
+		text = i18n.T(l, "reminder.due_today_plain", when, name)
 	}
 	// The reminder knows the plan: other instalments on the same date are
 	// named, so one message covers the day rather than four covering it in
