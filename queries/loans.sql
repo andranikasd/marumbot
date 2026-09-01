@@ -98,8 +98,12 @@ ON CONFLICT (user_id, currency) DO UPDATE
 RETURNING monthly_amount_minor;
 
 -- name: GetBudget
+-- The most recently stated budget, not the numerically largest: amounts in
+-- different currencies are not comparable, so "largest" picked whichever
+-- currency had the bigger unit. The one the user last set is the one they
+-- mean.
 SELECT currency, monthly_amount_minor, pay_day FROM budgets
- WHERE user_id = $1 ORDER BY monthly_amount_minor DESC LIMIT 1;
+ WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1;
 
 -- name: UpdateLoanForUser
 -- The borrower's own edit. Scoped by user_id in the predicate rather than
@@ -119,15 +123,23 @@ UPDATE loans SET archived_at = now()
 RETURNING id;
 
 -- name: GetLoanForUser
+-- Same columns as ListLoansForUser: a single loan rendered with fewer contract
+-- fields than the list is how one surface shows a different instalment than
+-- the other. In particular as_of anchors the schedule; without it a mid-life
+-- loan re-accrues from start_date and every amount shown is wrong.
 SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
-       c.nominal_rate::text, c.repayment_type,
+       c.nominal_rate::text, c.repayment_type, c.day_count,
        c.start_date::text, c.maturity_date::text, c.payment_day,
-       s.principal_minor
+       c.rounding_mode, c.rounding_unit_minor,
+       s.principal_minor, s.as_of::text, s.trust,
+       coalesce(p.excess_rule, 'unknown'),
+       c.prepayment_policy::text
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
          WHERE v.loan_id = l.id ORDER BY v.version DESC LIMIT 1
        ) c ON true
+  LEFT JOIN allocation_policy_versions p ON p.id = c.allocation_policy_version_id
   LEFT JOIN LATERAL (
         SELECT * FROM loan_snapshots sn
          WHERE sn.loan_id = l.id ORDER BY sn.as_of DESC, sn.captured_at DESC LIMIT 1

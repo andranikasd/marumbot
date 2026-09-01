@@ -3,7 +3,8 @@ package app
 import (
 	"context"
 	"fmt"
-	"sync"
+	"log/slog"
+	"sync/atomic"
 
 	"github.com/andranikasd/marumbot/internal/i18n"
 )
@@ -33,7 +34,7 @@ var commandKeys = []struct{ cmd, key string }{
 	{"help", "menu.help"},
 }
 
-// PublishOnce runs PublishMenus at most once per process.
+// MenuPublication runs PublishMenus at most once per process.
 //
 // Startup is the obvious place to publish, and it is not sufficient: a
 // container only starts when a request arrives and survives across Worker
@@ -43,15 +44,29 @@ var commandKeys = []struct{ cmd, key string }{
 //
 // Calling this from the tick as well makes publication depend on the bot being
 // alive rather than on when it happened to start.
-func PublishOnce(ctx context.Context, once *sync.Once, p MenuPublisher, miniAppURL string) {
-	once.Do(func() {
-		if err := PublishMenus(ctx, p, miniAppURL); err != nil {
-			// Not fatal, and not retried: a bot with no command suggestions is
-			// worse to use but still works, and hammering a rate-limited
-			// endpoint on every tick would be worse than the missing menu.
-			_ = err
+//
+// Done is only recorded on success, so a failed publish is retried on a later
+// call instead of being silently spent -- one attempt at a time, and the
+// failure itself is logged, as the doc comments on PublishMenus promise.
+type MenuPublication struct {
+	done atomic.Bool
+	busy atomic.Bool
+}
+
+// Publish runs PublishMenus once per process, retrying on later calls until it
+// has succeeded.
+func (m *MenuPublication) Publish(ctx context.Context, p MenuPublisher, miniAppURL string, log *slog.Logger) {
+	if m.done.Load() || !m.busy.CompareAndSwap(false, true) {
+		return
+	}
+	defer m.busy.Store(false)
+	if err := PublishMenus(ctx, p, miniAppURL); err != nil {
+		if log != nil {
+			log.WarnContext(ctx, "publishing the command menus failed", "error", err)
 		}
-	})
+		return
+	}
+	m.done.Store(true)
 }
 
 // PublishMenus tells Telegram what this bot can do, in every language it

@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/propagation"
@@ -67,9 +67,10 @@ type Worker struct {
 	Convos    ConversationStore
 	Reminders ReminderStore
 	Plans     PlanStore
-	// lastRemind is when TickReminders last did the work. One goroutine
-	// drains the inbox at a time, so a plain field is enough.
-	lastRemind time.Time
+	// lastRemind is when TickReminders last did the work, as unix nanos. Ticks
+	// arrive over HTTP, so a slow walk can overlap the next fire; the CAS both
+	// prevents the race and makes the overlapping tick a no-op.
+	lastRemind atomic.Int64
 
 	// DefaultCurrency is what a bare number means. AMD here; a user with a
 	// dollar loan writes the code and it is honoured.
@@ -87,8 +88,8 @@ type Worker struct {
 
 	// Menus is the Telegram surface used to publish the command list. Optional:
 	// without it the bot works and simply suggests nothing.
-	Menus     MenuPublisher
-	menusOnce sync.Once
+	Menus    MenuPublisher
+	menusPub MenuPublication
 }
 
 // LeaseFor is how long a worker holds a command.
@@ -107,7 +108,7 @@ const LeaseFor = 2 * time.Minute
 // scan error, retried five times each, and starved every other command.
 func (w *Worker) HandleOne(ctx context.Context, id string) error {
 	if w.Menus != nil {
-		PublishOnce(ctx, &w.menusOnce, w.Menus, w.miniURL(""))
+		w.menusPub.Publish(ctx, w.Menus, w.miniURL(""), w.Log)
 	}
 	l, ok, err := w.Inbox.LeaseByID(ctx, id, w.Owner, w.Clock.Now().Add(LeaseFor))
 	if err != nil {
@@ -125,9 +126,9 @@ func (w *Worker) HandleOne(ctx context.Context, id string) error {
 // handled, so a caller can decide whether to go round again.
 func (w *Worker) Drain(ctx context.Context, n int) (int, error) {
 	// Publish the command list the first time this process does any work. See
-	// PublishOnce for why startup alone is not enough.
+	// MenuPublication for why startup alone is not enough.
 	if w.Menus != nil {
-		PublishOnce(ctx, &w.menusOnce, w.Menus, w.miniURL(""))
+		w.menusPub.Publish(ctx, w.Menus, w.miniURL(""), w.Log)
 	}
 
 	leases, err := w.Inbox.Lease(ctx, w.Owner, n, w.Clock.Now().Add(LeaseFor))
@@ -162,7 +163,15 @@ func (w *Worker) handle(ctx context.Context, l Lease) {
 
 	span.RecordError(err)
 	dead := l.Command.Attempts >= MaxAttempts
-	retryAt := w.Clock.Now().Add(RetryAfter(l.Command.Attempts))
+	backoff := RetryAfter(l.Command.Attempts)
+	// Telegram's 429 names its own wait; retrying on the generic schedule
+	// before it elapses only re-hits the limit. Structural check, so app does
+	// not import the adapter.
+	var slow interface{ RetryAfter() time.Duration }
+	if errors.As(err, &slow) && slow.RetryAfter() > backoff {
+		backoff = slow.RetryAfter()
+	}
+	retryAt := w.Clock.Now().Add(backoff)
 	if ferr := w.Inbox.Fail(ctx, l.Command.ID, l.Token, code(err), retryAt, dead); ferr != nil &&
 		!errors.Is(ferr, ErrNotLeased) {
 		w.Log.ErrorContext(ctx, "recording failure failed", "error", ferr)
