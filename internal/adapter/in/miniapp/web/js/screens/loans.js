@@ -40,6 +40,10 @@ const HTML = `
 
 const $ = (id) => document.getElementById(id);
 
+// mainCurrency is the currency the summary is totalled in; a loan outside it
+// carries a chip instead of silently vanishing from the totals.
+let mainCurrency = "";
+
 function loanCard(loan) {
   const el = document.createElement("div");
   el.className = "card"; el.dataset.id = loan.id;
@@ -56,24 +60,22 @@ function loanCard(loan) {
     const tag = document.createElement("span"); tag.className = "tag yours"; tag.textContent = T("manage.yours");
     meta.append(tag);
   }
+  if (mainCurrency && loan.currency !== mainCurrency && loan.balance_major > 0) {
+    const tag = document.createElement("span"); tag.className = "tag cur";
+    tag.textContent = loan.currency + " · " + T("manage.excluded");
+    meta.append(tag);
+  }
   const next = document.createElement("p"); next.className = "next";
   if (loan.next_due && loan.next_payment_major != null) {
     const b = document.createElement("b"); b.textContent = fmtMoney(loan.next_payment_major, loan.currency);
     next.append(document.createTextNode(T("manage.nextpay") + " "), b, document.createTextNode(" · " + fmtDate(loan.next_due)));
   } else next.style.margin = "0 0 12px";
+  // The read view keeps one calm verb. Removal is a contract-level act and
+  // lives inside edit mode, away from the everyday path.
   const actions = document.createElement("div"); actions.className = "actions";
   const edit = document.createElement("button"); edit.type = "button"; edit.textContent = T("manage.edit");
   edit.onclick = () => { haptic.tap(); el.classList.add("editing"); };
-  const remove = document.createElement("button"); remove.type = "button"; remove.className = "danger";
-  remove.textContent = T("manage.remove");
-  remove.onclick = async () => {
-    haptic.tap();
-    if (!(await confirmDialog(T("manage.confirm")))) return;
-    const res = await api("api/loans/" + encodeURIComponent(loan.id), { method: "DELETE" });
-    if (res.ok) { el.remove(); haptic.ok(); invalidate("api/"); load(); }
-    else haptic.bad();
-  };
-  actions.append(edit, remove);
+  actions.append(edit);
   if (loan.original_major) {
     const bar = document.createElement("div"); bar.className = "paybar";
     const fill = document.createElement("i");
@@ -154,8 +156,18 @@ function loanCard(loan) {
     el.classList.remove("editing");
   };
   row.append(save, cancel);
+  const remove = document.createElement("button"); remove.type = "button"; remove.className = "danger";
+  remove.textContent = T("manage.remove");
+  remove.onclick = async () => {
+    haptic.tap();
+    if (!(await confirmDialog(T("manage.confirm")))) return;
+    const res = await api("api/loans/" + encodeURIComponent(loan.id), { method: "DELETE" });
+    if (res.ok) { el.remove(); haptic.ok(); invalidate("api/"); load(); }
+    else haptic.bad();
+  };
+  row.append(remove);
   form.append(
-    nameIn, descIn,
+    field("title.field", nameIn), field("description", descIn),
     field("rate", rateIn), field("day", dayIn),
     field("start", startIn), field("maturity", matIn),
     field("method", methodIn), field("prepay", prepayIn),
@@ -187,6 +199,8 @@ function summarise(loans) {
 function renderList(loans) {
   const list = $("manage-list");
   list.textContent = "";
+  const live = loans.filter((l) => l.balance_major > 0);
+  mainCurrency = live.length > 0 ? live[0].currency : "";
   for (const l of loans) list.append(loanCard(l));
   summarise(loans);
   $("manage-empty").hidden = loans.length > 0;
@@ -225,7 +239,7 @@ async function load() {
 
 register({
   id: "loans",
-  icon: "📋",
+  icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h13M4 12h13M4 18h9"/><circle cx="20" cy="18" r="1.6"/></svg>',
   labelKey: "tab.loans",
   html: HTML,
   onMount() {

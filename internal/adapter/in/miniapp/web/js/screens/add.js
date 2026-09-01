@@ -12,17 +12,7 @@ const HTML = `
 <h1 data-i18n="title">Ավելացնել վարկ</h1>
   <p class="lede" data-i18n="lede">Մուտքագրեք վարկի պայմանագրի տվյալները։</p>
   <form id="f" novalidate>
-    <div class="field">
-      <label for="title" data-i18n="title.field">Անվանում</label>
-      <input id="title" name="title" autocomplete="off" maxlength="60" required>
-      <p class="hint" data-i18n="title.hint">Ինչպե՞ս եք անվանում այս վարկը։</p>
-      <p class="error" id="e-title"></p>
-    </div>
-    <div class="field">
-      <label for="description" data-i18n="description">Նշում (ըստ ցանկության)</label>
-      <input id="description" name="description" autocomplete="off" maxlength="200">
-      <p class="hint" data-i18n="description.hint">Բանկի անուն կամ հաշվեհամար պետք չէ։</p>
-    </div>
+    <p class="grouplbl" data-i18n="group.contract">Պայմանագիր</p>
     <div class="field">
       <label for="principal" data-i18n="principal">Վարկի գումար</label>
       <div class="row">
@@ -36,31 +26,23 @@ const HTML = `
       </div>
       <p class="error" id="e-principal"></p>
     </div>
-    <div class="field">
-      <label for="balance" data-i18n="balance">Մնացորդ այսօր (ըստ ցանկության)</label>
-      <div class="in">
-        <input id="balance" name="balance" inputmode="decimal" placeholder="0">
-        <span class="unit" id="u-balance">AMD</span>
+    <div class="row">
+      <div class="field">
+        <label for="rate" data-i18n="rate">Տարեկան տոկոսադրույք</label>
+        <div class="in">
+          <input id="rate" name="rate" inputmode="decimal" placeholder="14" required>
+          <span class="unit">%</span>
+        </div>
+        <p class="error" id="e-rate"></p>
       </div>
-      <p class="hint" data-i18n="balance.hint">Մայր գումարի մնացորդը բանկի քաղվածքից։ Դատարկ՝ եթե վարկը նոր է։</p>
-      <p class="error" id="e-balance"></p>
-    </div>
-    <div class="field">
-      <label for="prepay" data-i18n="prepay">Ավել վճարելուց հետո</label>
-      <select id="prepay" name="prepay">
-        <option value="" data-i18n="prepay.unsure">Չգիտեմ՝ կհաշվեմ երկու ձևով</option>
-        <option value="shorten_term" data-i18n="prepay.shorten">Վճարը նույնն է, ժամկետը կրճատվում է</option>
-        <option value="reduce_instalment" data-i18n="prepay.reduce">Բանկը նվազեցնում է ամսական վճարը</option>
-      </select>
-      <p class="hint" data-i18n="prepay.hint">Ինչ է անում բանկը վաղաժամկետ մարումից հետո։ Գրված է պայմանագրում։</p>
-    </div>
-    <div class="field">
-      <label for="rate" data-i18n="rate">Տարեկան տոկոսադրույք</label>
-      <div class="in">
-        <input id="rate" name="rate" inputmode="decimal" placeholder="14" required>
-        <span class="unit">%</span>
+      <div class="field">
+        <label for="day" data-i18n="day">Վճարման օրը</label>
+        <div class="in">
+          <input id="day" name="day" inputmode="numeric" value="15" required>
+          <span class="unit" data-i18n="unit.day">ամսի օր</span>
+        </div>
+        <p class="error" id="e-day"></p>
       </div>
-      <p class="error" id="e-rate"></p>
     </div>
     <div class="field">
       <label data-i18n="method">Մարման եղանակ</label>
@@ -84,15 +66,41 @@ const HTML = `
         <p class="error" id="e-maturity"></p>
       </div>
     </div>
-    <div class="field">
-      <label for="day" data-i18n="day">Վճարման օրը</label>
-      <div class="in">
-        <input id="day" name="day" inputmode="numeric" value="15" required>
-        <span class="unit" data-i18n="unit.day">ամսի օր</span>
+    <p class="grouplbl" data-i18n="group.optional">Լրացուցիչ</p>
+    <details class="optfold" id="optfold">
+      <summary><span><b data-i18n="details.title">Մանրամասներ</b> — <span data-i18n="details.row">անվանում, նշում, մնացորդ, վաղաժամկետ կանոն</span></span></summary>
+      <div class="fold-body">
+        <div class="field">
+          <label for="title" data-i18n="title.field">Անվանում</label>
+          <input id="title" name="title" autocomplete="off" maxlength="60">
+          <p class="hint" data-i18n="title.hint">Ինչպե՞ս եք անվանում այս վարկը։</p>
+          <p class="error" id="e-title"></p>
+        </div>
+        <div class="field">
+          <label for="description" data-i18n="description">Նշում (ըստ ցանկության)</label>
+          <input id="description" name="description" autocomplete="off" maxlength="200">
+          <p class="hint" data-i18n="description.hint">Բանկի անուն կամ հաշվեհամար պետք չէ։</p>
+        </div>
+        <div class="field">
+          <label for="balance" data-i18n="balance">Մնացորդ այսօր (ըստ ցանկության)</label>
+          <div class="in">
+            <input id="balance" name="balance" inputmode="decimal" placeholder="0">
+            <span class="unit" id="u-balance">AMD</span>
+          </div>
+          <p class="hint" data-i18n="balance.hint">Մայր գումարի մնացորդը բանկի քաղվածքից։ Դատարկ՝ եթե վարկը նոր է։</p>
+          <p class="error" id="e-balance"></p>
+        </div>
+        <div class="field">
+          <label for="prepay" data-i18n="prepay">Ավել վճարելուց հետո</label>
+          <select id="prepay" name="prepay">
+            <option value="" data-i18n="prepay.unsure">Չգիտեմ՝ կհաշվեմ երկու ձևով</option>
+            <option value="shorten_term" data-i18n="prepay.shorten">Վճարը նույնն է, ժամկետը կրճատվում է</option>
+            <option value="reduce_instalment" data-i18n="prepay.reduce">Բանկը նվազեցնում է ամսական վճարը</option>
+          </select>
+          <p class="hint" data-i18n="prepay.hint">Ինչ է անում բանկը վաղաժամկետ մարումից հետո։ Գրված է պայմանագրում։</p>
+        </div>
       </div>
-      <p class="hint" data-i18n="day.hint">Ամսվա այն օրը, երբ վճարումը պարտադիր է։</p>
-      <p class="error" id="e-day"></p>
-    </div>
+    </details>
     <div class="summary" id="summary" hidden>
       <p class="label" data-i18n="sum.title">Նախնական հաշվարկ</p>
       <p class="big"><span id="s-payment">—</span><small data-i18n="sum.permonth">ամսական</small></p>
@@ -122,7 +130,6 @@ const method = () => document.querySelector('input[name="method"]:checked').valu
 
 function validate() {
   const errs = {};
-  if (!$("title").value.trim()) errs.title = T("err.required");
   const p = num($("principal").value);
   if (!$("principal").value.trim()) errs.principal = T("err.required");
   else if (Number.isNaN(p)) errs.principal = T("err.number");
@@ -224,10 +231,13 @@ async function saveLoan() {
   busy = true;
   mainButton.busy(T("saving"));
   try {
+    // The name is optional on the form: an unnamed loan is filed under its
+    // amount, which stays distinct across typical portfolios.
+    const title = $("title").value.trim() || T("loan.defname") + " " + fmtMoney(v.p, $("currency").value);
     const res = await api("api/loans", {
       method: "POST",
       body: JSON.stringify({
-        title: $("title").value.trim(),
+        title,
         description: $("description").value.trim(),
         principal_major: v.p, balance_major: v.rem || 0, currency: $("currency").value, rate_percent: v.r,
         prepay_effect: $("prepay").value,
@@ -258,7 +268,7 @@ async function saveLoan() {
 
 register({
   id: "add",
-  icon: "➕",
+  icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 8.5v7M8.5 12h7"/></svg>',
   labelKey: "tab.add",
   html: HTML,
   onMount() {

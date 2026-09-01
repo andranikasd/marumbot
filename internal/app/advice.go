@@ -7,6 +7,7 @@ import (
 	"html"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/andranikasd/marumbot/internal/i18n"
 	"github.com/andranikasd/marumbot/pkg/core/amortisation"
@@ -81,9 +82,9 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 		b.WriteString(" · " + i18n.T(l, goalKey(goal)))
 	}
 	b.WriteString("\n")
-	b.WriteString(i18n.T(l, "advice.header", bare(owed), bare(budget.Monthly), cur.Code) + "\n")
 
 	if compare {
+		b.WriteString(i18n.T(l, "advice.header", bare(owed), bare(budget.Monthly), cur.Code) + "\n")
 		return w.compareGoals(ctx, chat, l, &b, u, required)
 	}
 
@@ -94,14 +95,21 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 	o := rep.Best
 	today := in.ValuationDate
 
-	b.WriteString("\n<b>" + i18n.T(l, "advice.this_month") + "</b>\n")
-	writeActions(&b, l, o.Actions, today)
-	if len(o.Timeline) > 0 {
-		b.WriteString(i18n.T(l, "advice.month_total", bare(monthPaid(o.Timeline[0])), bare(o.NextMonthOwed)) + "\n")
-	}
+	b.WriteString("\n")
+	writeOutcome(&b, l, rep, required, today)
 
-	b.WriteString("\n<b>" + i18n.T(l, "advice.result") + "</b>\n")
-	writeResult(&b, l, rep, required, today)
+	total := required
+	if len(o.Timeline) > 0 {
+		total = monthPaid(o.Timeline[0])
+	}
+	b.WriteString("\n<b>" + i18n.T(l, "advice.this_month", bare(total)) + "</b>\n")
+	writeActions(&b, l, o.Actions, today)
+
+	footer := i18n.T(l, "advice.footer", bare(owed), bare(o.TotalInterest), cur.Code)
+	if o.TotalFees.Sign() > 0 {
+		footer += " " + i18n.T(l, "advice.cost_fees", bare(o.TotalFees))
+	}
+	b.WriteString(footer + "\n")
 
 	approvedNow := false
 	if w.Plans != nil {
@@ -194,11 +202,14 @@ func (w *Worker) refuse(ctx context.Context, chat int64, l i18n.Locale, err erro
 	var st *plan.StaleBalanceError
 	switch {
 	case errors.As(err, &st):
+		// The as-of is a year-scale fact; the humanised date keeps its year
+		// because today is not passed in.
 		return w.Send.SendMessage(ctx, chat,
-			i18n.T(l, "advice.refuse.stale", st.AsOf.String()), w.mainMenu(l))
+			i18n.T(l, "advice.refuse.stale", shortDate(l, st.AsOf, date.Date{})), w.mainMenu(l))
 	case errors.As(err, &inf):
 		return w.Send.SendMessage(ctx, chat,
-			i18n.T(l, "advice.refuse.infeasible", inf.On.String(), bare(inf.Required), bare(inf.Shortfall)), w.budgetMarkup(l))
+			i18n.T(l, "advice.refuse.infeasible",
+				shortDate(l, inf.On, date.From(w.Clock.Now(), time.UTC)), bare(inf.Required), bare(inf.Shortfall)), w.budgetMarkup(l))
 	case errors.As(err, &un):
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "advice.refuse.unsupported", un.Feature), w.mainMenu(l))
 	case errors.As(err, &tr):
@@ -257,7 +268,7 @@ func (w *Worker) compareGoals(ctx context.Context, chat int64, l i18n.Locale, b 
 		}
 	}
 	b.WriteString("\n<i>" + i18n.T(l, "advice.compare_pick") + "</i>")
-	return w.Send.SendMessage(ctx, chat, b.String(), goalMenu(l, plan.Goal{Kind: plan.LeastInterest}, false, w.sheetURL(plan.Goal{Kind: plan.LeastInterest})))
+	return w.Send.SendMessage(ctx, chat, b.String(), compareMenu(l))
 }
 
 // writeRow is one block of the comparison: the name, then the figures.
@@ -276,16 +287,12 @@ func writeRow(b *strings.Builder, l i18n.Locale, name string, rep plan.Report, r
 	}
 }
 
-// writeResult is at most four lines: when it ends, what it costs, what that
-// saves, and — per goal — the one extra fact that goal exists to answer.
-func writeResult(b *strings.Builder, l i18n.Locale, rep plan.Report, required money.Amount, today date.Date) {
+// writeOutcome opens the report with the promise — free of debt when, saving
+// what — then the one extra fact the chosen goal exists to answer. The cost
+// moves to the footer: the reader asked what to do, not for an audit.
+func writeOutcome(b *strings.Builder, l i18n.Locale, rep plan.Report, required money.Amount, today date.Date) {
 	o, m := rep.Best, rep.Minimum
-	b.WriteString(i18n.T(l, "advice.finish", shortDate(l, o.PayoffDate, today), o.Months) + "\n")
-	cost := i18n.T(l, "advice.cost", bare(o.TotalInterest))
-	if o.TotalFees.Sign() > 0 {
-		cost += " " + i18n.T(l, "advice.cost_fees", bare(o.TotalFees))
-	}
-	b.WriteString(cost + "\n")
+	b.WriteString(i18n.T(l, "advice.promise", shortDate(l, o.PayoffDate, today), o.Months) + "\n")
 	if saved, err := m.Cost().Sub(o.Cost()); err == nil && saved.Sign() > 0 {
 		b.WriteString(i18n.T(l, "advice.vs_minimum", bare(saved), m.Months-o.Months) + "\n")
 	}
@@ -304,10 +311,6 @@ func writeResult(b *strings.Builder, l i18n.Locale, rep plan.Report, required mo
 		if d, err := o.Cost().Sub(rep.Avalanche.Cost()); err == nil && d.Sign() > 0 {
 			b.WriteString(i18n.T(l, "advice.relief.vs_cheapest", bare(d), shortDate(l, rep.Avalanche.PayoffDate, today)) + "\n")
 		}
-	case plan.FirstWin:
-		if o.FirstClear != "" {
-			b.WriteString(i18n.T(l, "advice.first_clear", html.EscapeString(o.FirstClear), shortDate(l, o.FirstClearOn, today)) + "\n")
-		}
 	default:
 		if o.FirstClear != "" {
 			b.WriteString(i18n.T(l, "advice.first_clear", html.EscapeString(o.FirstClear), shortDate(l, o.FirstClearOn, today)) + "\n")
@@ -315,32 +318,76 @@ func writeResult(b *strings.Builder, l i18n.Locale, rep plan.Report, required mo
 	}
 }
 
-// writeActions lists the first cycle as a dated checklist, dates humanised,
-// extras marked, the saving under its own payment. Instalments for the same
-// date collapse visually because the date leads every line.
+// writeActions renders the first cycle as an aligned monospace table inside
+// <pre>: date, loan, amount, one row per payment. Telegram renders <pre> in a
+// fixed-width face, so the columns line up like a bank statement instead of a
+// sentence per payment. Extras are marked with ⚡ and explained once under the
+// table; per-payment fees are folded into the footer's fee total.
+//
+// Padding happens before HTML escaping: escaping lengthens the string but not
+// its rendered width, so aligning the escaped text would misalign the screen.
 func writeActions(b *strings.Builder, l i18n.Locale, acts []plan.Action, today date.Date) {
-	var extra int
+	if len(acts) == 0 {
+		return
+	}
+	type row struct {
+		when, name, amount string
+		extra              bool
+	}
+	rows := make([]row, 0, len(acts))
+	var whenW, nameW, amountW int
+	extras := 0
+	saves := money.Zero(acts[0].Amount.Currency())
 	for _, a := range acts {
-		name := html.EscapeString(a.Loan)
-		d := shortDate(l, a.On, today)
-		switch {
-		case a.Kind == plan.Extra && a.Saves.Sign() > 0:
-			b.WriteString(i18n.T(l, "advice.step_early", d, bare(a.Amount), name, bare(a.Saves)) + "\n")
-			extra++
-		case a.Kind == plan.Extra:
-			b.WriteString(i18n.T(l, "advice.step_extra", d, bare(a.Amount), name) + "\n")
-			extra++
-		default:
-			b.WriteString(i18n.T(l, "advice.step_due", d, bare(a.Amount), name) + "\n")
+		r := row{when: shortDate(l, a.On, today), name: clip(a.Loan, 12), amount: bare(a.Amount)}
+		if a.Kind == plan.Extra {
+			r.amount = "+" + r.amount
+			r.extra = true
+			extras++
+			if s, err := saves.Add(a.Saves); err == nil {
+				saves = s
+			}
 		}
-		if a.Fee.Sign() > 0 {
-			b.WriteString("   " + i18n.T(l, "advice.step_fee", bare(a.Fee)) + "\n")
+		whenW = max(whenW, utf8.RuneCountInString(r.when))
+		nameW = max(nameW, utf8.RuneCountInString(r.name))
+		amountW = max(amountW, utf8.RuneCountInString(r.amount))
+		rows = append(rows, r)
+	}
+	b.WriteString("<pre>")
+	for i, r := range rows {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(html.EscapeString(pad(r.when, whenW) + "  " + pad(r.name, nameW) + "  " + lead(r.amount, amountW)))
+		if r.extra {
+			b.WriteString(" ⚡")
 		}
 	}
-	if extra == 0 {
+	b.WriteString("</pre>\n")
+	switch {
+	case extras == 0:
 		b.WriteString(i18n.T(l, "advice.no_surplus") + "\n")
+	case saves.Sign() > 0:
+		b.WriteString(i18n.T(l, "advice.extra_note", bare(saves)) + "\n")
+	default:
+		b.WriteString(i18n.T(l, "advice.extra_note_plain") + "\n")
 	}
 }
+
+// clip shortens a loan name to n runes for the table; the full name lives in
+// the Mini App. The ellipsis counts against the budget so columns stay aligned.
+func clip(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
+}
+
+// pad and lead align table cells by rune count: pad for left-aligned text,
+// lead for right-aligned amounts.
+func pad(s string, w int) string  { return s + strings.Repeat(" ", w-utf8.RuneCountInString(s)) }
+func lead(s string, w int) string { return strings.Repeat(" ", w-utf8.RuneCountInString(s)) + s }
 
 // monthPaid is one cycle's total outflow: instalments, extras and fees.
 func monthPaid(m plan.MonthState) money.Amount {
@@ -475,9 +522,6 @@ func goalKey(g plan.Goal) string {
 	}
 }
 
-// goalMenu lets the reader approve, ask why, see the full sheet, compare,
-// or change the question. The active goal is not repeated as a button, and
-// the approve button disappears once this exact plan is the approved one.
 // sheetURL is the full-schedule link for a goal, version-stamped.
 func (w *Worker) sheetURL(g plan.Goal) string {
 	if w.MiniApp == "" {
@@ -486,10 +530,30 @@ func (w *Worker) sheetURL(g plan.Goal) string {
 	return w.miniURL("plan") + "&goal=" + goalToken(g)
 }
 
+// goalMenu is the advice keyboard, one decision per row: approve alone on
+// top, the two ways to inspect the answer next, the one way to change the
+// question last. The alternate goals are not repeated as buttons — Compare
+// already shows every goal with its cost and finish date, and picking one
+// there loads it.
 func goalMenu(l i18n.Locale, active plan.Goal, offerApprove bool, sheetURL string) any {
-	why := "why:" + goalToken(active)
-	goalRow := []map[string]any{}
-	for _, g := range []struct {
+	rows := [][]map[string]any{}
+	if offerApprove {
+		rows = append(rows, []map[string]any{{keyText: i18n.T(l, "plan.approve_button"), keyCallback: "approve:" + goalToken(active)}})
+	}
+	inspect := []map[string]any{}
+	if sheetURL != "" {
+		inspect = append(inspect, webAppButton(i18n.T(l, "plan.sheet_button"), sheetURL))
+	}
+	inspect = append(inspect, map[string]any{keyText: i18n.T(l, "advice.why_button"), keyCallback: "why:" + goalToken(active)})
+	rows = append(rows, inspect)
+	rows = append(rows, []map[string]any{{keyText: i18n.T(l, "advice.compare"), keyCallback: "goal:compare"}})
+	return map[string]any{keyInline: rows}
+}
+
+// compareMenu follows the comparison: every goal is one tap away, two per
+// row. This is the one place the goals appear as buttons.
+func compareMenu(l i18n.Locale) any {
+	goals := []struct {
 		kind plan.GoalKind
 		data string
 	}{
@@ -497,29 +561,14 @@ func goalMenu(l i18n.Locale, active plan.Goal, offerApprove bool, sheetURL strin
 		{plan.Fastest, "goal:soonest"},
 		{plan.Relief, "goal:relief"},
 		{plan.FirstWin, "goal:first"},
-	} {
-		if g.kind == active.Kind {
-			continue
-		}
-		goalRow = append(goalRow, map[string]any{keyText: i18n.T(l, goalKey(plan.Goal{Kind: g.kind})), keyCallback: g.data})
 	}
 	rows := [][]map[string]any{}
-	if offerApprove {
-		rows = append(rows, []map[string]any{{keyText: i18n.T(l, "plan.approve_button"), keyCallback: "approve:" + goalToken(active)}})
-	}
-	if sheetURL != "" {
-		rows = append(rows, []map[string]any{webAppButton(i18n.T(l, "plan.sheet_button"), sheetURL)})
-	}
-	rows = append(rows, []map[string]any{
-		{keyText: i18n.T(l, "advice.why_button"), keyCallback: why},
-		{keyText: i18n.T(l, "advice.compare"), keyCallback: "goal:compare"},
-	})
-	for i := 0; i < len(goalRow); i += 2 {
-		end := i + 2
-		if end > len(goalRow) {
-			end = len(goalRow)
+	for i := 0; i < len(goals); i += 2 {
+		row := []map[string]any{}
+		for _, g := range goals[i:min(i+2, len(goals))] {
+			row = append(row, map[string]any{keyText: i18n.T(l, goalKey(plan.Goal{Kind: g.kind})), keyCallback: g.data})
 		}
-		rows = append(rows, goalRow[i:end])
+		rows = append(rows, row)
 	}
 	return map[string]any{keyInline: rows}
 }

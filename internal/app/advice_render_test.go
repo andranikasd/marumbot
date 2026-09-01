@@ -48,10 +48,10 @@ func fixedReport(t *testing.T, goal plan.Goal) (plan.Report, date.Date) {
 
 func renderCard(l i18n.Locale, rep plan.Report, today date.Date) string {
 	var b strings.Builder
-	writeActions(&b, l, rep.Best.Actions, today)
-	b.WriteString(i18n.T(l, "advice.month_total", bare(monthPaid(rep.Best.Timeline[0])), bare(rep.Best.NextMonthOwed)) + "\n")
 	req := rep.Best.Timeline[0].Required
-	writeResult(&b, l, rep, req, today)
+	writeOutcome(&b, l, rep, req, today)
+	b.WriteString("<b>" + i18n.T(l, "advice.this_month", bare(monthPaid(rep.Best.Timeline[0]))) + "</b>\n")
+	writeActions(&b, l, rep.Best.Actions, today)
 	return b.String()
 }
 
@@ -71,8 +71,8 @@ func TestPlanCardIsCompactInBothLanguages(t *testing.T) {
 					break
 				}
 			}
-			if !strings.Contains(out, "☐") {
-				t.Errorf("%s/%s: no checklist items", goal, l)
+			if !strings.Contains(out, "<pre>") {
+				t.Errorf("%s/%s: no payments table", goal, l)
 			}
 		}
 		t.Logf("card %s (hy):\n%s", goal, renderCard(i18n.HY, rep, today))

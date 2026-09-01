@@ -33,7 +33,10 @@ export function go(id) {
   }
   current = id;
   for (const b of document.querySelectorAll("nav.tabs button")) {
-    b.classList.toggle("on", b.dataset.go === id);
+    const on = b.dataset.go === id;
+    b.classList.toggle("on", on);
+    if (on) b.setAttribute("aria-current", "page");
+    else b.removeAttribute("aria-current");
   }
   mainButton.hide();
   window.scrollTo(0, 0);

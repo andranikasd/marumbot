@@ -189,7 +189,7 @@ async function save() {
 
 register({
   id: "budget",
-  icon: "💰",
+  icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="7" rx="7" ry="3"/><path d="M5 7v5c0 1.7 3.1 3 7 3s7-1.3 7-3V7M5 12v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5"/></svg>',
   labelKey: "tab.budget",
   html: HTML,
   onMount() {
