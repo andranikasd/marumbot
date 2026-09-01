@@ -2,6 +2,7 @@ package admin
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -189,7 +190,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	user, pass := r.PostFormValue("user"), r.PostFormValue("password")
 	// Both checks always run: failing early on the username would leak which
 	// half was wrong through the response time.
-	userOK := user == s.cfg.User
+	userOK := subtle.ConstantTimeCompare([]byte(user), []byte(s.cfg.User)) == 1
 	passOK := verifyPassword(s.cfg.PasswordHash, pass)
 	if !userOK || !passOK {
 		s.thr.fail(addr, s.now())
@@ -203,7 +204,11 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name: cookieName, Value: issue(s.key, s.now()), Path: "/",
 		HttpOnly: true, SameSite: http.SameSiteStrictMode,
-		Secure: r.TLS != nil, MaxAge: int(sessionTTL.Seconds()),
+		// Not r.TLS: TLS terminates at the edge and the container only ever
+		// sees plain HTTP, so that test would never mark the cookie Secure in
+		// exactly the deployment where it matters.
+		Secure: s.cfg.Env == "prod" || r.TLS != nil,
+		MaxAge: int(sessionTTL.Seconds()),
 	})
 	s.log.InfoContext(r.Context(), "admin signed in", "addr", addr)
 	http.Redirect(w, r, "/", http.StatusSeeOther)

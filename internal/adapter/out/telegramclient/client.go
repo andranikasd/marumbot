@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -83,8 +84,8 @@ func (c *Client) call(ctx context.Context, method string, body map[string]any) e
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("%s/bot%s/%s", c.base, c.token, method)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(buf))
+	endpoint := fmt.Sprintf("%s/bot%s/%s", c.base, c.token, method)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(buf))
 	if err != nil {
 		return err
 	}
@@ -95,21 +96,62 @@ func (c *Client) call(ctx context.Context, method string, body map[string]any) e
 		// A transport error is ambiguous: the message may or may not have been
 		// delivered. Retryable is the safe reading, because a duplicate reminder
 		// is a nuisance and a missing one is a missed payment.
+		//
+		// The URL inside a *url.Error carries the bot token; wrapped as-is it
+		// would put the token into every log line about a network blip.
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			ue.URL = c.base + "/bot<redacted>/" + method
+		}
 		return fmt.Errorf("%w: %w", ErrRetryable, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 
 	switch {
+	case resp.StatusCode == http.StatusTooManyRequests:
+		// Telegram says exactly how long to wait; retrying sooner re-hits the
+		// limit and extends it.
+		if wait := retryAfter(raw); wait > 0 {
+			return &TooManyError{Wait: wait, Detail: describe(raw)}
+		}
+		return fmt.Errorf("%w: %s: %s", ErrRetryable, resp.Status, describe(raw))
 	case resp.StatusCode == http.StatusOK:
 		return nil
-	case resp.StatusCode == http.StatusTooManyRequests, resp.StatusCode >= 500:
+	case resp.StatusCode >= 500:
 		return fmt.Errorf("%w: %s: %s", ErrRetryable, resp.Status, describe(raw))
 	default:
 		// 400 and 403 are permanent: a blocked bot stays blocked, and a chat
 		// that no longer exists will not come back.
 		return fmt.Errorf("telegram: %s: %s", resp.Status, describe(raw))
 	}
+}
+
+// TooManyError is a 429 with Telegram's own prescribed wait. It unwraps to
+// ErrRetryable so existing retry classification is unchanged; a caller that
+// cares about the timing reads Wait through the RetryAfter method.
+type TooManyError struct {
+	Wait   time.Duration
+	Detail string
+}
+
+func (e *TooManyError) Error() string {
+	return fmt.Sprintf("telegram: 429, retry after %s: %s", e.Wait, e.Detail)
+}
+func (e *TooManyError) Unwrap() error             { return ErrRetryable }
+func (e *TooManyError) RetryAfter() time.Duration { return e.Wait }
+
+// retryAfter extracts parameters.retry_after from a 429 body.
+func retryAfter(raw []byte) time.Duration {
+	var r struct {
+		Parameters struct {
+			RetryAfter int `json:"retry_after"`
+		} `json:"parameters"`
+	}
+	if err := json.Unmarshal(raw, &r); err != nil || r.Parameters.RetryAfter <= 0 {
+		return 0
+	}
+	return time.Duration(r.Parameters.RetryAfter) * time.Second
 }
 
 // describe pulls Telegram's own explanation out of an error body without
