@@ -144,7 +144,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	mini := &miniapp.Server{
 		BotToken: cfg.BotToken, Loans: store, Users: store, Budgets: store,
 		Editor: store, Reader: store, Required: worker, Filed: worker, Planner: worker,
-		Reviser: worker,
+		Reviser: worker, Tuner: store,
 		Version: cfg.Version,
 		Cipher:  cipher, Clock: sysclock.New(), Log: log,
 	}

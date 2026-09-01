@@ -102,8 +102,28 @@ RETURNING monthly_amount_minor;
 -- different currencies are not comparable, so "largest" picked whichever
 -- currency had the bigger unit. The one the user last set is the one they
 -- mean.
-SELECT currency, monthly_amount_minor, pay_day FROM budgets
+SELECT currency, monthly_amount_minor, pay_day,
+       overrides::text, opening_cash_minor, opening_as_of::text
+  FROM budgets
  WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1;
+
+-- name: SetBudgetOpening
+-- The borrower states what is on hand today for loans. Stamped with the day
+-- it was said; the planner only trusts it within that month.
+UPDATE budgets
+   SET opening_cash_minor = $3, opening_as_of = $4::date, updated_at = now()
+ WHERE user_id = $1 AND currency = $2
+RETURNING opening_cash_minor;
+
+-- name: SetBudgetOverrides
+-- The whole per-month document, replaced: the form shows every stated month
+-- and posts them all back, so a partial merge would resurrect removed ones.
+-- Keys are "2006-01", values whole-month figures in minor units; a zero is a
+-- real statement ("nothing spare that month").
+UPDATE budgets
+   SET overrides = $3::jsonb, updated_at = now()
+ WHERE user_id = $1 AND currency = $2
+RETURNING overrides::text;
 
 -- name: UpdateLoanForUser
 -- The borrower's own edit. Scoped by user_id in the predicate rather than

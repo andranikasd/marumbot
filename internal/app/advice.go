@@ -65,7 +65,7 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 
 	in := plan.Input{
 		ValuationDate: date.From(w.Clock.Now(), time.UTC),
-		Cash:          plan.CashPlan{Monthly: budget.Monthly, PayDay: budget.PayDay},
+		Cash:          budget.CashPlan(date.From(w.Clock.Now(), time.UTC)),
 		Loans:         positions,
 	}
 	u, err := plan.Explore(in)
@@ -133,7 +133,7 @@ func (w *Worker) explainPlan(ctx context.Context, userID string, chat int64, l i
 	}
 	in := plan.Input{
 		ValuationDate: date.From(w.Clock.Now(), time.UTC),
-		Cash:          plan.CashPlan{Monthly: budget.Monthly, PayDay: budget.PayDay},
+		Cash:          budget.CashPlan(date.From(w.Clock.Now(), time.UTC)),
 		Loans:         positions,
 	}
 	u, err := plan.Explore(in)

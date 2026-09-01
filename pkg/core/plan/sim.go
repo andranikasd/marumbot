@@ -463,11 +463,24 @@ func (s *sim) income(on date.Date) {
 	if s.cycle == 0 || !s.cycleIncome.Equal(on) {
 		s.openCycle(on)
 	}
-	s.cash = s.add(s.cash, s.budget)
-	s.inflow = s.add(s.inflow, s.budget)
+	credit := s.credit(on)
+	s.cash = s.add(s.cash, credit)
+	s.inflow = s.add(s.inflow, credit)
 	s.nextIncome = s.incomeAfter(on)
 	s.incomeYM = ym(on)
 	s.allocate(on)
+}
+
+// credit is what this cycle's income actually brings: the month's stated
+// override when one exists, otherwise the running budget. The override is
+// absolute -- a borrower saying "December is 40k" means 40k, not 40k plus
+// whatever relief has since freed -- so it bypasses the relief-adjusted
+// budget for exactly that month.
+func (s *sim) credit(on date.Date) money.Amount {
+	if v, ok := s.in.Cash.MonthlyOverrides[MonthKey(on)]; ok {
+		return v
+	}
+	return s.budget
 }
 
 // reserved is cash that optional payments may not touch: the floor, every

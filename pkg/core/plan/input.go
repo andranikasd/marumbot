@@ -57,6 +57,16 @@ type CashPlan struct {
 	ReserveFloor money.Amount
 	// Lumps are one-off sums on given dates: a bonus, a sale.
 	Lumps []CashEvent
+	// MonthlyOverrides replaces Monthly for the named months, keyed
+	// "2006-01". An override is the whole month's figure, not a delta, and
+	// it may be lower than Monthly -- a tight month is exactly what a
+	// borrower needs to state. Months without an entry use Monthly.
+	MonthlyOverrides map[string]money.Amount
+}
+
+// MonthKey renders a date as the MonthlyOverrides key for its month.
+func MonthKey(d date.Date) string {
+	return fmt.Sprintf("%04d-%02d", d.Year(), int(d.Month()))
 }
 
 // Input is everything a search needs.
@@ -111,6 +121,18 @@ func (in Input) Validate() error {
 		if l.Excess == allocation.ExcessUnknown {
 			// Planned, but no early-payment credit: the search handles it.
 			continue
+		}
+	}
+	for k, v := range in.Cash.MonthlyOverrides {
+		var y, m int
+		if n, err := fmt.Sscanf(k, "%d-%d", &y, &m); n != 2 || err != nil || m < 1 || m > 12 || y < 1900 || y > 9999 {
+			return fmt.Errorf("plan: budget override key %q is not a month", k)
+		}
+		if v.Currency().Code != cur.Code {
+			return &MixedCurrencyError{Have: v.Currency().Code, Want: cur.Code}
+		}
+		if v.Sign() < 0 {
+			return fmt.Errorf("plan: budget override %q is negative", k)
 		}
 	}
 	return nil

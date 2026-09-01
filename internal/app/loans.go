@@ -8,6 +8,7 @@ import (
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
+	"github.com/andranikasd/marumbot/pkg/core/plan"
 )
 
 // LoanDraft is a loan as filed by a borrower, before anything is derived from
@@ -87,6 +88,34 @@ type Budget struct {
 	// borrower has not said.
 	PayDay int
 	Set    bool
+	// Opening is money on hand for loans, as stated on OpeningAsOf. Cash on
+	// hand decays -- it gets spent -- so the figure only feeds a plan within
+	// the month it was stated.
+	Opening     money.Amount
+	OpeningAsOf date.Date
+	// Overrides are whole-month budget figures keyed "2006-01", in minor
+	// units, replacing Monthly for exactly those months.
+	Overrides map[string]int64
+}
+
+// CashPlan renders the stated budget as the engine's cash plan for a
+// valuation date. Opening cash counts only within the month it was stated
+// and never from the future: a January figure says nothing about March.
+func (b Budget) CashPlan(valuation date.Date) plan.CashPlan {
+	cp := plan.CashPlan{Monthly: b.Monthly, PayDay: b.PayDay}
+	if b.Opening.Sign() > 0 && !b.OpeningAsOf.IsZero() &&
+		plan.MonthKey(b.OpeningAsOf) == plan.MonthKey(valuation) &&
+		!b.OpeningAsOf.After(valuation) {
+		cp.OpeningCash = b.Opening
+	}
+	if len(b.Overrides) > 0 {
+		cur := b.Monthly.Currency()
+		cp.MonthlyOverrides = make(map[string]money.Amount, len(b.Overrides))
+		for k, v := range b.Overrides {
+			cp.MonthlyOverrides[k] = money.FromMinor(v, cur)
+		}
+	}
+	return cp
 }
 
 // BudgetStore records and reads a monthly budget.
@@ -94,6 +123,17 @@ type BudgetStore interface {
 	// SetBudget records the amount; a payDay of zero keeps the stored one.
 	SetBudget(ctx context.Context, userID, currency string, minor int64, payDay int) error
 	Budget(ctx context.Context, userID string) (Budget, error)
+}
+
+// BudgetTuner records the adjustable parts: cash on hand and the per-month
+// figures. Optional beside BudgetStore -- the bot's text flow only ever sets
+// the monthly amount.
+type BudgetTuner interface {
+	// SetOpening states what is on hand today, stamped with the day.
+	SetOpening(ctx context.Context, userID, currency string, minor int64, asOf string) error
+	// SetOverrides replaces the whole per-month document, keys "2006-01",
+	// minor units.
+	SetOverrides(ctx context.Context, userID, currency string, overrides map[string]int64) error
 }
 
 // Conversation states. Stored, so they are part of the schema: renaming one

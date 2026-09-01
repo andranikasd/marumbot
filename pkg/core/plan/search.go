@@ -480,8 +480,16 @@ func minimum(in Input, c cache) (Result, error) {
 	// carries. Declining-principal loans require less each month; the
 	// surplus that creates is not spent because MinPrepay is set above any
 	// balance.
+	// Overrides ride along: a month the borrower stated as tight can be too
+	// tight even for the required instalments, and the minimum run is where
+	// that becomes a typed refusal with the date instead of a generic "no
+	// feasible policy". In a feasible plan they change nothing here -- the
+	// minimum spends only what is required, and spare income idles.
 	inMin := in
-	inMin.Cash = CashPlan{Monthly: req, PayDay: in.Cash.PayDay, OpeningCash: in.Cash.OpeningCash}
+	inMin.Cash = CashPlan{
+		Monthly: req, PayDay: in.Cash.PayDay, OpeningCash: in.Cash.OpeningCash,
+		MonthlyOverrides: in.Cash.MonthlyOverrides,
+	}
 	pol.MinPrepay = money.FromMinor(1<<62, req.Currency())
 	return run(inMin, pol, c)
 }

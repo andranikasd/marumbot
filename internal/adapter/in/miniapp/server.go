@@ -45,10 +45,13 @@ type Server struct {
 	// Reviser applies full loan edits: words overwritten, terms versioned,
 	// balance re-anchored. Optional: without it PATCH stays a rename.
 	Reviser LoanReviser
-	Users   app.UserStore
-	Cipher  TagCipher
-	Clock   app.Clock
-	Log     *slog.Logger
+	// Tuner records the budget's adjustable parts: cash on hand and the
+	// per-month figures. Optional: without it the budget stays one number.
+	Tuner  app.BudgetTuner
+	Users  app.UserStore
+	Cipher TagCipher
+	Clock  app.Clock
+	Log    *slog.Logger
 }
 
 // LoanReviser applies a full loan edit; the Worker implements it. Declared
@@ -192,6 +195,18 @@ func (s *Server) getBudget() http.Handler {
 			out["currency"] = b.Currency
 			out["monthly_major"] = major(b.Monthly)
 			out["pay_day"] = b.PayDay
+			if b.Opening.Sign() > 0 {
+				out["opening_major"] = major(b.Opening)
+				out["opening_as_of"] = b.OpeningAsOf.String()
+			}
+			if len(b.Overrides) > 0 {
+				cur := b.Monthly.Currency()
+				over := make(map[string]float64, len(b.Overrides))
+				for k, v := range b.Overrides {
+					over[k] = major(money.FromMinor(v, cur))
+				}
+				out["overrides"] = over
+			}
 		}
 		if s.Required != nil {
 			if req, cur, err := s.Required.RequiredThisMonth(ctx, userID); err == nil && req.Sign() > 0 {
@@ -266,6 +281,23 @@ func (s *Server) setBudget() http.Handler {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
 			return
 		}
+		curr := money.MustLookup(cur)
+		var opening *int64
+		if in.OpeningMajor != nil {
+			o, err := in.ValidateOpening(curr)
+			if err != nil {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
+				return
+			}
+			opening = &o
+		}
+		var overrides map[string]int64
+		if in.Overrides != nil {
+			if overrides, err = in.ValidateOverrides(curr); err != nil {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
+				return
+			}
+		}
 
 		userID, err := s.Users.ByTelegramTag(ctx, s.Cipher.Tag(v.User.ID))
 		if err != nil {
@@ -277,6 +309,26 @@ func (s *Server) setBudget() http.Handler {
 			s.Log.ErrorContext(ctx, "recording the budget failed", "error", err)
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
+		}
+		// The tunable parts land after the row exists; SetBudget above
+		// guarantees it. Absent fields stay untouched, so the old client's
+		// two-field post changes nothing it does not say.
+		if s.Tuner != nil && opening != nil {
+			today := date.From(s.Clock.Now(), time.UTC).String()
+			if err := s.Tuner.SetOpening(ctx, userID, cur, *opening, today); err != nil {
+				span.RecordError(err)
+				s.Log.ErrorContext(ctx, "recording cash on hand failed", "error", err)
+				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				return
+			}
+		}
+		if s.Tuner != nil && overrides != nil {
+			if err := s.Tuner.SetOverrides(ctx, userID, cur, overrides); err != nil {
+				span.RecordError(err)
+				s.Log.ErrorContext(ctx, "recording month budgets failed", "error", err)
+				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+				return
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"monthly_minor": minor, "currency": cur, "pay_day": payDay})
 	})
