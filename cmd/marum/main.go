@@ -135,6 +135,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		DefaultCurrency: money.MustLookup(cfg.DefaultCurrency),
 		Reminders:       store,
 		Plans:           store,
+		Shadow:          store,
 	}
 	// The Mini App is served from the public listener under /app, so it shares
 	// the Worker's hostname and needs no second custom domain or certificate.
@@ -310,6 +311,12 @@ func tickHandler(w *app.Worker, users app.UserLister, serviceToken string, log *
 			log.ErrorContext(ctx, "reminder tick failed", "error", err)
 		} else if sent > 0 {
 			log.InfoContext(ctx, "reminders sent", "count", sent)
+		}
+		// Shadow mode rides the tick too, on its own gate. Silent by design:
+		// it stores what the engine would recommend, and tells no one.
+		if _, err := w.TickShadow(ctx, users); err != nil {
+			span.RecordError(err)
+			log.ErrorContext(ctx, "shadow tick failed", "error", err)
 		}
 		// Logged on every tick, including the empty ones. A scheduler that is
 		// not running looks exactly like a scheduler with nothing to do, and
