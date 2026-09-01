@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
 )
@@ -21,13 +20,19 @@ type reviseFakes struct {
 	ensured   int
 }
 
-func (f *reviseFakes) ReviseContract(_ context.Context, _, _ string, c model.Contract, _ date.Date) error {
-	f.revised = append(f.revised, c)
-	return nil
-}
-
-func (f *reviseFakes) UpdateLoan(context.Context, string, string, string, string) error {
-	f.renamed++
+func (f *reviseFakes) ApplyLoanRevision(_ context.Context, _, _ string, r LoanRevision) error {
+	if r.Contract != nil {
+		f.revised = append(f.revised, *r.Contract)
+	}
+	if r.Rename {
+		f.renamed++
+	}
+	if r.BalanceMinor != nil {
+		f.recorded = append(f.recorded, struct {
+			loanID, userID, asOf string
+			minor                int64
+		}{minor: *r.BalanceMinor})
+	}
 	return nil
 }
 

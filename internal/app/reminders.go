@@ -60,9 +60,10 @@ func (w *Worker) TickReminders(ctx context.Context, users UserLister) (int, erro
 	if last != 0 && now.Sub(time.Unix(0, last)) < remindEvery {
 		return 0, nil
 	}
-	if !w.lastRemind.CompareAndSwap(last, now.UnixNano()) {
+	if !w.reminding.CompareAndSwap(false, true) {
 		return 0, nil // another tick won the walk
 	}
+	defer w.reminding.Store(false)
 	// Housekeeping rides the hourly walk: completed inbox rows only serve
 	// update-id dedup, and Telegram's retries span minutes, so a week of
 	// retention is generous. Optional -- a fake store simply skips it.
@@ -81,10 +82,14 @@ func (w *Worker) TickReminders(ctx context.Context, users UserLister) (int, erro
 		if err := w.ScheduleForUser(ctx, id); err != nil {
 			// One account's broken loan must not silence everyone else's
 			// reminders; it is logged and the walk continues.
-			w.Log.WarnContext(ctx, "scheduling reminders failed", "user", id, "error", err)
+			w.Log.WarnContext(ctx, "scheduling reminders failed", "error", err)
 		}
 	}
-	return w.SendDueReminders(ctx, 50)
+	n, err := w.SendDueReminders(ctx, 50)
+	if err == nil {
+		w.lastRemind.Store(now.UnixNano())
+	}
+	return n, err
 }
 
 // OnLoanFiled sets up reminders the moment a loan exists: the default rules,
@@ -120,8 +125,7 @@ func (w *Worker) ScheduleForUser(ctx context.Context, userID string) error {
 		}
 		s, err := amortisation.Build(l.Contract, l.Balance, l.AsOf)
 		if err != nil || len(s.Rows) == 0 {
-			w.Log.WarnContext(ctx, "cannot project a loan for reminders",
-				"loan", l.ID, "error", err)
+			w.Log.WarnContext(ctx, "cannot project a loan for reminders", "error", err)
 			continue
 		}
 		// Only the instalments inside the horizon. Generating the whole
@@ -133,7 +137,7 @@ func (w *Worker) ScheduleForUser(ctx context.Context, userID string) error {
 				break
 			}
 			if err := w.Reminders.ScheduleReminders(ctx, due, l.ID); err != nil {
-				return fmt.Errorf("scheduling %s: %w", l.ID, err)
+				return fmt.Errorf("scheduling loan reminder: %w", err)
 			}
 		}
 	}
@@ -209,12 +213,12 @@ type scheduledLoan struct {
 func (w *Worker) reminderBook(ctx context.Context, userID string) *reminderBook {
 	locale, _, err := w.Users.Locale(ctx, userID)
 	if err != nil {
-		w.Log.WarnContext(ctx, "reminder: unknown user", "user", userID, "error", err)
+		w.Log.WarnContext(ctx, "reminder: unknown user", "error", err)
 		return nil
 	}
 	chat, err := w.Chats.ChatID(ctx, userID)
 	if err != nil {
-		w.Log.WarnContext(ctx, "reminder: no chat", "user", userID, "error", err)
+		w.Log.WarnContext(ctx, "reminder: no chat", "error", err)
 		return nil
 	}
 	book := &reminderBook{locale: i18n.Locale(locale), chat: chat}
@@ -222,7 +226,7 @@ func (w *Worker) reminderBook(ctx context.Context, userID string) *reminderBook 
 	if err != nil {
 		// Reminders still go out, without figures: a late reminder with a
 		// number is worse than a timely one without.
-		w.Log.WarnContext(ctx, "reminder: listing loans failed", "user", userID, "error", err)
+		w.Log.WarnContext(ctx, "reminder: listing loans failed", "error", err)
 		return book
 	}
 	for _, ln := range loans {

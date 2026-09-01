@@ -203,7 +203,7 @@ jobs:
       # 3. Prove it works before anyone else finds out it does not.
       - name: Post-deploy smoke
         id: smoke
-        run: ./deploy/cloudflare/smoke.sh "${{ vars.PUBLIC_URL }}"
+        run: ./deploy/cloudflare/smoke.sh "${{ vars.PUBLIC_URL }}" "${{ inputs.version }}"
 
       # 4. A failed smoke rolls the binary back, but only when a previous
       #    deployment exists. The schema stays expanded, which is safe precisely

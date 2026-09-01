@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -17,6 +18,17 @@ func capture(t *testing.T, f func(*slog.Logger)) string {
 	log := slog.New(newRedactor(slog.NewJSONHandler(&buf, nil)))
 	f(log)
 	return buf.String()
+}
+
+func TestRedactor_DoesNotEmitErrorText(t *testing.T) {
+	out := capture(t, func(l *slog.Logger) {
+		l.Error("failed", "error", fmt.Errorf("loan private-id owes 12345"))
+	})
+	for _, secret := range []string{"private-id", "12345"} {
+		if strings.Contains(out, secret) {
+			t.Fatalf("error text escaped redaction: %s", out)
+		}
+	}
 }
 
 // The rule the design cares about most: a balance must not reach a log sink,

@@ -173,7 +173,8 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        c.rounding_mode, c.rounding_unit_minor,
        s.principal_minor, s.as_of::text, s.trust,
        coalesce(p.excess_rule, 'unknown'),
-       c.prepayment_policy::text
+       c.prepayment_policy::text,
+       f.principal_minor AS first_principal_minor
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
@@ -184,6 +185,10 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
         SELECT * FROM loan_snapshots sn
          WHERE sn.loan_id = l.id ORDER BY sn.as_of DESC, sn.captured_at DESC LIMIT 1
        ) s ON true
+  LEFT JOIN LATERAL (
+        SELECT principal_minor FROM loan_snapshots sn
+         WHERE sn.loan_id = l.id ORDER BY sn.as_of, sn.captured_at LIMIT 1
+       ) f ON true
  WHERE l.id = $1 AND l.user_id = $2 AND l.archived_at IS NULL;
 
 -- name: ReviseLoanContract
@@ -253,6 +258,55 @@ SELECT $3, loan_id, contract_id, $4, 'user_entered', $5,
 ON CONFLICT (idempotency_key) DO UPDATE
    SET principal_minor = EXCLUDED.principal_minor, captured_at = now()
 RETURNING id;
+
+-- name: ApplyLoanRevision
+-- One submitted edit may change words, terms, and the balance. These CTEs are
+-- one PostgreSQL statement, so a constraint or ownership failure rolls back
+-- every part rather than leaving a partially applied form.
+WITH owned AS (
+    SELECT id FROM loans
+     WHERE id = $1 AND user_id = $2 AND archived_at IS NULL
+), renamed AS (
+    UPDATE loans SET name = $4, description = $5
+     WHERE id IN (SELECT id FROM owned) AND $3::boolean
+    RETURNING id
+), prev AS (
+    SELECT v.id, v.version, v.allocation_policy_version_id
+      FROM loan_contract_versions v JOIN owned o ON o.id = v.loan_id
+     ORDER BY v.version DESC LIMIT 1
+), closed AS (
+    UPDATE loan_contract_versions SET effective_until = $8::date
+     WHERE id IN (SELECT id FROM prev) AND effective_until IS NULL AND $6::boolean
+    RETURNING id
+), inserted_contract AS (
+    INSERT INTO loan_contract_versions (
+        id, loan_id, version, effective_from, nominal_rate, day_count,
+        repayment_type, start_date, maturity_date, payment_day, rounding_mode,
+        rounding_unit_minor, allocation_policy_version_id, prepayment_policy,
+        prepayment_schema_version
+    )
+    SELECT $7, o.id, p.version + 1, $8, $9, $10, $11, $12, $13, $14,
+           $15, $16, p.allocation_policy_version_id, $17::jsonb, 1
+      FROM owned o, prev p, closed WHERE $6::boolean
+    RETURNING id, loan_id
+), current_contract AS (
+    SELECT id, loan_id FROM inserted_contract
+    UNION ALL
+    SELECT p.id, o.id FROM prev p, owned o WHERE NOT $6::boolean
+), snapshot AS (
+    INSERT INTO loan_snapshots (
+        id, loan_id, contract_version_id, as_of, trust, principal_minor,
+        source_note, idempotency_key
+    )
+    SELECT $19, c.loan_id, c.id, $8, 'user_entered', $20,
+           'balance stated by the borrower after a payment',
+           'balance:' || c.loan_id::text || ':' || $8
+      FROM current_contract c WHERE $18::boolean
+    ON CONFLICT (idempotency_key) DO UPDATE
+       SET principal_minor = EXCLUDED.principal_minor, captured_at = now()
+    RETURNING id
+)
+SELECT id FROM owned;
 
 -- name: EnsureDefaultReminders
 -- Every loan gets reminders when it is filed. Three days before, and on the

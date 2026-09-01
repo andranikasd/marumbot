@@ -62,9 +62,10 @@ func (w *Worker) TickShadow(ctx context.Context, users UserLister) (int, error) 
 	if last != 0 && now.Sub(time.Unix(0, last)) < shadowEvery {
 		return 0, nil
 	}
-	if !w.lastShadow.CompareAndSwap(last, now.UnixNano()) {
+	if !w.shadowing.CompareAndSwap(false, true) {
 		return 0, nil // another tick won the walk
 	}
+	defer w.shadowing.Store(false)
 	ids, err := users.ActiveLoanUsers(ctx, shadowWalkLimit)
 	if err != nil {
 		return 0, fmt.Errorf("listing accounts for the shadow walk: %w", err)
@@ -78,12 +79,12 @@ func (w *Worker) TickShadow(ctx context.Context, users UserLister) (int, error) 
 		}
 		if err != nil {
 			// One account's broken plan must not silence the others' evidence.
-			w.Log.WarnContext(ctx, "shadow: computing the sheet failed", "user", id, "error", err)
+			w.Log.WarnContext(ctx, "shadow: computing the sheet failed", "error", err)
 			continue
 		}
 		raw, err := json.Marshal(sh)
 		if err != nil {
-			w.Log.WarnContext(ctx, "shadow: marshalling the sheet failed", "user", id, "error", err)
+			w.Log.WarnContext(ctx, "shadow: marshalling the sheet failed", "error", err)
 			continue
 		}
 		sum := sha256.Sum256(raw)
@@ -96,7 +97,7 @@ func (w *Worker) TickShadow(ctx context.Context, users UserLister) (int, error) 
 			Sheet:       raw,
 		})
 		if err != nil {
-			w.Log.WarnContext(ctx, "shadow: storing failed", "user", id, "error", err)
+			w.Log.WarnContext(ctx, "shadow: storing failed", "error", err)
 			continue
 		}
 		if wrote {
@@ -107,5 +108,6 @@ func (w *Worker) TickShadow(ctx context.Context, users UserLister) (int, error) 
 		// Counts only; never amounts or identifiers (I5).
 		w.Log.InfoContext(ctx, "shadow recommendations recorded", "accounts", recorded)
 	}
+	w.lastShadow.Store(now.UnixNano())
 	return recorded, nil
 }

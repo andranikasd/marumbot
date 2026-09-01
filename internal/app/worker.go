@@ -84,8 +84,10 @@ type Worker struct {
 	// arrive over HTTP, so a slow walk can overlap the next fire; the CAS both
 	// prevents the race and makes the overlapping tick a no-op.
 	lastRemind atomic.Int64
+	reminding  atomic.Bool
 	// lastShadow is the same gate for the shadow walk; see shadow.go.
 	lastShadow atomic.Int64
+	shadowing  atomic.Bool
 
 	// DefaultCurrency is what a bare number means. AMD here; a user with a
 	// dollar loan writes the code and it is honoured.
@@ -127,7 +129,7 @@ func (w *Worker) HandleOne(ctx context.Context, id string) error {
 	}
 	l, ok, err := w.Inbox.LeaseByID(ctx, id, w.Owner, w.Clock.Now().Add(LeaseFor))
 	if err != nil {
-		return fmt.Errorf("leasing %s: %w", id, err)
+		return fmt.Errorf("leasing command: %w", err)
 	}
 	if !ok {
 		// Already leased or finished: the tick got there first. Ordinary race.
@@ -216,7 +218,9 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 
 	var p textPayload
 	if len(c.Payload) > 0 {
-		_ = json.Unmarshal(c.Payload, &p)
+		if err := json.Unmarshal(c.Payload, &p); err != nil {
+			return fmt.Errorf("decoding command payload: %w", err)
+		}
 	}
 
 	chat, err := w.Chats.ChatID(ctx, c.UserID)
@@ -374,7 +378,7 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 		} else if err != nil {
 			// Say the schedule is unavailable rather than omitting the line: a
 			// silently missing number reads as a number of zero.
-			w.Log.WarnContext(ctx, "projecting a loan failed", "loan", ln.ID, "error", err)
+			w.Log.WarnContext(ctx, "projecting a loan failed", "error", err)
 			b.WriteString(i18n.T(l, "loan.no_schedule") + "\n")
 		}
 

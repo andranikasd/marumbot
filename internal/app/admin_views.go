@@ -29,6 +29,7 @@ type DashboardView struct {
 	Recent         []CommandDetail
 	CommandCounts  []StatusCount
 	DeliveryCounts []StatusCount
+	Warnings       []string
 }
 
 // Dashboard gathers the overview page. A failure in a secondary panel is
@@ -41,14 +42,29 @@ func (a *Admin) Dashboard(ctx context.Context, now time.Time) (DashboardView, er
 		return v, err
 	}
 	days := 14
-	users, _ := call(ctx, "UsersByDay", a.store.UsersByDay)
-	loans, _ := call(ctx, "LoansByDay", a.store.LoansByDay)
+	users, usersErr := call(ctx, "UsersByDay", a.store.UsersByDay)
+	loans, loansErr := call(ctx, "LoansByDay", a.store.LoansByDay)
+	if usersErr != nil {
+		v.Warnings = append(v.Warnings, "user activity is unavailable")
+	}
+	if loansErr != nil {
+		v.Warnings = append(v.Warnings, "loan activity is unavailable")
+	}
 	v.UsersByDay = fillDays(users, days, now)
 	v.LoansByDay = fillDays(loans, days, now)
-	v.CommandCounts, _ = call(ctx, "CommandCounts", a.store.CommandCounts)
-	v.DeliveryCounts, _ = call(ctx, "DeliveryCounts", a.store.DeliveryCounts)
+	v.CommandCounts, err = call(ctx, "CommandCounts", a.store.CommandCounts)
+	if err != nil {
+		v.Warnings = append(v.Warnings, "command counts are unavailable")
+	}
+	v.DeliveryCounts, err = call(ctx, "DeliveryCounts", a.store.DeliveryCounts)
+	if err != nil {
+		v.Warnings = append(v.Warnings, "delivery counts are unavailable")
+	}
 	if a.mod != nil {
-		v.Recent, _ = a.mod.CommandsDetailed(ctx, "", 8)
+		v.Recent, err = a.mod.CommandsDetailed(ctx, "", 8)
+		if err != nil {
+			v.Warnings = append(v.Warnings, "recent commands are unavailable")
+		}
 	}
 	return v, nil
 }
