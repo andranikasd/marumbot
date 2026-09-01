@@ -1,10 +1,10 @@
 // The budget: the monthly amount and the payday, validated against what the
 // loans actually require this month.
 "use strict";
-import { tg, haptic, toast, fmtMoney, moneyNum, num, mainButton, group } from "../core.js";
+import { haptic, toast, fmtMoney, moneyNum, num, mainButton, group } from "../core.js";
 import { T } from "../i18n.js";
 import { api, getJSON, invalidate } from "../api.js";
-import { register, currentScreen } from "../nav.js";
+import { register, go, currentScreen } from "../nav.js";
 
 const HTML = `
 <h1 data-i18n="budget.title">Ամսական բյուջե</h1>
@@ -58,7 +58,7 @@ const HTML = `
     </div>
     <div class="done" id="budget-done">
       <p id="budget-done-text"></p>
-      <button class="cta" type="button" id="budget-close" data-i18n="budget.back">Վերադառնալ չաթ</button>
+      <button class="cta" type="button" id="budget-plan" data-i18n="budget.plan">Տեսնել պլանը</button>
     </div>
   </form>
 `;
@@ -210,7 +210,7 @@ register({
       validate();
     });
     $("budget-form").addEventListener("submit", (e) => { e.preventDefault(); save(); });
-    $("budget-close").addEventListener("click", () => { haptic.tap(); if (tg?.close) tg.close(); });
+    $("budget-plan").addEventListener("click", () => { haptic.tap(); go("plan"); });
   },
   onShow() {
     mainButton.own(save);
