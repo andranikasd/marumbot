@@ -352,6 +352,18 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 	return l, nil
 }
 
+// RecordBalance stores the borrower's statement of what is owed, as a
+// snapshot anchored today. Ownership lives in the query's predicate.
+func (s *Store) RecordBalance(ctx context.Context, loanID, userID string, minor int64, asOf string) error {
+	var got string
+	err := s.pool.QueryRow(ctx, q("RecordBalanceSnapshot"),
+		loanID, userID, uuid.NewString(), asOf, minor).Scan(&got)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.ErrNotFound
+	}
+	return err
+}
+
 // prepaymentJSON is the stored form of the contract's prepayment terms. The
 // default effect is stored as an absent key, so a contract that never stated
 // one reads back as the default rather than as a choice somebody made.

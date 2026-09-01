@@ -146,6 +146,38 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        ) s ON true
  WHERE l.id = $1 AND l.user_id = $2 AND l.archived_at IS NULL;
 
+-- name: RecordBalanceSnapshot
+-- The borrower states what is owed after a payment. A SNAPSHOT, not an event:
+-- it is a statement of what was owed on a date, and replay anchors on it.
+-- Trust is 'user_entered' -- the honest grade for a typed figure; only a
+-- lender-confirmed number resets drift.
+--
+-- Ownership lives in the predicate. The idempotency key is loan and date, so
+-- restating the balance on the same day corrects the same claim rather than
+-- stacking a contradiction; a new day is a new claim and a new row.
+WITH owned AS (
+    SELECT l.id FROM loans l
+     WHERE l.id = $1 AND l.user_id = $2 AND l.archived_at IS NULL
+), latest AS (
+    SELECT v.id AS contract_id, o.id AS loan_id
+      FROM owned o
+      JOIN LATERAL (
+            SELECT id FROM loan_contract_versions v
+             WHERE v.loan_id = o.id ORDER BY v.version DESC LIMIT 1
+           ) v ON true
+)
+INSERT INTO loan_snapshots (
+    id, loan_id, contract_version_id, as_of, trust,
+    principal_minor, source_note, idempotency_key
+)
+SELECT $3, loan_id, contract_id, $4, 'user_entered', $5,
+       'balance stated by the borrower after a payment',
+       'balance:' || loan_id::text || ':' || $4
+  FROM latest
+ON CONFLICT (idempotency_key) DO UPDATE
+   SET principal_minor = EXCLUDED.principal_minor, captured_at = now()
+RETURNING id;
+
 -- name: EnsureDefaultReminders
 -- Every loan gets reminders when it is filed. Three days before, and on the
 -- day: enough warning to move money, and a nudge when it is actually due.

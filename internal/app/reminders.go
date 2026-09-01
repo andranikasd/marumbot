@@ -167,7 +167,13 @@ func (w *Worker) SendDueReminders(ctx context.Context, limit int32) (int, error)
 
 		text := reminderText(book, d)
 
-		if err := w.Send.SendMessage(ctx, book.chat, text, w.mainMenu(book.locale)); err != nil {
+		// The reminder carries its own button: "I paid". Closing the loop at
+		// the moment of payment is what turns projections into statements.
+		markup := w.mainMenu(book.locale)
+		if w.Balances != nil {
+			markup = paidMarkup(book.locale, d.LoanID)
+		}
+		if err := w.Send.SendMessage(ctx, book.chat, text, markup); err != nil {
 			// Left scheduled, so the next tick tries again. A reminder that
 			// failed to send is not a reminder that is no longer owed.
 			w.Log.WarnContext(ctx, "reminder failed to send", "occurrence", d.ID, "error", err)

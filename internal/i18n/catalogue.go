@@ -204,6 +204,17 @@ var catalogue = map[Locale]map[string]string{
 		"reminder.due_today":       "🔔 Այսօր, %s — <code>%s</code> «%s»-ի համար։",
 		"reminder.due_soon_plain":  "🔔 %s — վճարում «%s»-ի համար։",
 		"reminder.due_today_plain": "🔔 Այսօր, %s — վճարում «%s»-ի համար։",
+		"reminder.paid_button":     "✓ Վճարել եմ",
+
+		// --- the paid flow: confirmed balances are what reset drift ---
+		"paid.ask_balance": "Գրանցե՞նք։ Գրեք, թե բանկի հավելվածն ինչ մնացորդ է ցույց տալիս «%s»-ի համար։ " +
+			"Կարող եք նաև բաց թողնել։",
+		"paid.skip_button":    "Բաց թողնել",
+		"paid.skipped":        "👍 Լավ է, որ վճարել եք։",
+		"paid.not_a_number":   "Չհասկացա գումարը։ Գրեք միայն թիվ, օրինակ՝ 950000, կամ սեղմեք «Բաց թողնել»։",
+		"paid.wrong_currency": "Այս վարկը %s-ով է։ Գրեք մնացորդը նույն արժույթով։",
+		"paid.saved":          "✅ «%s»-ի մնացորդը թարմացված է՝ <code>%s</code>։",
+		"paid.cleared":        "🎉 «%s»-ը մարված է։ Շնորհավո՛ր։",
 
 		// --- language ---
 		"language.prompt": "Ընտրեք լեզուն։",
@@ -385,6 +396,16 @@ var catalogue = map[Locale]map[string]string{
 		"reminder.due_today":       "🔔 Today, %s — <code>%s</code> for “%s”.",
 		"reminder.due_soon_plain":  "🔔 %s — instalment for “%s”.",
 		"reminder.due_today_plain": "🔔 Today, %s — instalment for “%s”.",
+		"reminder.paid_button":     "✓ I paid",
+
+		"paid.ask_balance": "Record it? Type the balance your bank app now shows for “%s”. " +
+			"You can also skip this.",
+		"paid.skip_button":    "Skip",
+		"paid.skipped":        "👍 Good — the payment is what matters.",
+		"paid.not_a_number":   "I could not read that as an amount. Type just the number, like 950000, or tap Skip.",
+		"paid.wrong_currency": "This loan is in %s. Type the balance in the same currency.",
+		"paid.saved":          "✅ “%s” updated: <code>%s</code> owed.",
+		"paid.cleared":        "🎉 “%s” is paid off. Congratulations!",
 
 		"language.prompt": "Choose a language.",
 		"language.set":    "Language changed to English.",

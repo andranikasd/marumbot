@@ -100,6 +100,10 @@ type BudgetStore interface {
 // strands every row that used it.
 const (
 	StateAwaitingBudget = "awaiting_budget"
+	// StateAwaitingBalance is set when the borrower taps "paid" on a
+	// reminder; the loan id rides in the state after a colon, because the
+	// answer is meaningless without knowing which loan it settles.
+	StateAwaitingBalance = "awaiting_balance"
 	// StateAwaitingReliefCap is set after the borrower picks "pay less per
 	// month": the engine needs a target, so the bot asks for one.
 	StateAwaitingReliefCap = "awaiting_relief_cap"
@@ -125,6 +129,13 @@ type LoanEditor interface {
 	UpdateLoan(ctx context.Context, loanID, userID, name, description string) error
 	ArchiveLoan(ctx context.Context, loanID, userID string) error
 	LoanForUser(ctx context.Context, loanID, userID string) (UserLoan, error)
+}
+
+// BalanceRecorder stores the borrower's statement of what is owed, as a
+// snapshot the schedule re-anchors on. Ownership is enforced in the query's
+// predicate, like every loan write.
+type BalanceRecorder interface {
+	RecordBalance(ctx context.Context, loanID, userID string, minor int64, asOf string) error
 }
 
 // LoanFiledHook is told when a loan is created, so dependent state — the
