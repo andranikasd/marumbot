@@ -138,11 +138,19 @@ func (in Input) Validate() error {
 	return nil
 }
 
+// MaxAssumedInstalments bounds how far Normalize will advance a balance on
+// faith. One or two assumed payments is a borrower who filed a loan recently;
+// beyond this many, the plan would rest on a balance that may never have
+// existed, and the honest move is a typed refusal that asks for the figure.
+const MaxAssumedInstalments = 3
+
 // Normalize advances every position to the valuation date, assuming the
 // instalments that fell due in between were paid as the contract required.
 // The number of instalments assumed is returned per loan so the report can
 // say so; a plan that silently backdates a balance is a plan that is wrong
-// by exactly the interest it forgot.
+// by exactly the interest it forgot. A position needing more than
+// MaxAssumedInstalments refuses with a StaleBalanceError instead of piling
+// assumption on assumption.
 func Normalize(in Input) (Input, map[string]int, error) {
 	if err := in.Validate(); err != nil {
 		return in, nil, err
@@ -158,6 +166,9 @@ func Normalize(in Input) (Input, map[string]int, error) {
 			dates, err := amortisation.RemainingDates(p.Contract, p.From)
 			if err != nil || !dates[0].Before(in.ValuationDate) {
 				break
+			}
+			if n >= MaxAssumedInstalments {
+				return in, nil, &StaleBalanceError{LoanID: p.ID, AsOf: in.Loans[i].From, Assumed: n + 1}
 			}
 			s, err := amortisation.Build(p.Contract, p.Balance, p.From)
 			if err != nil || len(s.Rows) == 0 {

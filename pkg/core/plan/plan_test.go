@@ -290,17 +290,20 @@ func TestP7ReplaySegmentation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Three months on: the most Normalize will advance on faith. Beyond
+	// MaxAssumedInstalments it refuses with a StaleBalanceError instead,
+	// which TestNormalizeRefusesAStaleAnchor pins down.
 	later := in
-	later.ValuationDate = date.MustNew(2026, 7, 1)
+	later.ValuationDate = date.MustNew(2026, 5, 1)
 	norm, assumed, err := plan.Normalize(later)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if assumed["a"] != 5 {
-		t.Fatalf("assumed %d, want 5", assumed["a"])
+	if assumed["a"] != 3 {
+		t.Fatalf("assumed %d, want 3", assumed["a"])
 	}
-	if norm.Loans[0].Balance.Cmp(full.Timeline[4].Owed) != 0 {
-		t.Fatalf("balance after 5 instalments: normalized %s, full run %s", norm.Loans[0].Balance, full.Timeline[4].Owed)
+	if norm.Loans[0].Balance.Cmp(full.Timeline[2].Owed) != 0 {
+		t.Fatalf("balance after 3 instalments: normalized %s, full run %s", norm.Loans[0].Balance, full.Timeline[2].Owed)
 	}
 }
 

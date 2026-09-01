@@ -121,7 +121,31 @@ func Build(c model.Contract, principal money.Amount, from date.Date) (Schedule, 
 			// The lender stated the instalment. Use it rather than solving:
 			// the contract is the authority on what is owed, and a solved
 			// figure that disagrees by a dram is the engine being wrong.
-			return Project(c, principal, c.ScheduledPayment, from)
+			//
+			// But a stated figure the arithmetic contradicts is a typo or a
+			// misread contract, and projecting it silently produces a
+			// schedule that never clears -- or a balance that grows, when
+			// the payment does not even cover the first interest. Both are
+			// findings about the input, so they refuse by name.
+			s, err := Project(c, principal, c.ScheduledPayment, from)
+			if err != nil {
+				return Schedule{}, err
+			}
+			if n := len(s.Rows); n > 0 {
+				// The sharper finding first: a payment below the interest is
+				// a different mistake than one merely too small to finish.
+				if s.Rows[0].Principal.Sign() < 0 {
+					return Schedule{}, fmt.Errorf(
+						"%w: the stated instalment %s does not cover the first interest of %s; the balance would grow",
+						ErrUnsolvable, c.ScheduledPayment, s.Rows[0].Interest)
+				}
+				if closing := s.Rows[n-1].Closing; closing.Sign() > 0 {
+					return Schedule{}, fmt.Errorf(
+						"%w: the stated instalment %s leaves %s owed at maturity; check the figure or the dates",
+						ErrUnsolvable, c.ScheduledPayment, closing)
+				}
+			}
+			return s, nil
 		}
 		return SolveAndProject(c, principal, from)
 	default:

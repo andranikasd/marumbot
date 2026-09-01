@@ -577,6 +577,15 @@ func (s *Server) planSheet() http.Handler {
 				})
 				return
 			}
+			var st *plan.StaleBalanceError
+			if errors.As(err, &st) {
+				// Same idea: an old balance is a fact with a fix -- confirm
+				// the figure -- not an error page.
+				writeJSON(w, http.StatusOK, map[string]any{
+					"blocked": "balance_stale", "as_of": st.AsOf.String(), "loan_id": st.LoanID,
+				})
+				return
+			}
 			s.Log.ErrorContext(ctx, "building the plan sheet failed", "error", err)
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "plan_failed"})
 			return

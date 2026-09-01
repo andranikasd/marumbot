@@ -96,7 +96,10 @@ func Replay(in Input) (Result, error) {
 			return Result{}, fmt.Errorf("event %s on %s: %w", ev.ID, ev.ValueDate, err)
 		}
 
-		interest, err := accrue(pos, contract, cursor, ev.ValueDate)
+		// Across versions, not under one: the interval to this event may
+		// straddle a contract revision, and each day accrues under the terms
+		// in force on it.
+		interest, err := accrueAcross(pos, in.Contracts, cursor, ev.ValueDate)
 		if err != nil {
 			return Result{}, fmt.Errorf("accruing to %s: %w", ev.ValueDate, err)
 		}
@@ -117,12 +120,9 @@ func Replay(in Input) (Result, error) {
 		applied = append(applied, AppliedEvent{Event: ev, Split: split, Interest: interest})
 	}
 
-	// Accrue the tail: from the last event to the date we are stating at.
-	contract, err := contractFor(in.Contracts, in.AsOf)
-	if err != nil {
-		return Result{}, fmt.Errorf("as-of %s: %w", in.AsOf, err)
-	}
-	tail, err := accrue(pos, contract, cursor, in.AsOf)
+	// Accrue the tail: from the last event to the date we are stating at,
+	// split at any version boundary the tail straddles.
+	tail, err := accrueAcross(pos, in.Contracts, cursor, in.AsOf)
 	if err != nil {
 		return Result{}, fmt.Errorf("accruing to %s: %w", in.AsOf, err)
 	}

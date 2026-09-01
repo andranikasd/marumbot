@@ -267,14 +267,22 @@ func (u *Universe) Rank(goal Goal) (Report, error) {
 		return Report{}, err
 	}
 
+	// The payday's worth is best-against-best: the winner among plans that
+	// pay only on due dates, minus the overall winner. Re-timing just the
+	// winning policy understates it -- a different order might be the best
+	// way to live without the payday, and the ranked list already holds it.
 	rep.TimingSaving = money.Zero(cur)
 	if t, ok := uniformTiming(base.Timing); !ok || t != OnDue {
-		p := base
-		p.Timing = uniform(len(in.Loans), OnDue)
-		if due, err := run(in, p, u.cache); err == nil {
-			if rep.TimingSaving, err = due.Cost().Sub(rep.Best.Cost()); err != nil {
-				return Report{}, err
+		for _, r := range ranked {
+			if t, ok := uniformTiming(r.Policy.Timing); ok && t == OnDue {
+				if rep.TimingSaving, err = r.Cost().Sub(rep.Best.Cost()); err != nil {
+					return Report{}, err
+				}
+				break
 			}
+		}
+		if rep.TimingSaving.Sign() < 0 {
+			rep.TimingSaving = money.Zero(cur)
 		}
 	}
 	if goal.Kind != Relief {
@@ -348,10 +356,23 @@ func (u *Universe) provable(goal Goal, rep Report) (string, bool) {
 	if goal.Kind != LeastInterest || u.feeBearer || u.trunc != "" {
 		return "", false
 	}
+	// Every precondition the proof's own sentence states is checked here;
+	// claiming "one day-count basis" while never verifying it would be the
+	// certificate lying about itself. Mixed rounding policies are excluded
+	// too: the exchange argument compares daily accruals, and two loans
+	// quantising to different units can disagree by up to a unit per row.
 	live := 0
+	var dc *money.DayCount
+	var rp *money.Policy
 	for _, l := range in.Loans {
 		if l.Balance.Sign() > 0 {
 			live++
+			if dc == nil {
+				d, p := l.Contract.DayCount, l.Contract.Rounding
+				dc, rp = &d, &p
+			} else if l.Contract.DayCount != *dc || l.Contract.Rounding != *rp {
+				return "", false
+			}
 		}
 		if l.Contract.Prepayment.MinAmount.Sign() > 0 || l.Contract.NominalRate < 0 {
 			return "", false
