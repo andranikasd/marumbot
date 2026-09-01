@@ -70,10 +70,15 @@ type Worker struct {
 	// plans caches the pure search by a fingerprint of its inputs; see
 	// plancache.go. Zero value ready.
 	plans searchCache
+	// Shadow stores silent recommendations for the field gates; see shadow.go.
+	// Optional: nil disables the walk.
+	Shadow ShadowStore
 	// lastRemind is when TickReminders last did the work, as unix nanos. Ticks
 	// arrive over HTTP, so a slow walk can overlap the next fire; the CAS both
 	// prevents the race and makes the overlapping tick a no-op.
 	lastRemind atomic.Int64
+	// lastShadow is the same gate for the shadow walk; see shadow.go.
+	lastShadow atomic.Int64
 
 	// DefaultCurrency is what a bare number means. AMD here; a user with a
 	// dollar loan writes the code and it is honoured.
