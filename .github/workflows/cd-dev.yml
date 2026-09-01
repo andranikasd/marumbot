@@ -8,6 +8,11 @@ on:
     branches: [main]
     paths-ignore: ["docs/**", "**/*.md", "LICENSE", "NOTICE"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional release version to deploy to dev (for example 1.0.0)"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -31,6 +36,15 @@ jobs:
         # A dev build is a pre-release of the next patch, so it sorts before any
         # real release and can never be mistaken for one.
         run: |
+          requested="${{ inputs.version }}"
+          if [ -n "$requested" ]; then
+            printf '%s' "$requested" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || {
+              echo "release version must be strict SemVer (for example 1.0.0)"
+              exit 1
+            }
+            echo "version=$requested" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           last=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
           base=${last:-v0.0.0}; base=${base#v}
           IFS=. read -r maj min patch <<<"$base"
