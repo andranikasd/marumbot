@@ -141,6 +141,7 @@ UPDATE telegram_commands c
        attempts    = c.attempts + 1
  WHERE c.id = $1
    AND c.status IN ('pending', 'leased')
+   AND c.next_attempt_at <= now()
    AND (c.lease_until IS NULL OR c.lease_until < now())
 RETURNING c.id, c.telegram_update_id, coalesce(c.user_id::text, ''), c.command_kind,
           c.command_payload, coalesce(c.trace_context, ''), c.attempts,

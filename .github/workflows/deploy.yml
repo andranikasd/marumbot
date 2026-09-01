@@ -217,11 +217,23 @@ jobs:
           workingDirectory: deploy/cloudflare
           command: rollback --env ${{ inputs.wrangler_env }} --message smoke-failed --yes
 
+      # Best-effort: a deploy is not less deployed because a marker is missing.
+      # -f alone exits 22 on any HTTP error and hides the status, which made
+      # every failure here look identical; the status and body are what say
+      # whether the token is wrong (401), under-scoped (403), or the URL is off.
+      # Grafana Cloud wants a STACK service-account token with annotations
+      # write access here, not a cloud access policy token.
       - name: Annotate Grafana
         if: success() && vars.GRAFANA_URL != ''
         continue-on-error: true
         run: |
-          curl -sf -X POST "${{ vars.GRAFANA_URL }}/api/annotations" \
+          code=$(curl -s -o /tmp/annotation.json -w '%{http_code}' -X POST \
+            "${{ vars.GRAFANA_URL }}/api/annotations" \
             -H "Authorization: Bearer ${{ secrets.GRAFANA_TOKEN }}" \
             -H 'Content-Type: application/json' \
-            -d "{\"tags\":[\"deploy\",\"${{ inputs.environment }}\"],\"text\":\"marum ${{ inputs.version }} → ${{ inputs.environment }}\"}"
+            -d "{\"tags\":[\"deploy\",\"${{ inputs.environment }}\"],\"text\":\"marum ${{ inputs.version }} → ${{ inputs.environment }}\"}")
+          if [ "$code" -ge 300 ]; then
+            echo "::warning::Grafana annotation failed: HTTP $code: $(head -c 300 /tmp/annotation.json)"
+            exit 1
+          fi
+          echo "annotated: HTTP $code"
