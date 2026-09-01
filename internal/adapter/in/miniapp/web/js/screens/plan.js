@@ -75,21 +75,6 @@ const fmtFull = (iso) => {
     : new Intl.DateTimeFormat(lang === "en" ? "en-GB" : "hy-AM", { day: "numeric", month: "short", year: "numeric" }).format(d);
 };
 
-// A payoff or milestone sits years out, so it reads as month + year; fmtDate
-// (day + month) is for dates inside the running year.
-const fmtMonth = (iso) => {
-  const d = new Date(iso + "T00:00:00");
-  return Number.isNaN(d.getTime()) ? iso
-    : new Intl.DateTimeFormat(lang === "en" ? "en-GB" : "hy-AM", { month: "short", year: "numeric" }).format(d);
-};
-// A full date with its year, for facts that live outside the running year —
-// a balance stated long ago, for one.
-const fmtFull = (iso) => {
-  const d = new Date(iso + "T00:00:00");
-  return Number.isNaN(d.getTime()) ? iso
-    : new Intl.DateTimeFormat(lang === "en" ? "en-GB" : "hy-AM", { day: "numeric", month: "short", year: "numeric" }).format(d);
-};
-
 function chips(active) {
   for (const b of document.querySelectorAll("#plan-goals button")) {
     b.classList.toggle("on", b.dataset.goal === active);
