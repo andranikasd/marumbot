@@ -97,6 +97,25 @@ ON CONFLICT (user_id, currency) DO UPDATE
        updated_at = now()
 RETURNING monthly_amount_minor;
 
+-- name: SetBudgetConfiguration
+-- The Mini App submits one complete form. Persist it in one statement so a
+-- failure cannot leave monthly cash updated while opening cash or overrides
+-- still describe the previous configuration. Unlike the chat-only SetBudget,
+-- pay_day is replaced exactly: zero deliberately clears it.
+INSERT INTO budgets (
+    user_id, currency, monthly_amount_minor, overrides_schema_version,
+    pay_day, opening_cash_minor, opening_as_of, overrides
+)
+VALUES ($1, $2, $3, 1, $4, $5, $6::date, $7::jsonb)
+ON CONFLICT (user_id, currency) DO UPDATE
+   SET monthly_amount_minor = EXCLUDED.monthly_amount_minor,
+       pay_day = EXCLUDED.pay_day,
+       opening_cash_minor = EXCLUDED.opening_cash_minor,
+       opening_as_of = EXCLUDED.opening_as_of,
+       overrides = EXCLUDED.overrides,
+       updated_at = now()
+RETURNING monthly_amount_minor;
+
 -- name: GetBudget
 -- The most recently stated budget, not the numerically largest: amounts in
 -- different currencies are not comparable, so "largest" picked whichever

@@ -266,9 +266,22 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 		return w.advise(ctx, c.UserID, chat, l, plan.Goal{Kind: plan.LeastInterest}, false)
 
 	case KindBudget:
+		if strings.TrimSpace(p.Arg) != "" {
+			taken, err := w.takeBudget(ctx, c.UserID, chat, l, p.Arg)
+			if err != nil {
+				return err
+			}
+			if taken {
+				return nil
+			}
+			return w.Send.SendMessage(ctx, chat, i18n.T(l, "budget.not_a_number"), w.budgetMarkup(l))
+		}
 		return w.askBudget(ctx, c.UserID, chat, l)
 
 	case KindLanguage:
+		if want := i18n.Locale(strings.ToLower(strings.TrimSpace(p.Arg))); want.Valid() {
+			return w.setLanguage(ctx, c.UserID, chat, want)
+		}
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "language.prompt"), languageMenu())
 
 	case KindCallback:
@@ -468,25 +481,24 @@ func (w *Worker) callback(ctx context.Context, userID string, chat int64, data s
 		if !want.Valid() {
 			return nil
 		}
-		if err := w.Users.SetLocale(ctx, userID, string(want)); err != nil {
-			return fmt.Errorf("setting locale: %w", err)
-		}
-		// The menu button beside the message box follows the language too. It
-		// is set per chat because the global one is per bot and cannot be
-		// localised -- which is why it read Armenian for everyone. Not fatal:
-		// a button in the wrong language is worse than none, but not a reason
-		// to fail the switch that fixes everything else.
-		if w.MiniApp != "" {
-			if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.Button(want, KindAdd), w.miniURL("")); err != nil {
-				w.Log.DebugContext(ctx, "menu button not localised", "error", err)
-			}
-		}
-		// Redraw the keyboard in the new language. Without this the buttons stay
-		// in the old one until the user finds another reason to receive a
-		// keyboard, which makes the switch look like it did not work.
-		return w.Send.SendMessage(ctx, chat, i18n.T(want, "language.set"), w.mainMenu(want))
+		return w.setLanguage(ctx, userID, chat, want)
 	}
 	return nil
+}
+
+func (w *Worker) setLanguage(ctx context.Context, userID string, chat int64, want i18n.Locale) error {
+	if err := w.Users.SetLocale(ctx, userID, string(want)); err != nil {
+		return fmt.Errorf("setting locale: %w", err)
+	}
+	// The global Mini App button cannot be localised, so keep a per-chat one
+	// in step with both command-based and button-based language changes.
+	if w.MiniApp != "" {
+		if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.Button(want, KindAdd), w.miniURL("")); err != nil {
+			w.Log.DebugContext(ctx, "menu button not localised", "error", err)
+		}
+	}
+	// Telegram keeps the old reply keyboard until a new one is sent.
+	return w.Send.SendMessage(ctx, chat, i18n.T(want, "language.set"), w.mainMenu(want))
 }
 
 // showWorking prints the arithmetic behind a loan's next instalments.

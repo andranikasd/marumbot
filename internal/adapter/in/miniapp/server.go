@@ -45,13 +45,12 @@ type Server struct {
 	// Reviser applies full loan edits: words overwritten, terms versioned,
 	// balance re-anchored. Optional: without it PATCH stays a rename.
 	Reviser LoanReviser
-	// Tuner records the budget's adjustable parts: cash on hand and the
-	// per-month figures. Optional: without it the budget stays one number.
-	Tuner  app.BudgetTuner
-	Users  app.UserStore
-	Cipher TagCipher
-	Clock  app.Clock
-	Log    *slog.Logger
+	// BudgetConfig records the complete form atomically.
+	BudgetConfig app.BudgetConfigurator
+	Users        app.UserStore
+	Cipher       TagCipher
+	Clock        app.Clock
+	Log          *slog.Logger
 }
 
 // LoanReviser applies a full loan edit; the Worker implements it. Declared
@@ -304,31 +303,22 @@ func (s *Server) setBudget() http.Handler {
 			http.Error(w, `{"error":"unknown account"}`, http.StatusForbidden)
 			return
 		}
-		if err := s.Budgets.SetBudget(ctx, userID, cur, minor, payDay); err != nil {
+		if s.BudgetConfig == nil {
+			http.Error(w, `{"error":"unavailable"}`, http.StatusServiceUnavailable)
+			return
+		}
+		configuration := app.BudgetConfiguration{
+			UserID: userID, Currency: cur, MonthlyMinor: minor, PayDay: payDay,
+			OpeningAsOf: date.From(s.Clock.Now(), time.UTC), Overrides: overrides,
+		}
+		if opening != nil {
+			configuration.OpeningMinor = *opening
+		}
+		if err := s.BudgetConfig.SetBudgetConfiguration(ctx, configuration); err != nil {
 			span.RecordError(err)
 			s.Log.ErrorContext(ctx, "recording the budget failed", "error", err)
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
-		}
-		// The tunable parts land after the row exists; SetBudget above
-		// guarantees it. Absent fields stay untouched, so the old client's
-		// two-field post changes nothing it does not say.
-		if s.Tuner != nil && opening != nil {
-			today := date.From(s.Clock.Now(), time.UTC).String()
-			if err := s.Tuner.SetOpening(ctx, userID, cur, *opening, today); err != nil {
-				span.RecordError(err)
-				s.Log.ErrorContext(ctx, "recording cash on hand failed", "error", err)
-				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
-				return
-			}
-		}
-		if s.Tuner != nil && overrides != nil {
-			if err := s.Tuner.SetOverrides(ctx, userID, cur, overrides); err != nil {
-				span.RecordError(err)
-				s.Log.ErrorContext(ctx, "recording month budgets failed", "error", err)
-				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
-				return
-			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"monthly_minor": minor, "currency": cur, "pay_day": payDay})
 	})
@@ -573,6 +563,7 @@ func (s *Server) planSheet() http.Handler {
 				// is a fact with a fix, and the screen offers the fix.
 				writeJSON(w, http.StatusOK, map[string]any{
 					"blocked": "budget_low", "on": inf.On.String(),
+					"currency":       inf.Required.Currency().Code,
 					"required_major": major(inf.Required), "short_major": major(inf.Shortfall),
 				})
 				return

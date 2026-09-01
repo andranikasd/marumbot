@@ -45,6 +45,7 @@ export function go(id) {
 
 export function buildTabs() {
   const bar = document.getElementById("tabs");
+  bar.setAttribute("aria-label", T("nav.label"));
   bar.textContent = "";
   for (const s of screens.values()) {
     const b = document.createElement("button");

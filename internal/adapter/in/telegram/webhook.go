@@ -21,6 +21,13 @@ import (
 // HandleFunc processes one command by id.
 type HandleFunc func(ctx context.Context, id string) error
 
+// CallbackAcknowledger stops Telegram's loading spinner after an inline
+// button press. It is deliberately separate from message delivery: failure to
+// acknowledge must not lose an otherwise durable command.
+type CallbackAcknowledger interface {
+	AnswerCallbackQuery(ctx context.Context, id string) error
+}
+
 // maxBody caps what the handler will read. Telegram updates are small; an
 // unbounded read is a way to be knocked over by one large request.
 const maxBody = 1 << 20 // 1 MiB
@@ -42,7 +49,9 @@ type Webhook struct {
 	// answers. See accept for why this is synchronous, and why it is the one
 	// command rather than whatever is oldest.
 	Handle HandleFunc
-	Log    *slog.Logger
+	// Callbacks is optional for deployments without inline buttons.
+	Callbacks CallbackAcknowledger
+	Log       *slog.Logger
 }
 
 // Handler returns the route Cloudflare's Worker forwards to.
@@ -124,6 +133,11 @@ func (h *Webhook) accept(ctx context.Context, u Update) error {
 	})
 	if err != nil {
 		return err
+	}
+	if u.CallbackQuery != nil && h.Callbacks != nil {
+		if err := h.Callbacks.AnswerCallbackQuery(ctx, u.CallbackQuery.ID); err != nil {
+			h.Log.DebugContext(ctx, "callback acknowledgement failed", "error", err)
+		}
 	}
 	if !accepted {
 		// A repeat. Telegram retries until acknowledged, so this is ordinary

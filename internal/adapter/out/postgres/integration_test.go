@@ -332,6 +332,39 @@ func TestBudgetTuning(t *testing.T) {
 	}
 }
 
+func TestBudgetConfigurationReplacesTheWholeForm(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	userID := newUser(t, s)
+
+	first := app.BudgetConfiguration{
+		UserID: userID, Currency: "AMD", MonthlyMinor: 300_000_00, PayDay: 5,
+		OpeningMinor: 120_000_00, OpeningAsOf: mustDate(t, "2026-09-01"),
+		Overrides: map[string]int64{"2026-12": 400_000_00},
+	}
+	if err := s.SetBudgetConfiguration(ctx, first); err != nil {
+		t.Fatalf("setting complete budget: %v", err)
+	}
+
+	second := app.BudgetConfiguration{
+		UserID: userID, Currency: "AMD", MonthlyMinor: 325_000_00,
+		OpeningAsOf: mustDate(t, "2026-09-02"),
+	}
+	if err := s.SetBudgetConfiguration(ctx, second); err != nil {
+		t.Fatalf("replacing complete budget: %v", err)
+	}
+	b, err := s.Budget(ctx, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Monthly.Minor() != second.MonthlyMinor || b.PayDay != 0 {
+		t.Errorf("monthly/payday were not replaced: %+v", b)
+	}
+	if b.Opening.Sign() != 0 || len(b.Overrides) != 0 {
+		t.Errorf("removed optional values survived: %+v", b)
+	}
+}
+
 // TestUpsertFirstContactRace: ten concurrent first contacts for the same
 // identity must resolve to one account, with no unique-violation errors.
 func TestUpsertFirstContactRace(t *testing.T) {

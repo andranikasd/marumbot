@@ -125,15 +125,21 @@ type BudgetStore interface {
 	Budget(ctx context.Context, userID string) (Budget, error)
 }
 
-// BudgetTuner records the adjustable parts: cash on hand and the per-month
-// figures. Optional beside BudgetStore -- the bot's text flow only ever sets
-// the monthly amount.
-type BudgetTuner interface {
-	// SetOpening states what is on hand today, stamped with the day.
-	SetOpening(ctx context.Context, userID, currency string, minor int64, asOf string) error
-	// SetOverrides replaces the whole per-month document, keys "2006-01",
-	// minor units.
-	SetOverrides(ctx context.Context, userID, currency string, overrides map[string]int64) error
+// BudgetConfiguration is the complete budget form after boundary validation.
+// Keeping it whole lets persistence commit one user action atomically.
+type BudgetConfiguration struct {
+	UserID       string
+	Currency     string
+	MonthlyMinor int64
+	PayDay       int
+	OpeningMinor int64
+	OpeningAsOf  date.Date
+	Overrides    map[string]int64
+}
+
+// BudgetConfigurator records a complete budget form in one operation.
+type BudgetConfigurator interface {
+	SetBudgetConfiguration(ctx context.Context, configuration BudgetConfiguration) error
 }
 
 // Conversation states. Stored, so they are part of the schema: renaming one
