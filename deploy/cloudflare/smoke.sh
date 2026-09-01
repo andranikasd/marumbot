@@ -117,6 +117,34 @@ code=$(status "$base/app/api/loans" 401 POST)
 code=$(status "$base/app/api/budget" 401 POST)
 [ "$code" = "401" ] || fail "an unsigned budget POST answered $code, want 401"
 
+# What Telegram shows in the chat is not what the container serves; it is what
+# the container last told Telegram. The global menu button carries the version
+# in its URL precisely so the webview cannot reuse last week's cached app, and
+# it is published from the container at startup. A container that starts
+# without its Mini App URL publishes nothing, passes every check above, and
+# leaves the chat opening the old URL -- which is exactly what shipped as
+# v1.0.0: the deploy went green and Telegram kept serving the previous build.
+#
+# Publication is asynchronous and starts after the listener is up, so it is
+# polled rather than asserted once. Skipped without a token: the check needs
+# the bot's own credentials, and a self-hosted smoke may not have them.
+if [ -n "${MARUM_BOT_TOKEN:-}" ]; then
+  echo "→ telegram menu button"
+  want="v=$(printf '%s' "$expected_version" | sed 's/[^A-Za-z0-9._-]/./g')"
+  button=""
+  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    button=$(curl -s --max-time 20 \
+      "https://api.telegram.org/bot${MARUM_BOT_TOKEN}/getChatMenuButton" 2>/dev/null || true)
+    if printf '%s' "$button" | grep -Eq "\"url\":\"[^\"]*[?&]${want}"; then
+      echo "  menu button opens the app at $expected_version"
+      break
+    fi
+    button=""
+    sleep 5
+  done
+  [ -n "$button" ] || fail "the chat menu button does not point at $expected_version; the container is running without its Mini App URL, or publishing the menus failed"
+fi
+
 echo "→ cold start"
 # The container sleeps when idle, so a request after a pause exercises the path
 # a real user hits first thing in the morning. This is a MEASUREMENT, not an

@@ -185,6 +185,12 @@ jobs:
           MARUM_IDENTITY_KEY: ${{ secrets.MARUM_IDENTITY_KEY }}
           MARUM_ADMIN_USER: ${{ secrets.MARUM_ADMIN_USER }}
           MARUM_ADMIN_PASSWORD_HASH: ${{ secrets.MARUM_ADMIN_PASSWORD_HASH }}
+          # The Mini App URL. It sat in the environment's secrets and was never
+          # in this list, so the container ran with it empty: /add answered
+          # "not available", nothing published the versioned menu button, and
+          # Telegram kept opening the unversioned URL its webview had cached --
+          # so every deploy looked like the old app from inside the chat.
+          MARUM_MINIAPP_URL: ${{ secrets.MARUM_MINIAPP_URL }}
           WEBHOOK_PATH: ${{ secrets.WEBHOOK_PATH }}
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
           OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
@@ -192,6 +198,10 @@ jobs:
           PYROSCOPE_BASIC_AUTH_USER: ${{ secrets.PYROSCOPE_BASIC_AUTH_USER }}
           PYROSCOPE_BASIC_AUTH_PASSWORD: ${{ secrets.PYROSCOPE_BASIC_AUTH_PASSWORD }}
         run: |
+          # Without the form URL the bot has no form to offer, and the failure
+          # surfaces to a user as a message, not to an operator as a red step.
+          test -n "$MARUM_MINIAPP_URL" || {
+            echo "::error::MARUM_MINIAPP_URL is not set in the ${{ inputs.environment }} environment"; exit 1; }
           jq -n '$ENV | with_entries(select(
                  (.key | startswith("MARUM_") or startswith("OTEL_")
                        or startswith("PYROSCOPE_") or . == "WEBHOOK_PATH")
@@ -203,6 +213,10 @@ jobs:
       # 3. Prove it works before anyone else finds out it does not.
       - name: Post-deploy smoke
         id: smoke
+        env:
+          # Lets the smoke ask Telegram what the bot published, so a container
+          # that came up without its Mini App URL fails here and not in a chat.
+          MARUM_BOT_TOKEN: ${{ secrets.MARUM_BOT_TOKEN }}
         run: ./deploy/cloudflare/smoke.sh "${{ vars.PUBLIC_URL }}" "${{ inputs.version }}"
 
       # 4. A failed smoke rolls the binary back, but only when a previous
