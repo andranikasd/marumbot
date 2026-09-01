@@ -167,3 +167,12 @@ SELECT state_name FROM conversation_states
 
 -- name: ClearConversationState
 DELETE FROM conversation_states WHERE user_id = $1 RETURNING user_id;
+
+-- name: MenuUsers
+-- Every live account whose pinned Telegram menu may still name an older build.
+-- UUID order provides stable, bounded pagination without an offset scan.
+SELECT id::text, locale
+  FROM users
+ WHERE deleted_at IS NULL AND id::text > $1
+ ORDER BY id
+ LIMIT $2;

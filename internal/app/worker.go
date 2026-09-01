@@ -227,6 +227,14 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 	if err != nil {
 		return fmt.Errorf("resolving chat: %w", err)
 	}
+	// A per-chat menu overrides Telegram's global default forever. Refresh it on
+	// every interaction so even an account missed by a rollout sweep converges
+	// to this build before the user opens the Mini App again.
+	if w.MiniApp != "" {
+		if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.DashboardButton(l), w.miniURL("")); err != nil {
+			w.Log.DebugContext(ctx, "menu button not refreshed", "error", err)
+		}
+	}
 
 	// Show that the bot heard, before doing the work that produces a reply.
 	// This does not make anything faster; it makes the wait legible, which is
@@ -243,11 +251,6 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 		// forever — including its URL. /start re-pins it, so the one command
 		// everyone knows always leads to the current app. Best-effort: a
 		// missing button is not a reason to greet nobody.
-		if w.MiniApp != "" {
-			if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.DashboardButton(l), w.miniURL("")); err != nil {
-				w.Log.DebugContext(ctx, "menu button not refreshed", "error", err)
-			}
-		}
 		return w.Send.SendMessage(ctx, chat, w.withTip(ctx, c.UserID, l, w.startText(l), stageNoLoans), w.mainMenu(l))
 
 	case KindHelp:

@@ -1,86 +1,58 @@
 {{define "content"}}
-<div class="health{{if not .D.Health.DatabaseOK}} down{{end}}" role="status">
-  <span class="item"><span class="dot{{if not .D.Health.DatabaseOK}} bad{{end}}" aria-hidden="true"></span>Database <b>{{if .D.Health.DatabaseOK}}reachable{{else}}unreachable{{end}}</b></span>
-  <span class="item">Schema <b class="mono">v{{.D.Health.MigrationVersion}}</b></span>
-  <span class="item">Build <b class="mono">{{.Version}}</b></span>
-  <span class="item">Environment <b>{{.Env}}</b></span>
-  <span class="item">Checked <b>{{stamp .Now}}</b></span>
-</div>
-{{if not .D.Health.DatabaseOK}}<div class="note bad">Database unreachable: {{.D.Health.DatabaseError}}</div>{{end}}
-{{range .D.Warnings}}<div class="note bad">{{.}}</div>{{end}}
+<section class="status-strip{{if not .D.Health.DatabaseOK}} down{{end}}" aria-label="System status">
+  <span><i class="status-icon" aria-hidden="true">{{if .D.Health.DatabaseOK}}✓{{else}}!{{end}}</i><b>{{if .D.Health.DatabaseOK}}System healthy{{else}}System degraded{{end}}</b></span>
+  <span><i class="status-icon" aria-hidden="true">{{if .D.Health.DatabaseOK}}✓{{else}}!{{end}}</i>Database {{if .D.Health.DatabaseOK}}reachable{{else}}unreachable{{end}}</span>
+  <span><i class="status-icon" aria-hidden="true">✓</i>Schema v{{.D.Health.MigrationVersion}}</span>
+  <span><i class="status-icon info" aria-hidden="true">i</i>Build {{.Version}}</span>
+</section>
+{{if not .D.Health.DatabaseOK}}<div class="note bad" role="alert">Database unavailable. Queue and account figures may be stale.</div>{{end}}
+{{range .D.Warnings}}<div class="note bad" role="status">{{.}}</div>{{end}}
 
-<div class="cards">
-  <a class="card" href="/users"><div class="n">{{.D.Overview.Users}}</div><div class="k">users</div><div class="sub">{{sum .D.UsersByDay}} joined in 14 days</div></a>
-  <a class="card" href="/loans"><div class="n">{{.D.Overview.Loans}}</div><div class="k">active loans</div><div class="sub">{{sum .D.LoansByDay}} filed in 14 days</div></a>
-  <div class="card"><div class="n">{{.D.Overview.Events}}</div><div class="k">ledger events</div></div>
-  <div class="card"><div class="n">{{.D.Overview.Snapshots}}</div><div class="k">bank snapshots</div></div>
-  <a class="card" href="/policies"><div class="n">{{.D.Overview.Policies}}</div><div class="k">allocation policies</div></a>
-  <div class="card"><div class="n">{{.D.Overview.OccurrencesScheduled}}</div><div class="k">reminders scheduled</div></div>
-</div>
+<section class="metric-grid" aria-label="Key metrics">
+  <a class="metric" href="/loans"><span class="metric-icon loans" aria-hidden="true">▤</span><span><b>Active loans</b><strong>{{.D.Overview.Loans}}</strong><small>{{sum .D.LoansByDay}} new in 14 days</small></span></a>
+  <a class="metric" href="/users"><span class="metric-icon users" aria-hidden="true">○</span><span><b>Users</b><strong>{{.D.Overview.Users}}</strong><small>{{sum .D.UsersByDay}} joined in 14 days</small></span></a>
+  <a class="metric {{if gt .D.Overview.CommandsPending 50}}warning{{end}}" href="/commands?status=pending"><span class="metric-icon pending" aria-hidden="true">◷</span><span><b>Commands pending</b><strong>{{.D.Overview.CommandsPending}}</strong><small>Oldest {{duration .D.Overview.OldestCommandAgeS}}</small></span></a>
+  <a class="metric {{if gt .D.Overview.DeliveriesDead 0}}critical{{end}}" href="/deliveries?status=dead"><span class="metric-icon dead" aria-hidden="true">↗</span><span><b>Dead deliveries</b><strong>{{.D.Overview.DeliveriesDead}}</strong><small>{{if .D.Overview.DeliveriesDead}}Needs review{{else}}None blocked{{end}}</small></span></a>
+</section>
 
-<h2>Work in flight</h2>
-<div class="cards">
-  <a class="card {{if gt .D.Overview.CommandsPending 50}}alert{{end}}" href="/commands?status=pending">
-    <div class="n">{{.D.Overview.CommandsPending}}</div><div class="k">commands pending</div>
-    <div class="sub">oldest due {{duration .D.Overview.OldestCommandAgeS}}</div>
-    {{if gt .D.Overview.CommandsPending 50}}<span class="go">open the backlog →</span>{{end}}</a>
-  <a class="card {{if gt .D.Overview.CommandsDead 0}}alert{{else}}good{{end}}" href="/commands?status=dead">
-    <div class="n">{{.D.Overview.CommandsDead}}</div><div class="k">commands dead</div>
-    {{if gt .D.Overview.CommandsDead 0}}<span class="go">read and retry →</span>{{end}}</a>
-  <a class="card {{if gt .D.Overview.DeliveriesPending 200}}alert{{end}}" href="/deliveries?status=pending">
-    <div class="n">{{.D.Overview.DeliveriesPending}}</div><div class="k">deliveries pending</div>
-    <div class="sub">oldest due {{duration .D.Overview.OldestDeliveryAgeS}}</div>
-    {{if gt .D.Overview.DeliveriesPending 200}}<span class="go">open the backlog →</span>{{end}}</a>
-  <a class="card {{if gt .D.Overview.DeliveriesDead 0}}alert{{else}}good{{end}}" href="/deliveries?status=dead">
-    <div class="n">{{.D.Overview.DeliveriesDead}}</div><div class="k">deliveries dead</div>
-    {{if gt .D.Overview.DeliveriesDead 0}}<span class="go">see what failed →</span>{{end}}</a>
-</div>
-
-<h2>Trends</h2>
-<div class="grid2">
-  <div class="panel">
-    <div class="hd">Sign-ups, last 14 days <span class="tools chart-total">{{sum .D.UsersByDay}} total</span></div>
-    <div class="bd">{{template "bars" .D.UsersByDay}}</div>
-  </div>
-  <div class="panel">
-    <div class="hd">Loans filed, last 14 days <span class="tools chart-total">{{sum .D.LoansByDay}} total</span></div>
-    <div class="bd">{{template "bars" .D.LoansByDay}}</div>
-  </div>
-</div>
-
-<h2>Recent</h2>
-<div class="grid2">
-  <div class="panel">
-    <div class="hd">Latest inbox activity <span class="tools"><a href="/commands">all →</a></span></div>
-    {{if .D.Recent}}
-    <div class="scroll"><table>
-      <thead><tr><th>Kind</th><th>Status</th><th class="num">Tries</th><th>Received</th><th>Error</th></tr></thead>
-      <tbody>{{range .D.Recent}}
-        <tr><td>{{.Kind}}</td><td><span class="tag {{status .Status}}">{{.Status}}</span></td>
-          <td class="num">{{.Attempts}}</td><td class="nowrap">{{stamp .ReceivedAt}}<span class="ago">{{ago $.Now .ReceivedAt}}</span></td>
-          <td class="mono err" title="{{.LastError}}">{{if .LastError}}{{.LastError}}{{else}}—{{end}}</td></tr>
-      {{end}}</tbody>
-    </table></div>
-    {{else}}<div class="empty">Nothing has arrived yet.<a class="next" href="/commands">Open the inbox →</a></div>{{end}}
-  </div>
-  <div class="panel">
-    <div class="hd">Queues by status</div>
-    <div class="bd">
-      <dl class="kv">
-        <dt>Inbox</dt><dd>{{range .D.CommandCounts}}<a class="tag {{status .Status}}" href="/commands?status={{.Status}}">{{.Status}} {{.N}}</a> {{else}}<span class="muted">empty</span>{{end}}</dd>
-        <dt>Outbox</dt><dd>{{range .D.DeliveryCounts}}<a class="tag {{status .Status}}" href="/deliveries?status={{.Status}}">{{.Status}} {{.N}}</a> {{else}}<span class="muted">empty</span>{{end}}</dd>
-      </dl>
+<section class="dashboard-grid">
+  <div class="panel queue-panel">
+    <div class="hd">Work in flight <span class="tools"><a href="/commands">View all queues →</a></span></div>
+    <div class="queue-list">
+      <a href="/commands?status=pending"><span><i class="queue-dot ok"></i>Command queue</span><b>{{.D.Overview.CommandsPending}}</b><small>{{duration .D.Overview.OldestCommandAgeS}}</small></a>
+      <a href="/commands?status=dead"><span><i class="queue-dot stop"></i>Dead commands</span><b>{{.D.Overview.CommandsDead}}</b><small>{{if .D.Overview.CommandsDead}}review{{else}}—{{end}}</small></a>
+      <a href="/deliveries?status=pending"><span><i class="queue-dot warn"></i>Delivery queue</span><b>{{.D.Overview.DeliveriesPending}}</b><small>{{duration .D.Overview.OldestDeliveryAgeS}}</small></a>
+      <a href="/deliveries?status=dead"><span><i class="queue-dot stop"></i>Dead deliveries</span><b>{{.D.Overview.DeliveriesDead}}</b><small>{{if .D.Overview.DeliveriesDead}}review{{else}}—{{end}}</small></a>
+      <a href="/reconciliation"><span><i class="queue-dot ok"></i>Reminders scheduled</span><b>{{.D.Overview.OccurrencesScheduled}}</b><small>active</small></a>
     </div>
   </div>
-</div>
-{{end}}
-{{define "bars"}}
-{{$max := maxN .}}{{$n := len .}}
-<div class="chart">
-  <div class="axis" aria-hidden="true"><span>{{$max}}</span><span>0</span></div>
-  <div class="bars">
-    {{range $i, $d := .}}<div class="b{{if eq (add $i 1) $n}} today{{end}}" title="{{date $d.Day}}: {{$d.N}}{{if eq (add $i 1) $n}} (today){{end}}"><i style="height:{{barh $d.N $max}}%"></i><span>{{dayShort $d.Day}}</span></div>{{end}}
+  <div class="panel chart-panel">
+    <div class="hd">Activity <span class="muted">· users, last 14 days</span></div>
+    <div class="bd">{{template "bars" .D.UsersByDay}}</div>
   </div>
-</div>
+  <div class="panel chart-panel">
+    <div class="hd">Activity <span class="muted">· new loans, last 14 days</span></div>
+    <div class="bd">{{template "bars" .D.LoansByDay}}</div>
+  </div>
+</section>
+
+<section class="panel incidents">
+  <div class="hd">Recent incidents <span class="tools"><a href="/commands">View all incidents →</a></span></div>
+  {{if .D.Recent}}
+  <div class="scroll"><table>
+    <thead><tr><th>Status</th><th>Type</th><th>Age</th><th class="num">Attempts</th><th>Error</th><th class="actions">Action</th></tr></thead>
+    <tbody>{{range .D.Recent}}
+      <tr><td><span class="tag {{status .Status}}">{{.Status}}</span></td><td>{{.Kind}}</td>
+        <td class="nowrap">{{ago $.Now .ReceivedAt}}</td><td class="num">{{.Attempts}}</td>
+        <td class="err">{{if .LastError}}{{.LastError}}{{else}}—{{end}}</td>
+        <td class="actions"><a class="review" href="/commands?status={{.Status}}">Review</a></td></tr>
+    {{end}}</tbody>
+  </table></div>
+  {{else}}<div class="empty good-empty"><span aria-hidden="true">✓</span>No recent incidents.</div>{{end}}
+</section>
 {{end}}
+{{define "bars"}}{{$max := maxN .}}{{$n := len .}}
+<div class="chart"><div class="axis" aria-hidden="true"><span>{{$max}}</span><span>0</span></div>
+  <div class="bars">{{range $i, $d := .}}<div class="b{{if eq (add $i 1) $n}} today{{end}}" title="{{date $d.Day}}: {{$d.N}}"><i style="height:{{barh $d.N $max}}%"></i><span>{{dayShort $d.Day}}</span></div>{{end}}</div>
+</div>{{end}}
 {{template "layout" .}}
