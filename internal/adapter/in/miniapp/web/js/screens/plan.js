@@ -58,6 +58,7 @@ const HTML = `
 
 const $ = (id) => document.getElementById(id);
 let goal = new URLSearchParams(location.search).get("goal") || "";
+let loadVersion = 0;
 
 // A payoff or milestone sits years out, so it reads as month + year; fmtDate
 // (day + month) is for dates inside the running year.
@@ -82,11 +83,14 @@ function chips(active) {
 }
 
 async function load(g) {
+  const version = ++loadVersion;
   $("plan-error").hidden = true;
   $("plan-empty").hidden = true;
+  $("plan-blocked").hidden = true;
   $("plan-loading").hidden = !$("plan-body").hidden;
   try {
     await getJSON("api/plan" + (g ? "?goal=" + encodeURIComponent(g) : ""), (d) => {
+      if (version !== loadVersion) return;
       $("plan-loading").hidden = true;
       $("plan-blocked").hidden = true;
       if (d.empty) { $("plan-body").hidden = true; $("plan-empty").hidden = false; return; }
@@ -107,7 +111,7 @@ async function load(g) {
       if (d.blocked) {
         $("plan-body").hidden = true;
         $("plan-blocked").querySelector("b").textContent = T("plan.blocked");
-        $("plan-blocked-why").textContent = sub("plan.blocked.why", { d: fmtDate(d.on), r: fmtMoney(d.required_major, "AMD"), s: fmtMoney(d.short_major, "AMD") });
+        $("plan-blocked-why").textContent = sub("plan.blocked.why", { d: fmtDate(d.on), r: fmtMoney(d.required_major, d.currency), s: fmtMoney(d.short_major, d.currency) });
         const fix = $("plan-blocked").querySelector("button");
         fix.textContent = T("plan.blocked.fix");
         fix.dataset.go = "budget";
@@ -120,6 +124,7 @@ async function load(g) {
       $("plan-body").hidden = false;
     });
   } catch {
+    if (version !== loadVersion) return;
     $("plan-loading").hidden = true;
     if ($("plan-body").hidden) $("plan-error").hidden = false;
   }

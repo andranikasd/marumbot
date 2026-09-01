@@ -231,6 +231,24 @@ func (s *Store) SetBudget(ctx context.Context, userID, currency string, minor in
 	return s.pool.QueryRow(ctx, q("SetBudget"), userID, currency, minor, payDay).Scan(&got)
 }
 
+// SetBudgetConfiguration records the Mini App's complete form atomically.
+func (s *Store) SetBudgetConfiguration(ctx context.Context, configuration app.BudgetConfiguration) error {
+	overrides := configuration.Overrides
+	if overrides == nil {
+		overrides = map[string]int64{}
+	}
+	raw, err := json.Marshal(overrides)
+	if err != nil {
+		return fmt.Errorf("encoding budget overrides: %w", err)
+	}
+	var got int64
+	return s.pool.QueryRow(ctx, q("SetBudgetConfiguration"),
+		configuration.UserID, configuration.Currency, configuration.MonthlyMinor,
+		configuration.PayDay, configuration.OpeningMinor,
+		configuration.OpeningAsOf.String(), string(raw),
+	).Scan(&got)
+}
+
 // Budget returns the borrower's most recently stated budget, or Set=false
 // when there is none. Absent is a state the caller must handle, not an error:
 // a user who has not set a budget is the normal case, not a fault.

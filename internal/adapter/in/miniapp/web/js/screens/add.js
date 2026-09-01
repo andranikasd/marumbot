@@ -3,7 +3,7 @@
 // figure is computed on the server, where it is tested against real bank
 // schedules.
 "use strict";
-import { haptic, toast, fmtMoney, num, mainButton, group } from "../core.js";
+import { haptic, toast, fmtMoney, moneyNum, num, mainButton, group } from "../core.js";
 import { T } from "../i18n.js";
 import { api, invalidate } from "../api.js";
 import { register, go, currentScreen } from "../nav.js";
@@ -130,11 +130,11 @@ const method = () => document.querySelector('input[name="method"]:checked').valu
 
 function validate() {
   const errs = {};
-  const p = num($("principal").value);
+  const p = moneyNum($("principal").value);
   if (!$("principal").value.trim()) errs.principal = T("err.required");
   else if (Number.isNaN(p)) errs.principal = T("err.number");
   else if (p <= 0) errs.principal = T("err.positive");
-  const remRaw = $("balance").value.trim(), rem = remRaw ? num(remRaw) : 0;
+  const remRaw = $("balance").value.trim(), rem = remRaw ? moneyNum(remRaw) : 0;
   if (remRaw && Number.isNaN(rem)) errs.balance = T("err.number");
   else if (remRaw && rem <= 0) errs.balance = T("err.positive");
   else if (!Number.isNaN(p) && rem > p) errs.balance = T("err.balance");

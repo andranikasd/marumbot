@@ -144,7 +144,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	mini := &miniapp.Server{
 		BotToken: cfg.BotToken, Loans: store, Users: store, Budgets: store,
 		Editor: store, Reader: store, Required: worker, Filed: worker, Planner: worker,
-		Reviser: worker, Tuner: store,
+		Reviser: worker, BudgetConfig: store,
 		Version: cfg.Version,
 		Cipher:  cipher, Clock: sysclock.New(), Log: log,
 	}
@@ -152,7 +152,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		Inbox: store, Users: store, Cipher: cipher,
 		ServiceToken: cfg.ServiceToken, WebhookSecret: cfg.WebhookSecret,
 		Timezone: cfg.DefaultTimezone,
-		Clock:    sysclock.New(), Handle: worker.HandleOne, Log: log,
+		Clock:    sysclock.New(), Handle: worker.HandleOne, Callbacks: bot, Log: log,
 	}
 
 	public := &http.Server{

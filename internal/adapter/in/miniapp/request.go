@@ -215,11 +215,11 @@ type BudgetRequest struct {
 	Currency     string  `json:"currency"`
 	// PayDay is the day of the month the money arrives; 0 means not stated.
 	PayDay int `json:"pay_day"`
-	// OpeningMajor is cash on hand for loans today. Absent means untouched;
-	// zero withdraws the statement.
+	// OpeningMajor is cash on hand for loans today. Zero or absent withdraws
+	// the statement because this endpoint receives the complete form.
 	OpeningMajor *float64 `json:"opening_major"`
 	// Overrides are whole-month figures keyed "2006-01", in major units.
-	// Absent means untouched; an empty object clears every stated month.
+	// An absent or empty object clears every stated month.
 	Overrides map[string]float64 `json:"overrides"`
 }
 
@@ -235,31 +235,24 @@ func (r BudgetRequest) Validate() (string, int64, int, error) {
 	if err != nil {
 		return "", 0, 0, fmt.Errorf("%w: currency %q", ErrInvalid, r.Currency)
 	}
-	if math.IsNaN(r.MonthlyMajor) || math.IsInf(r.MonthlyMajor, 0) || r.MonthlyMajor < 0 {
-		return "", 0, 0, fmt.Errorf("%w: a budget cannot be negative", ErrInvalid)
-	}
-	minor := math.Round(r.MonthlyMajor * math.Pow10(int(cur.Exponent)))
-	if minor > float64(math.MaxInt64/1000) {
-		return "", 0, 0, fmt.Errorf("%w: budget too large", ErrInvalid)
+	minor, err := budgetMinor(r.MonthlyMajor, cur, false)
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("%w: monthly budget", err)
 	}
 	if r.PayDay < 0 || r.PayDay > 31 {
 		return "", 0, 0, fmt.Errorf("%w: pay day %d out of range", ErrInvalid, r.PayDay)
 	}
-	return cur.Code, int64(minor), r.PayDay, nil
+	return cur.Code, minor, r.PayDay, nil
 }
 
 // ValidateOpening converts the stated cash on hand. Only called when the
 // field is present.
 func (r BudgetRequest) ValidateOpening(cur money.Currency) (int64, error) {
-	v := *r.OpeningMajor
-	if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
-		return 0, fmt.Errorf("%w: cash on hand cannot be negative", ErrInvalid)
+	minor, err := budgetMinor(*r.OpeningMajor, cur, true)
+	if err != nil {
+		return 0, fmt.Errorf("%w: cash on hand", err)
 	}
-	minor := math.Round(v * math.Pow10(int(cur.Exponent)))
-	if minor > float64(math.MaxInt64/1000) {
-		return 0, fmt.Errorf("%w: cash on hand too large", ErrInvalid)
-	}
-	return int64(minor), nil
+	return minor, nil
 }
 
 // ValidateOverrides converts the per-month document to minor units. Only
@@ -269,19 +262,32 @@ func (r BudgetRequest) ValidateOverrides(cur money.Currency) (map[string]int64, 
 		return nil, fmt.Errorf("%w: more than %d stated months", ErrInvalid, maxOverrideMonths)
 	}
 	out := make(map[string]int64, len(r.Overrides))
-	scale := math.Pow10(int(cur.Exponent))
 	for k, v := range r.Overrides {
 		if !monthKeyRe.MatchString(k) {
 			return nil, fmt.Errorf("%w: %q is not a month", ErrInvalid, k)
 		}
-		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
-			return nil, fmt.Errorf("%w: the %s budget cannot be negative", ErrInvalid, k)
+		minor, err := budgetMinor(v, cur, true)
+		if err != nil {
+			return nil, fmt.Errorf("%w: the %s budget", err, k)
 		}
-		minor := math.Round(v * scale)
-		if minor > float64(math.MaxInt64/1000) {
-			return nil, fmt.Errorf("%w: the %s budget is too large", ErrInvalid, k)
-		}
-		out[k] = int64(minor)
+		out[k] = minor
 	}
 	return out, nil
+}
+
+// budgetMinor is the single conversion rule for every amount on the budget
+// form. Monthly must be positive; cash on hand and a stated month may be zero
+// because zero explicitly clears cash or says that month has nothing to give.
+func budgetMinor(major float64, cur money.Currency, allowZero bool) (int64, error) {
+	if math.IsNaN(major) || math.IsInf(major, 0) || major < 0 {
+		return 0, fmt.Errorf("%w: amount cannot be negative", ErrInvalid)
+	}
+	if !allowZero && major == 0 {
+		return 0, fmt.Errorf("%w: amount must be above zero", ErrInvalid)
+	}
+	minor := math.Round(major * math.Pow10(int(cur.Exponent)))
+	if minor > float64(math.MaxInt64/1000) {
+		return 0, fmt.Errorf("%w: amount too large", ErrInvalid)
+	}
+	return int64(minor), nil
 }

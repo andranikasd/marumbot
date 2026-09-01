@@ -34,7 +34,7 @@ var catalogue = map[Locale]map[string]string{
 		"help.title": "❓ Ինչպե՞ս է աշխատում Մարումը",
 		"help.intro": "Դուք ավելացնում եք վարկերն ու բյուջեն։ Ես ստուգում եմ վճարման բոլոր " +
 			"հերթականություններն ու ժամկետները և ասում՝ որն է լավագույնը ձեր նպատակի համար։",
-		"help.goals":         "Երեք նպատակ՝",
+		"help.goals":         "Չորս նպատակ՝",
 		"help.goal.cheapest": "💸 <b>Ամենաքիչ տոկոս</b> — բանկին ընդհանուր առմամբ ամենաքիչը վճարել։",
 		"help.goal.soonest":  "🏁 <b>Ամենաշուտ ավարտ</b> — բոլոր վարկերը փակել հնարավորինս շուտ, և տեսնել՝ ինչ կտա ավելի մեծ բյուջեն։",
 		"help.goal.relief":   "🌬 <b>Ամսական թեթևացում</b> — առաջին վարկը փակելուց հետո ամսական վճարն իջեցնել։",
@@ -231,7 +231,7 @@ var catalogue = map[Locale]map[string]string{
 		"help.title": "❓ How Marum works",
 		"help.intro": "You add your loans and a budget. I check every order and timing of paying " +
 			"them and say which is best for your goal.",
-		"help.goals":         "Three goals:",
+		"help.goals":         "Four goals:",
 		"help.goal.cheapest": "💸 <b>Least interest</b> — pay the bank the least overall.",
 		"help.goal.soonest":  "🏁 <b>Finish soonest</b> — clear every loan as early as possible, and see what a bigger budget would buy.",
 		"help.goal.relief":   "🌬 <b>Ease each month</b> — once the first loan clears, pay less every month.",

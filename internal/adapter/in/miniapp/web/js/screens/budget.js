@@ -1,7 +1,7 @@
 // The budget: the monthly amount and the payday, validated against what the
 // loans actually require this month.
 "use strict";
-import { tg, haptic, toast, fmtMoney, num, mainButton, group } from "../core.js";
+import { tg, haptic, toast, fmtMoney, moneyNum, num, mainButton, group } from "../core.js";
 import { T } from "../i18n.js";
 import { api, getJSON, invalidate } from "../api.js";
 import { register, currentScreen } from "../nav.js";
@@ -66,6 +66,7 @@ const HTML = `
 const $ = (id) => document.getElementById(id);
 let required = null; // { major, currency }
 let busy = false;
+const maxOverrideMonths = 36;
 
 // One stated month: a month picker beside its whole-month figure.
 function overrideRow(month, amount) {
@@ -78,6 +79,7 @@ function overrideRow(month, amount) {
   if (amount != null) a.value = String(amount);
   const del = document.createElement("button");
   del.type = "button"; del.className = "o-del"; del.textContent = "✕";
+  del.setAttribute("aria-label", T("budget.months.remove"));
   del.onclick = () => { haptic.tap(); row.remove(); $("budget-done").classList.remove("show"); validate(); };
   m.addEventListener("input", validate);
   a.addEventListener("input", () => { $("budget-done").classList.remove("show"); validate(); });
@@ -86,12 +88,16 @@ function overrideRow(month, amount) {
 }
 
 function readOverrides() {
-  const out = {}; let err = "";
-  for (const row of $("override-list").querySelectorAll(".override")) {
+  const out = {}; const seen = new Set(); let err = "";
+  const rows = $("override-list").querySelectorAll(".override");
+  if (rows.length > maxOverrideMonths) err = T("budget.months.limit");
+  for (const row of rows) {
     const month = row.querySelector(".o-month").value;
     const raw = row.querySelector(".o-amount").value.trim();
-    const v = raw ? num(raw) : NaN;
+    const v = raw ? moneyNum(raw) : NaN;
     if (!month || Number.isNaN(v) || v < 0) { err = T("budget.months.bad"); continue; }
+    if (seen.has(month)) { err = T("budget.months.duplicate"); continue; }
+    seen.add(month);
     out[month] = v;
   }
   return { overrides: out, err };
@@ -117,7 +123,7 @@ async function load() {
 
 function validate() {
   if (currentScreen() !== "budget") return { ok: false };
-  const raw = $("monthly").value.trim(), v = num(raw);
+  const raw = $("monthly").value.trim(), v = moneyNum(raw);
   let err = "";
   if (!raw) err = T("err.required");
   else if (Number.isNaN(v)) err = T("err.number");
@@ -129,7 +135,7 @@ function validate() {
   $("e-payday").textContent = pdErr;
   $("payday").setAttribute("aria-invalid", pdErr ? "true" : "false");
   if (pdErr) err = err || pdErr;
-  const opRaw = $("opening").value.trim(), op = opRaw ? num(opRaw) : 0;
+  const opRaw = $("opening").value.trim(), op = opRaw ? moneyNum(opRaw) : 0;
   const opErr = opRaw && (Number.isNaN(op) || op < 0) ? T("err.number") : "";
   $("e-opening").textContent = opErr;
   $("opening").setAttribute("aria-invalid", opErr ? "true" : "false");

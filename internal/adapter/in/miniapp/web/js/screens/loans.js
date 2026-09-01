@@ -4,7 +4,7 @@
 // every past balance keeps meaning what it meant. The currency alone is
 // fixed: re-denominating a ledger is archive-and-refile, not an edit.
 "use strict";
-import { haptic, toast, fmtMoney, fmtDate, confirmDialog } from "../core.js";
+import { haptic, toast, fmtMoney, fmtDate, moneyNum, num, confirmDialog } from "../core.js";
 import { T } from "../i18n.js";
 import { api, getJSON, invalidate } from "../api.js";
 
@@ -118,32 +118,39 @@ function loanCard(loan) {
   const row = document.createElement("div"); row.className = "actions";
   const save = document.createElement("button"); save.type = "button"; save.textContent = T("manage.save");
   save.onclick = async () => {
+    for (const input of [nameIn, rateIn, dayIn, matIn, balIn]) input.setAttribute("aria-invalid", "false");
     if (!nameIn.value.trim()) { nameIn.setAttribute("aria-invalid", "true"); haptic.bad(); return; }
-    const rate = Number(rateIn.value);
-    const day = Number(dayIn.value);
+    const rate = num(rateIn.value);
+    const day = num(dayIn.value);
     if (Number.isNaN(rate) || rate < 0 || rate > 200) { rateIn.setAttribute("aria-invalid", "true"); haptic.bad(); return; }
     if (!Number.isInteger(day) || day < 1 || day > 31) { dayIn.setAttribute("aria-invalid", "true"); haptic.bad(); return; }
     if (!startIn.value || !matIn.value || matIn.value <= startIn.value) { matIn.setAttribute("aria-invalid", "true"); haptic.bad(); return; }
-    const bal = balIn.value.trim() ? Number(balIn.value) : 0;
+    const bal = balIn.value.trim() ? moneyNum(balIn.value) : 0;
     if (balIn.value.trim() && (Number.isNaN(bal) || bal < 0)) { balIn.setAttribute("aria-invalid", "true"); haptic.bad(); return; }
     save.disabled = true;
-    const res = await api("api/loans/" + encodeURIComponent(loan.id), {
-      method: "PATCH",
-      body: JSON.stringify({
-        name: nameIn.value.trim(), description: descIn.value.trim(),
-        rate_percent: rate, payment_day: day,
-        start_date: startIn.value, maturity_date: matIn.value,
-        method: methodIn.value, prepay_effect: prepayIn.value,
-        balance_major: bal,
-      }),
-    });
-    save.disabled = false;
-    if (!res.ok) { haptic.bad(); return; }
-    el.classList.remove("editing");
-    haptic.ok();
-    invalidate("api/");
-    toast(T("saved"));
-    load(); // terms changed: the card's balance, schedule and dates all may follow
+    try {
+      const res = await api("api/loans/" + encodeURIComponent(loan.id), {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: nameIn.value.trim(), description: descIn.value.trim(),
+          rate_percent: rate, payment_day: day,
+          start_date: startIn.value, maturity_date: matIn.value,
+          method: methodIn.value, prepay_effect: prepayIn.value,
+          balance_major: bal,
+        }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      el.classList.remove("editing");
+      haptic.ok();
+      invalidate("api/");
+      toast(T("saved"));
+      load(); // terms changed: the card's balance, schedule and dates all may follow
+    } catch {
+      haptic.bad();
+      toast(T("err.save"));
+    } finally {
+      save.disabled = false;
+    }
   };
   const cancel = document.createElement("button"); cancel.type = "button"; cancel.textContent = T("manage.cancel");
   cancel.onclick = () => {
@@ -161,9 +168,17 @@ function loanCard(loan) {
   remove.onclick = async () => {
     haptic.tap();
     if (!(await confirmDialog(T("manage.confirm")))) return;
-    const res = await api("api/loans/" + encodeURIComponent(loan.id), { method: "DELETE" });
-    if (res.ok) { el.remove(); haptic.ok(); invalidate("api/"); load(); }
-    else haptic.bad();
+    remove.disabled = true;
+    try {
+      const res = await api("api/loans/" + encodeURIComponent(loan.id), { method: "DELETE" });
+      if (!res.ok) throw new Error(String(res.status));
+      el.remove(); haptic.ok(); invalidate("api/"); load();
+    } catch {
+      haptic.bad();
+      toast(T("err.remove"));
+    } finally {
+      remove.disabled = false;
+    }
   };
   row.append(remove);
   form.append(

@@ -44,9 +44,38 @@ export const fmtDate = (iso) => {
   return Number.isNaN(d.getTime()) ? iso
     : new Intl.DateTimeFormat(lang === "en" ? "en-GB" : "hy-AM", { day: "numeric", month: "short" }).format(d);
 };
+// num parses an ordinary decimal field such as a rate. Its punctuation is
+// always decimal; moneyNum has the different grouping rules money needs.
 export const num = (s) => {
-  const cleaned = String(s).replace(/\s/g, "").replace(/,/g, ".");
-  return /^\d*\.?\d*$/.test(cleaned) && cleaned !== "" ? Number(cleaned) : NaN;
+  const normalized = String(s).trim().replace(",", ".");
+  const value = /^\d+(\.\d+)?$/.test(normalized) ? Number(normalized) : NaN;
+  return Number.isFinite(value) ? value : NaN;
+};
+
+// moneyNum accepts the separators people actually use for money. A lone separator
+// followed by one or two digits is decimal; three digits means grouping.
+// When both marks occur, the last one is decimal (1,000.50 or 1.000,50).
+export const moneyNum = (s) => {
+  const raw = String(s).replace(/[\s\u00a0']/g, "");
+  if (!/^\d[\d.,]*$/.test(raw)) return NaN;
+  const dots = (raw.match(/\./g) || []).length;
+  const commas = (raw.match(/,/g) || []).length;
+  let normalized = raw;
+  if (dots && commas) {
+    const decimal = raw.lastIndexOf(".") > raw.lastIndexOf(",") ? "." : ",";
+    const grouping = decimal === "." ? /,/g : /\./g;
+    normalized = raw.replace(grouping, "").replace(decimal, ".");
+  } else if (dots + commas === 1) {
+    const separator = dots ? "." : ",";
+    const fraction = raw.length - raw.lastIndexOf(separator) - 1;
+    normalized = fraction >= 1 && fraction <= 2 ? raw.replace(separator, ".") : raw.replace(separator, "");
+  } else if (dots + commas > 1) {
+    const separator = dots ? "." : ",";
+    normalized = raw.split(separator).every((part, i) => i === 0 ? part.length > 0 : part.length === 3)
+      ? raw.replaceAll(separator, "") : "";
+  }
+  const value = /^\d+(\.\d+)?$/.test(normalized) ? Number(normalized) : NaN;
+  return Number.isFinite(value) ? value : NaN;
 };
 export const esc = (t) => { const d = document.createElement("span"); d.textContent = t; return d.innerHTML; };
 
@@ -84,11 +113,11 @@ export const confirmDialog = (msg) => new Promise((resolve) => {
 // already strips, so validation never sees them.
 export function group(el) {
   const fmt = () => {
-    const raw = el.value.replace(/[^\d.,]/g, "");
-    const [i, f] = raw.replace(/,/g, ".").split(".");
-    if (!i) return;
+    const value = moneyNum(el.value);
+    if (Number.isNaN(value)) return;
+    const raw = String(value);
+    const [i, f] = raw.split(".");
     el.value = i.replace(/\B(?=(\d{3})+(?!\d))/g, " ") + (f !== undefined ? "." + f : "");
   };
-  el.addEventListener("input", fmt);
   el.addEventListener("blur", fmt);
 }
