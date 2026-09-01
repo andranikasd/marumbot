@@ -340,7 +340,8 @@ func TestBudgetConfigurationReplacesTheWholeForm(t *testing.T) {
 	first := app.BudgetConfiguration{
 		UserID: userID, Currency: "AMD", MonthlyMinor: 300_000_00, PayDay: 5,
 		OpeningMinor: 120_000_00, OpeningAsOf: mustDate(t, "2026-09-01"),
-		Overrides: map[string]int64{"2026-12": 400_000_00},
+		ReserveMinor: 50_000_00,
+		Overrides:    map[string]int64{"2026-12": 400_000_00},
 	}
 	if err := s.SetBudgetConfiguration(ctx, first); err != nil {
 		t.Fatalf("setting complete budget: %v", err)
@@ -360,7 +361,7 @@ func TestBudgetConfigurationReplacesTheWholeForm(t *testing.T) {
 	if b.Monthly.Minor() != second.MonthlyMinor || b.PayDay != 0 {
 		t.Errorf("monthly/payday were not replaced: %+v", b)
 	}
-	if b.Opening.Sign() != 0 || len(b.Overrides) != 0 {
+	if b.Opening.Sign() != 0 || b.Reserve.Sign() != 0 || len(b.Overrides) != 0 {
 		t.Errorf("removed optional values survived: %+v", b)
 	}
 }

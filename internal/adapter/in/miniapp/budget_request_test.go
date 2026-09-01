@@ -82,6 +82,26 @@ func TestBudgetRequestValidateOpening(t *testing.T) {
 	}
 }
 
+func TestBudgetRequestValidateReserve(t *testing.T) {
+	t.Parallel()
+
+	amd := money.MustLookup("AMD")
+	major := 100_000.25
+	r := BudgetRequest{ReserveMajor: &major}
+	got, err := r.ValidateReserve(amd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 10_000_025 {
+		t.Fatalf("ValidateReserve() = %d, want 10000025", got)
+	}
+	negative := -1.0
+	r.ReserveMajor = &negative
+	if _, err := r.ValidateReserve(amd); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("negative reserve error = %v, want ErrInvalid", err)
+	}
+}
+
 func TestBudgetRequestValidateOverrides(t *testing.T) {
 	t.Parallel()
 

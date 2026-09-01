@@ -104,15 +104,16 @@ RETURNING monthly_amount_minor;
 -- pay_day is replaced exactly: zero deliberately clears it.
 INSERT INTO budgets (
     user_id, currency, monthly_amount_minor, overrides_schema_version,
-    pay_day, opening_cash_minor, opening_as_of, overrides
+    pay_day, opening_cash_minor, opening_as_of, overrides, reserve_floor_minor
 )
-VALUES ($1, $2, $3, 1, $4, $5, $6::date, $7::jsonb)
+VALUES ($1, $2, $3, 1, $4, $5, $6::date, $7::jsonb, $8)
 ON CONFLICT (user_id, currency) DO UPDATE
    SET monthly_amount_minor = EXCLUDED.monthly_amount_minor,
        pay_day = EXCLUDED.pay_day,
        opening_cash_minor = EXCLUDED.opening_cash_minor,
        opening_as_of = EXCLUDED.opening_as_of,
        overrides = EXCLUDED.overrides,
+       reserve_floor_minor = EXCLUDED.reserve_floor_minor,
        updated_at = now()
 RETURNING monthly_amount_minor;
 
@@ -122,7 +123,7 @@ RETURNING monthly_amount_minor;
 -- currency had the bigger unit. The one the user last set is the one they
 -- mean.
 SELECT currency, monthly_amount_minor, pay_day,
-       overrides::text, opening_cash_minor, opening_as_of::text
+       overrides::text, opening_cash_minor, opening_as_of::text, reserve_floor_minor
   FROM budgets
  WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1;
 

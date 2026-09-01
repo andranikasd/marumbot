@@ -7,11 +7,21 @@ import { api, getJSON, invalidate } from "../api.js";
 import { register, go, currentScreen } from "../nav.js";
 
 const HTML = `
-<h1 data-i18n="budget.title">Ամսական բյուջե</h1>
-  <p class="lede" data-i18n="budget.lede">Որքա՞ն կարող եք ամսական հատկացնել բոլոր վարկերին։</p>
+<h1 data-i18n="budget.title">Վարկերի վճարման բյուջե</h1>
+  <p class="lede" data-i18n="budget.lede">Սահմանեք, թե որքան կարող եք անվտանգ ուղղել վարկերին։</p>
+  <section class="hero budget-hero" id="budget-overview" hidden>
+    <div class="k" data-i18n="budget.monthly">Սովորական ամսվա գումար</div>
+    <div class="v" id="bo-monthly">—</div>
+    <div class="budget-status" id="bo-status"></div>
+    <div class="row">
+      <div class="cell"><div class="k" data-i18n="budget.required">Պարտադիր վճարումներ</div><div class="v" id="bo-required">—</div></div>
+      <div class="cell"><div class="k" data-i18n="budget.safe_extra">Անվտանգ հավելյալ</div><div class="v gold" id="bo-extra">—</div></div>
+    </div>
+    <button class="hero-action" type="button" id="budget-edit" data-i18n="budget.edit">Փոխել բյուջեն</button>
+  </section>
   <form id="budget-form" novalidate>
     <div class="field">
-      <label for="monthly" data-i18n="budget.monthly">Ամսական գումար</label>
+      <label for="monthly" data-i18n="budget.monthly">Սովորական ամսվա գումար</label>
       <div class="row">
         <input id="monthly" name="monthly" inputmode="decimal" placeholder="0" required>
         <select id="budget-currency" name="budget-currency" class="narrow">
@@ -21,33 +31,8 @@ const HTML = `
           <option value="RUB">RUB ₽</option>
         </select>
       </div>
-      <p class="hint" data-i18n="budget.hint">Ներառեք բոլոր պարտադիր վճարումները։</p>
+      <p class="hint" data-i18n="budget.hint">Վարկերին հասանելի գումարը՝ հիմնական ծախսերից և պահպանվող պահուստից հետո։</p>
       <p class="error" id="e-monthly"></p>
-    </div>
-    <div class="field">
-      <label for="payday" data-i18n="budget.payday">Աշխատավարձի օր (ըստ ցանկության)</label>
-      <div class="in">
-        <input id="payday" name="payday" inputmode="numeric" min="1" max="31" placeholder="—">
-        <span class="unit" data-i18n="unit.day">ամսի օր</span>
-      </div>
-      <p class="hint" data-i18n="budget.payday.hint">Եթե գումարը ստանում եք մինչև վճարման օրը, վաղ վճարելը տոկոս է խնայում։</p>
-      <p class="error" id="e-payday"></p>
-    </div>
-    <div class="field">
-      <label for="opening" data-i18n="budget.opening">Այսօր առկա գումար (ըստ ցանկության)</label>
-      <div class="in">
-        <input id="opening" name="opening" inputmode="decimal" placeholder="0">
-        <span class="unit" id="u-opening">AMD</span>
-      </div>
-      <p class="hint" data-i18n="budget.opening.hint">Ինչ ունեք հիմա, որ կարող է գնալ վարկերին՝ բացի ամսական բյուջեից։ Գործում է միայն այս ամսվա համար։</p>
-      <p class="error" id="e-opening"></p>
-    </div>
-    <div class="field">
-      <label data-i18n="budget.months">Առանձին ամիսներ (ըստ ցանկության)</label>
-      <p class="hint" data-i18n="budget.months.hint">Եթե որևէ ամիս ավելի շատ կամ քիչ ունեք, նշեք այդ ամսվա ամբողջ գումարը։ Մնացած ամիսները ամսական բյուջեով են։</p>
-      <div id="override-list"></div>
-      <button class="cta ghost" type="button" id="override-add" data-i18n="budget.months.add">Ավելացնել ամիս</button>
-      <p class="error" id="e-overrides"></p>
     </div>
     <div class="summary" id="budget-summary" hidden>
       <dl class="bare">
@@ -56,6 +41,34 @@ const HTML = `
       </dl>
       <p class="note" id="b-note"></p>
     </div>
+    <details class="optfold" id="budget-details">
+      <summary><span><b data-i18n="budget.details">Ժամանակ և բացառություններ</b> — <span data-i18n="budget.details.hint">վճարման օր, կանխիկ գումար, պահուստ</span></span></summary>
+      <div class="fold-body">
+        <div class="field">
+          <label for="payday" data-i18n="budget.payday">Երբ է գումարը հասանելի</label>
+          <div class="in"><input id="payday" name="payday" inputmode="numeric" min="1" max="31" placeholder="—"><span class="unit" data-i18n="unit.day">ամսի օր</span></div>
+          <p class="hint" data-i18n="budget.payday.hint">Օգնում է ընտրել վճարման ճիշտ օրը։</p><p class="error" id="e-payday"></p>
+        </div>
+        <div class="field">
+          <label for="opening" data-i18n="budget.opening">Վարկերի համար հասանելի գումար հիմա</label>
+          <div class="in"><input id="opening" name="opening" inputmode="decimal" placeholder="0"><span class="unit" id="u-opening">AMD</span></div>
+          <p class="hint" data-i18n="budget.opening.hint">Միանգամյա գումար է և գործում է միայն այս ամսվա համար։</p><p class="error" id="e-opening"></p>
+        </div>
+        <div class="field">
+          <label for="reserve" data-i18n="budget.reserve">Պահպանել անձեռնմխելի</label>
+          <div class="in"><input id="reserve" name="reserve" inputmode="decimal" placeholder="0"><span class="unit" id="u-reserve">AMD</span></div>
+          <p class="hint" data-i18n="budget.reserve.hint">Պլանը երբեք չի օգտագործի այս մասը։</p><p class="error" id="e-reserve"></p>
+          <p class="usable" id="b-usable" hidden></p>
+        </div>
+        <div class="field">
+          <label data-i18n="budget.months">Տարբեր ամիսներ</label>
+          <p class="hint" data-i18n="budget.months.hint">Այս գումարը փոխարինում է սովորական ամսվա ամբողջ գումարին։</p>
+          <div id="override-list"></div>
+          <button class="cta ghost" type="button" id="override-add" data-i18n="budget.months.add">Ավելացնել ամիս</button>
+          <p class="error" id="e-overrides"></p>
+        </div>
+      </div>
+    </details>
     <div class="done" id="budget-done">
       <p id="budget-done-text"></p>
       <button class="cta" type="button" id="budget-plan" data-i18n="budget.plan">Տեսնել պլանը</button>
@@ -67,6 +80,25 @@ const $ = (id) => document.getElementById(id);
 let required = null; // { major, currency }
 let busy = false;
 const maxOverrideMonths = 36;
+
+function updateOverview(monthly, currency) {
+  const overview = $("budget-overview");
+  if (!Number.isFinite(monthly) || monthly <= 0) {
+    overview.hidden = true;
+    return;
+  }
+  const requiredMajor = required?.currency === currency ? required.major : null;
+  const surplus = requiredMajor == null ? null : monthly - requiredMajor;
+  $("bo-monthly").textContent = fmtMoney(monthly, currency);
+  $("bo-required").textContent = requiredMajor == null ? "—" : fmtMoney(requiredMajor, currency);
+  $("bo-extra").textContent = surplus == null ? "—" : fmtMoney(Math.max(0, surplus), currency);
+  const status = $("bo-status");
+  status.className = "budget-status" + (surplus != null && surplus < 0 ? " bad" : "");
+  status.textContent = surplus == null ? "" : surplus < 0
+    ? "! " + T("budget.not_covered")
+    : "✓ " + T("budget.covered");
+  overview.hidden = false;
+}
 
 // One stated month: a month picker beside its whole-month figure.
 function overrideRow(month, amount) {
@@ -110,6 +142,7 @@ async function load() {
       if (b.currency) $("budget-currency").value = b.currency;
       $("payday").value = b.pay_day > 0 ? String(b.pay_day) : "";
       $("opening").value = b.opening_major > 0 ? String(b.opening_major) : "";
+      $("reserve").value = b.reserve_major > 0 ? String(b.reserve_major) : "";
       const list = $("override-list");
       list.textContent = "";
       for (const [month, amount] of Object.entries(b.overrides || {}).sort()) {
@@ -140,10 +173,21 @@ function validate() {
   $("e-opening").textContent = opErr;
   $("opening").setAttribute("aria-invalid", opErr ? "true" : "false");
   if (opErr) err = err || opErr;
+  const reserveRaw = $("reserve").value.trim();
+  const reserve = reserveRaw ? moneyNum(reserveRaw) : 0;
+  let reserveErr = reserveRaw && (Number.isNaN(reserve) || reserve < 0) ? T("err.number") : "";
+  if (!reserveErr && !opErr && reserve > op) reserveErr = T("budget.reserve.too_high");
+  $("e-reserve").textContent = reserveErr;
+  $("reserve").setAttribute("aria-invalid", reserveErr ? "true" : "false");
+  if (reserveErr) err = err || reserveErr;
+  const usable = $("b-usable");
+  usable.hidden = !opRaw || !!opErr || !!reserveErr;
+  if (!usable.hidden) usable.textContent = T("budget.usable").replace("{x}", fmtMoney(Math.max(0, op - reserve), $("budget-currency").value));
   const o = readOverrides();
   $("e-overrides").textContent = o.err;
   if (o.err) err = err || o.err;
   const cur = $("budget-currency").value;
+  updateOverview(v, cur);
   $("u-opening").textContent = cur;
   if (required && required.currency === cur) {
     const surplus = Number.isNaN(v) ? -required.major : v - required.major;
@@ -157,7 +201,7 @@ function validate() {
     $("budget-summary").hidden = false;
   } else $("budget-summary").hidden = true;
   if (!err) mainButton.show(T("save")); else mainButton.hide();
-  return { ok: !err, v, pd, opening: opRaw ? op : 0, overrides: o.overrides };
+  return { ok: !err, v, pd, opening: opRaw ? op : 0, reserve: reserveRaw ? reserve : 0, overrides: o.overrides };
 }
 
 async function save() {
@@ -174,7 +218,7 @@ async function save() {
       method: "POST",
       body: JSON.stringify({
         monthly_major: b.v, currency: $("budget-currency").value, pay_day: b.pd,
-        opening_major: b.opening, overrides: b.overrides,
+        opening_major: b.opening, reserve_major: b.reserve, overrides: b.overrides,
       }),
     });
     if (!res.ok) throw new Error(String(res.status));
@@ -200,10 +244,18 @@ register({
   html: HTML,
   onMount() {
     group($("monthly"));
+    group($("opening"));
+    group($("reserve"));
     $("monthly").addEventListener("input", () => { $("budget-done").classList.remove("show"); validate(); });
     $("budget-currency").addEventListener("change", validate);
     $("payday").addEventListener("input", validate);
     $("opening").addEventListener("input", () => { $("budget-done").classList.remove("show"); validate(); });
+    $("reserve").addEventListener("input", () => { $("budget-done").classList.remove("show"); validate(); });
+    $("budget-edit").addEventListener("click", () => {
+      haptic.tap();
+      $("monthly").focus({ preventScroll: true });
+      $("budget-form").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
     $("override-add").addEventListener("click", () => {
       haptic.tap();
       $("override-list").append(overrideRow("", null));

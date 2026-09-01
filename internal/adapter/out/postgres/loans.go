@@ -245,7 +245,7 @@ func (s *Store) SetBudgetConfiguration(ctx context.Context, configuration app.Bu
 	return s.pool.QueryRow(ctx, q("SetBudgetConfiguration"),
 		configuration.UserID, configuration.Currency, configuration.MonthlyMinor,
 		configuration.PayDay, configuration.OpeningMinor,
-		configuration.OpeningAsOf.String(), string(raw),
+		configuration.OpeningAsOf.String(), string(raw), configuration.ReserveMinor,
 	).Scan(&got)
 }
 
@@ -259,10 +259,11 @@ func (s *Store) Budget(ctx context.Context, userID string) (app.Budget, error) {
 		payDay   int16
 		overRaw  string
 		opening  int64
+		reserve  int64
 		openedOn *string
 	)
 	err := s.pool.QueryRow(ctx, q("GetBudget"), userID).Scan(
-		&b.Currency, &minor, &payDay, &overRaw, &opening, &openedOn)
+		&b.Currency, &minor, &payDay, &overRaw, &opening, &openedOn, &reserve)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return app.Budget{}, nil
 	}
@@ -280,6 +281,7 @@ func (s *Store) Budget(ctx context.Context, userID string) (app.Budget, error) {
 		}
 	}
 	b.Opening = money.FromMinor(opening, cur)
+	b.Reserve = money.FromMinor(reserve, cur)
 	if openedOn != nil {
 		d, err := date.Parse(*openedOn)
 		if err != nil {

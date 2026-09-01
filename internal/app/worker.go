@@ -240,7 +240,7 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 		// everyone knows always leads to the current app. Best-effort: a
 		// missing button is not a reason to greet nobody.
 		if w.MiniApp != "" {
-			if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.Button(l, KindAdd), w.miniURL("")); err != nil {
+			if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.DashboardButton(l), w.miniURL("")); err != nil {
 				w.Log.DebugContext(ctx, "menu button not refreshed", "error", err)
 			}
 		}
@@ -493,7 +493,7 @@ func (w *Worker) setLanguage(ctx context.Context, userID string, chat int64, wan
 	// The global Mini App button cannot be localised, so keep a per-chat one
 	// in step with both command-based and button-based language changes.
 	if w.MiniApp != "" {
-		if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.Button(want, KindAdd), w.miniURL("")); err != nil {
+		if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.DashboardButton(want), w.miniURL("")); err != nil {
 			w.Log.DebugContext(ctx, "menu button not localised", "error", err)
 		}
 	}
@@ -572,16 +572,20 @@ func (w *Worker) helpText(l i18n.Locale) string {
 // A borrower on a phone should never have to remember a command name to see
 // what they owe.
 //
-// The first button opens the loan form directly. web_app works on a reply
-// keyboard as well as an inline one, which is what lets the form be one tap
-// from anywhere in the conversation rather than buried behind /add.
+// The first button opens the Mini App dashboard. Contextual Add loan buttons
+// still open the form directly; the persistent entry point must describe the
+// whole product rather than one workflow inside it.
 func (w *Worker) mainMenu(l i18n.Locale) any {
 	rows := [][]map[string]any{}
 	if w.MiniApp != "" {
-		rows = append(rows, []map[string]any{webAppButton(i18n.Button(l, KindAdd), w.miniURL(""))})
+		rows = append(rows, []map[string]any{
+			webAppButton(i18n.DashboardButton(l), w.miniURL("")),
+			button(i18n.Button(l, KindAdvice)),
+		})
+	} else {
+		rows = append(rows, []map[string]any{button(i18n.Button(l, KindAdvice))})
 	}
 	rows = append(rows,
-		[]map[string]any{button(i18n.Button(l, KindAdvice))},
 		[]map[string]any{button(i18n.Button(l, KindLoans)), button(i18n.Button(l, KindBudget))},
 		[]map[string]any{button(i18n.Button(l, KindLanguage)), button(i18n.Button(l, KindHelp))},
 	)

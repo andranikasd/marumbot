@@ -26,7 +26,7 @@ var catalogue = map[Locale]map[string]string{
 			"1️⃣ Ավելացնում եք վարկերը\n" +
 			"2️⃣ Նշում եք ամսական բյուջեն\n" +
 			"3️⃣ Ես ասում եմ՝ ում, երբ և որքան վճարել, որ տոկոսն ամենաքիչը լինի",
-		"start.next":     "👇 Սկսենք՝ բացեք «📱 Վահանակ»-ը և ավելացրեք առաջին վարկը։",
+		"start.next":     "👇 Սկսենք՝ բացեք «📱 Գլխավոր»-ը և ավելացրեք առաջին վարկը։",
 		"start.language": "🌐 Prefer English? Tap «🌐 Լեզուն»։",
 		"start.no_ai":    "Ոչ մի կռահում․ ամեն թիվ հաշվարկվում է հրապարակված բանաձևով՝ ձեր տվյալներից։",
 
@@ -57,7 +57,7 @@ var catalogue = map[Locale]map[string]string{
 		"menu.help":     "Ինչպես է աշխատում",
 
 		// Keyboard buttons. Short enough to sit two to a row on a phone.
-		"btn.add":        "📱 Վահանակ",
+		"btn.dashboard":  "📱 Գլխավոր",
 		"btn.advice":     "💡 Ի՞նչ անել",
 		"btn.loans":      "📋 Իմ վարկերը",
 		"btn.budget":     "💰 Բյուջե",
@@ -67,7 +67,7 @@ var catalogue = map[Locale]map[string]string{
 		"btn.manage":     "✏️ Կառավարել վարկերը",
 		"kb.placeholder": "Ընտրեք գործողություն",
 		// --- the journey: one tip per message, the next thing worth doing ---
-		"tip.add":                "Ավելացրեք առաջին վարկը («📱 Վահանակ»)․ ես կարող եմ պլանավորել միայն այն, ինչ տեսնում եմ։",
+		"tip.add":                "Ավելացրեք առաջին վարկը («📱 Գլխավոր»)․ ես կարող եմ պլանավորել միայն այն, ինչ տեսնում եմ։",
 		"tip.budget":             "Նշեք ամսական բյուջեն («💰 Բյուջե»)․ առանց դրա պլան չկա։",
 		"tip.payday":             "Բյուջեում ավելացրեք աշխատավարձի օրը․ վաղ վճարելը տոկոս է խնայում, և ես ցույց կտամ՝ որքան։",
 		"tip.confirm":            "Համեմատեք մնացորդը բանկի քաղվածքի հետ («🔍 Հաշվարկը»)․ ճշգրտված թվերով պլանն ավելի վստահելի է։",
@@ -250,7 +250,7 @@ var catalogue = map[Locale]map[string]string{
 		"menu.language": "Language / Լեզուն",
 		"menu.help":     "How it works",
 
-		"btn.add":        "📱 Dashboard",
+		"btn.dashboard":  "📱 Dashboard",
 		"btn.advice":     "💡 What to do",
 		"btn.loans":      "📋 My loans",
 		"btn.budget":     "💰 Budget",

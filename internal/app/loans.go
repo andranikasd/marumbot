@@ -93,6 +93,8 @@ type Budget struct {
 	// the month it was stated.
 	Opening     money.Amount
 	OpeningAsOf date.Date
+	// Reserve is the part of Opening the planner must leave untouched.
+	Reserve money.Amount
 	// Overrides are whole-month budget figures keyed "2006-01", in minor
 	// units, replacing Monthly for exactly those months.
 	Overrides map[string]int64
@@ -107,6 +109,13 @@ func (b Budget) CashPlan(valuation date.Date) plan.CashPlan {
 		plan.MonthKey(b.OpeningAsOf) == plan.MonthKey(valuation) &&
 		!b.OpeningAsOf.After(valuation) {
 		cp.OpeningCash = b.Opening
+		if b.Reserve.Sign() > 0 {
+			if usable, err := b.Opening.Sub(b.Reserve); err == nil && usable.Sign() > 0 {
+				cp.OpeningCash = usable
+			} else {
+				cp.OpeningCash = money.Zero(b.Opening.Currency())
+			}
+		}
 	}
 	if len(b.Overrides) > 0 {
 		cur := b.Monthly.Currency()
@@ -133,6 +142,7 @@ type BudgetConfiguration struct {
 	MonthlyMinor int64
 	PayDay       int
 	OpeningMinor int64
+	ReserveMinor int64
 	OpeningAsOf  date.Date
 	Overrides    map[string]int64
 }
