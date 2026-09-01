@@ -13,6 +13,7 @@ func TestEveryQueryLoads(t *testing.T) {
 		"ListContractsForLoan", "ListSnapshotsForLoan", "ListEventsForLoan",
 		"ListPolicies", "InsertPolicy", "ListCommands", "ListDeliveries",
 		"ListReconciliationRuns", "GetLoanState", "CoveredEventIDs",
+		"MenuUsers",
 	}
 	for _, name := range want {
 		q, err := Lookup(name)

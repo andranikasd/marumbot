@@ -216,6 +216,12 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		} else {
 			log.Info("command menus published", "languages", len(i18n.Supported()))
 		}
+		refreshed, err := worker.RefreshMenuButtons(menuCtx, store)
+		if err != nil {
+			log.Warn("refreshing per-chat menu buttons failed", "err", err, "refreshed", refreshed)
+		} else if refreshed > 0 {
+			log.Info("per-chat menu buttons refreshed", "accounts", refreshed)
+		}
 	}()
 
 	log.Info("marum listening",

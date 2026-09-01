@@ -101,3 +101,13 @@ func (s *Store) ClearState(ctx context.Context, userID string) error {
 	}
 	return err
 }
+
+// MenuUsers returns a stable page of accounts whose Telegram menu may need a
+// new deployment URL.
+func (s *Store) MenuUsers(ctx context.Context, after string, limit int32) ([]app.MenuUser, error) {
+	rows, err := s.pool.Query(ctx, q("MenuUsers"), after, limit)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[app.MenuUser])
+}

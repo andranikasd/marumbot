@@ -15,6 +15,17 @@ type MenuPublisher interface {
 	SetChatMenuButton(ctx context.Context, text, url string) error
 }
 
+// MenuUser is the minimum account data needed to refresh a per-chat button.
+type MenuUser struct {
+	ID, Locale string
+}
+
+// MenuUserLister pages through accounts with Telegram menu buttons. It is a
+// separate capability from the admin user list and does not expose identities.
+type MenuUserLister interface {
+	MenuUsers(ctx context.Context, after string, limit int32) ([]MenuUser, error)
+}
+
 // BotCommand mirrors the client's type so this package does not import an
 // adapter.
 type BotCommand struct {
@@ -105,4 +116,41 @@ func PublishMenus(ctx context.Context, p MenuPublisher, miniAppURL string) error
 		}
 	}
 	return nil
+}
+
+// RefreshMenuButtons replaces every per-chat override left by an older
+// deployment. Telegram does not let a new global default override an existing
+// chat-specific button, so rollout propagation must update those explicitly.
+func (w *Worker) RefreshMenuButtons(ctx context.Context, users MenuUserLister) (int, error) {
+	if users == nil || w.Chats == nil || w.Send == nil || w.MiniApp == "" {
+		return 0, nil
+	}
+	const pageSize int32 = 100
+	after, refreshed, failed := "", 0, 0
+	for {
+		page, err := users.MenuUsers(ctx, after, pageSize)
+		if err != nil {
+			return refreshed, fmt.Errorf("listing menu accounts: %w", err)
+		}
+		for _, user := range page {
+			chatID, err := w.Chats.ChatID(ctx, user.ID)
+			if err == nil {
+				locale := i18n.Locale(user.Locale)
+				err = w.Send.SetChatMenuButtonFor(ctx, chatID, i18n.DashboardButton(locale), w.miniURL(""))
+			}
+			if err != nil {
+				failed++
+				continue
+			}
+			refreshed++
+		}
+		if len(page) < int(pageSize) {
+			break
+		}
+		after = page[len(page)-1].ID
+	}
+	if failed > 0 {
+		return refreshed, fmt.Errorf("refreshing menu buttons failed for %d accounts", failed)
+	}
+	return refreshed, nil
 }

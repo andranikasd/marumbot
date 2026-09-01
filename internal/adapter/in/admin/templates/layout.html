@@ -2,48 +2,53 @@
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Title}} · Marum admin</title>
+<meta name="color-scheme" content="light dark">
+<title>{{.Title}} · Marum operations</title>
 <link rel="stylesheet" href="/style.css">
 </head><body>
+<a class="skip" href="#main">Skip to content</a>
 {{if .SignedIn}}
 <div class="shell">
-<aside class="side">
-  <div class="brand">Marum<span>· admin</span></div>
-  <nav aria-label="Sections">
-  <a class="nav" {{if eq .Nav "dashboard"}}aria-current="page"{{end}} href="/"><span class="ic" aria-hidden="true">◈</span>Overview</a>
-  <div class="group">Ledger</div>
-  <a class="nav" {{if eq .Nav "loans"}}aria-current="page"{{end}} href="/loans"><span class="ic" aria-hidden="true">▤</span>Loans</a>
-  <a class="nav" {{if eq .Nav "users"}}aria-current="page"{{end}} href="/users"><span class="ic" aria-hidden="true">◉</span>Users</a>
-  <a class="nav" {{if eq .Nav "policies"}}aria-current="page"{{end}} href="/policies"><span class="ic" aria-hidden="true">§</span>Policies</a>
-  <a class="nav" {{if eq .Nav "reconciliation"}}aria-current="page"{{end}} href="/reconciliation"><span class="ic" aria-hidden="true">⇄</span>Reconciliation</a>
-  <div class="group">Engine</div>
-  <a class="nav" {{if eq .Nav "engine"}}aria-current="page"{{end}} href="/engine"><span class="ic" aria-hidden="true">∑</span>Playground</a>
-  <div class="group">Operations</div>
-  <a class="nav" {{if eq .Nav "commands"}}aria-current="page"{{end}} href="/commands"><span class="ic" aria-hidden="true">⇩</span>Inbox{{if .Badges.CommandsDead}}<span class="count hot" title="dead commands">{{.Badges.CommandsDead}}</span>{{else if .Badges.CommandsPending}}<span class="count" title="pending commands">{{.Badges.CommandsPending}}</span>{{end}}</a>
-  <a class="nav" {{if eq .Nav "deliveries"}}aria-current="page"{{end}} href="/deliveries"><span class="ic" aria-hidden="true">⇧</span>Outbox{{if .Badges.DeliveriesDead}}<span class="count hot" title="dead deliveries">{{.Badges.DeliveriesDead}}</span>{{else if .Badges.DeliveriesPending}}<span class="count" title="pending deliveries">{{.Badges.DeliveriesPending}}</span>{{end}}</a>
+<aside class="side" aria-label="Primary navigation">
+  <div class="brand"><span class="brand-mark" aria-hidden="true">M</span><span>Marum</span></div>
+  <nav>
+    <div class="group">Operations</div>
+    <a class="nav" {{if eq .Nav "dashboard"}}aria-current="page"{{end}} href="/"><span class="ic" aria-hidden="true">⌘</span>Overview</a>
+    <a class="nav" {{if eq .Nav "loans"}}aria-current="page"{{end}} href="/loans"><span class="ic" aria-hidden="true">▤</span>Loans</a>
+    <a class="nav" {{if eq .Nav "users"}}aria-current="page"{{end}} href="/users"><span class="ic" aria-hidden="true">○</span>Users</a>
+    <div class="group">Platform</div>
+    <a class="nav" {{if eq .Nav "policies"}}aria-current="page"{{end}} href="/policies"><span class="ic" aria-hidden="true">◇</span>Policies</a>
+    <a class="nav" {{if eq .Nav "reconciliation"}}aria-current="page"{{end}} href="/reconciliation"><span class="ic" aria-hidden="true">⇄</span>Reconciliation</a>
+    <a class="nav" {{if eq .Nav "engine"}}aria-current="page"{{end}} href="/engine"><span class="ic" aria-hidden="true">⚙</span>Engine</a>
+    <div class="group">Messaging</div>
+    <a class="nav" {{if eq .Nav "commands"}}aria-current="page"{{end}} href="/commands"><span class="ic" aria-hidden="true">⌁</span>Inbox{{if .Badges.CommandsDead}}<span class="count hot" title="dead commands">{{.Badges.CommandsDead}}</span>{{else if .Badges.CommandsPending}}<span class="count" title="pending commands">{{.Badges.CommandsPending}}</span>{{end}}</a>
+    <a class="nav" {{if eq .Nav "deliveries"}}aria-current="page"{{end}} href="/deliveries"><span class="ic" aria-hidden="true">↗</span>Outbox{{if .Badges.DeliveriesDead}}<span class="count hot" title="dead deliveries">{{.Badges.DeliveriesDead}}</span>{{else if .Badges.DeliveriesPending}}<span class="count" title="pending deliveries">{{.Badges.DeliveriesPending}}</span>{{end}}</a>
   </nav>
-  <div class="foot">{{.Env}} · <span class="mono">{{.Version}}</span>
-    <form method="post" action="/logout" class="out"><button class="quiet">Sign out</button></form>
+  <div class="side-foot">
+    <div class="build"><span class="status-dot" aria-hidden="true"></span>{{.Env}} <span class="mono">{{.Version}}</span></div>
+    <form method="post" action="/logout"><button class="side-action"><span aria-hidden="true">↪</span> Sign out</button></form>
   </div>
 </aside>
-<div class="content">
-  <header class="bar">
+<div class="workspace">
+  <header class="topbar">
     <div class="heading">
-      {{block "crumbs" .}}{{end}}
+      {{block "crumbs" .}}<div class="crumbs"><span>Operations</span><span class="sep">›</span><strong>{{.Title}}</strong></div>{{end}}
       <h1>{{.Title}}</h1>
     </div>
-    <span class="env">{{.Env}}</span>
-    {{block "actions" .}}{{end}}
+    <span class="env"><span class="status-dot" aria-hidden="true"></span>{{.Env}}</span>
     <form class="search" method="get" action="/search" role="search">
-      <input id="q-global" type="search" name="q" placeholder="Loan name, loan or user id…" value="{{.Query}}" aria-label="Search loans and users">
-      <button class="quiet">Find</button>
+      <label class="sr-only" for="q-global">Search loans and users</label>
+      <input id="q-global" type="search" name="q" placeholder="Search loans and users" value="{{.Query}}">
+      <button class="search-button" aria-label="Search">⌕</button>
     </form>
+    {{block "actions" .}}{{end}}
+    <div class="operator"><span class="avatar">OP</span><span>Operator</span></div>
   </header>
-  <main>{{template "content" .}}</main>
+  <main id="main" tabindex="-1">{{template "content" .}}</main>
 </div>
 </div>
 {{else}}
-<main>{{template "content" .}}</main>
+<main id="main" tabindex="-1">{{template "content" .}}</main>
 <footer>{{.Env}} · {{.Version}}</footer>
 {{end}}
 </body></html>{{end}}

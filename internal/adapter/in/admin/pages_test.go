@@ -207,7 +207,7 @@ func newTestServer(t *testing.T) (*httptest.Server, *http.Cookie) {
 func TestEveryPageRenders(t *testing.T) {
 	ts, cookie := newTestServer(t)
 	pages := []struct{ path, want string }{
-		{"/", "Sign-ups, last 14 days"},
+		{"/", "System healthy"},
 		{"/loans", "of 1 loans"},
 		{"/loans?q=car&currency=AMD&reliability=confirmed", "Car"},
 		{"/loans/" + fakeLoan, "What the engine projects"},
@@ -218,7 +218,7 @@ func TestEveryPageRenders(t *testing.T) {
 		{"/loans/" + fakeLoan, "Copy for support"},
 		{"/loans/" + fakeLoan, "Next instalments:"},
 		{"/", "aria-current=\"page\" href=\"/\""},
-		{"/", "Schema <b class=\"mono\">v6</b>"},
+		{"/", "Schema v6"},
 		{"/", "class=\"b today\""},
 		{"/search", "Overview"},
 		{"/engine", "instalment"},
