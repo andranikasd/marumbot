@@ -1,7 +1,8 @@
 {{define "content"}}
 <div class="login">
   <div class="panel">
-    <h1>Marum admin</h1>
+    <h1 class="brand"><span class="brand-mark" aria-hidden="true">M</span>Marum</h1>
+    <p class="lead">Operations. One operator, on loopback.</p>
     {{if .Error}}<div class="note bad" role="alert">{{.Error}}</div>{{end}}
     <form method="post" action="/login" class="stack">
       <div><label for="user">User</label><input id="user" name="user" type="text" autocomplete="username" autofocus required></div>

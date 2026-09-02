@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"html"
+	"strings"
 	"time"
 
 	"github.com/andranikasd/marumbot/pkg/core/plan"
@@ -242,27 +242,23 @@ func (w *Worker) reminderBook(ctx context.Context, userID string) *reminderBook 
 	return book
 }
 
-// reminderText is the whole reminder: date, amount, loan. The amount is the
-// instalment the schedule puts on that date; when it cannot be projected the
-// reminder still goes out, without a figure.
+// reminderText is the whole reminder: a titled date, then one aligned row
+// per loan due that day. The amount is the instalment the schedule puts on
+// that date; when it cannot be projected the reminder still goes out, with
+// the loan named and the amount left blank.
 //
 // The date is humanised: "15 Sep" reads as a day, "2026-09-15" reads as an
-// ID. The stored ISO form still keys the same-day lookup below.
+// ID. The stored ISO form still keys the same-day lookup below. The title
+// states the date rather than "today" or "tomorrow", so a reminder that
+// arrives twice still reads correctly.
 func reminderText(book *reminderBook, d DueReminder, today date.Date) string {
 	l := book.locale
-	name := html.EscapeString(d.LoanName)
 	when := shortDate(l, mustParseDate(d.DueDate), today)
-	var text string
+	rows := [][2]string{}
 	if amount, ok := instalmentOn(book, d); ok {
-		if d.OffsetDays < 0 {
-			text = i18n.T(l, "reminder.due_soon", when, amount, name)
-		} else {
-			text = i18n.T(l, "reminder.due_today", when, amount, name)
-		}
-	} else if d.OffsetDays < 0 {
-		text = i18n.T(l, "reminder.due_soon_plain", when, name)
+		rows = append(rows, [2]string{clip(d.LoanName, 18), amount})
 	} else {
-		text = i18n.T(l, "reminder.due_today_plain", when, name)
+		rows = append(rows, [2]string{clip(d.LoanName, 18), "—"})
 	}
 	// The reminder knows the plan: other instalments on the same date are
 	// named, so one message covers the day rather than four covering it in
@@ -272,11 +268,10 @@ func reminderText(book *reminderBook, d DueReminder, today date.Date) string {
 			continue
 		}
 		if len(s.sched.Rows) > 0 && s.sched.Rows[0].Due.String() == d.DueDate {
-			text += "\n" + i18n.T(l, "reminder.also",
-				s.sched.Rows[0].Payment.String(), html.EscapeString(s.loan.Name))
+			rows = append(rows, [2]string{clip(s.loan.Name, 18), s.sched.Rows[0].Payment.String()})
 		}
 	}
-	return text
+	return "<b>" + i18n.T(l, "reminder.title", when) + "</b>\n" + strings.TrimRight(figures(rows), "\n")
 }
 
 // instalmentOn finds the scheduled payment falling on the reminder's date.

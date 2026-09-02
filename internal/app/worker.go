@@ -365,48 +365,78 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 	}
 
 	var b strings.Builder
-	rows := [][]map[string]any{}
 	today := date.From(w.Clock.Now(), time.UTC)
 	b.WriteString("<b>" + i18n.T(l, "loans.title") + "</b>\n")
+
+	// The totals the plan is built on, as one aligned block, so the list and
+	// the plan agree and the eye finds the three figures in one place.
+	if _, owed, required, cur, err := w.positions(ctx, loans); err == nil && owed.Sign() > 0 {
+		rows := [][2]string{
+			{i18n.T(l, "fig.owed"), bare(owed)},
+			{i18n.T(l, "fig.required"), bare(required)},
+		}
+		if due, pay, ok := w.nextInstalment(loans); ok {
+			rows = append(rows, [2]string{i18n.T(l, "fig.next"), shortDate(l, due, today) + "  " + bare(pay)})
+		}
+		b.WriteString(figures(rows))
+		b.WriteString("<i>" + cur.Code + "</i>\n")
+	}
+
+	working := [][]map[string]any{}
 	for _, ln := range loans {
 		b.WriteString("\n<b>" + html.EscapeString(ln.Name) + "</b>\n")
 		if ln.Description != "" {
 			b.WriteString("<i>" + html.EscapeString(ln.Description) + "</i>\n")
 		}
-		b.WriteString(i18n.T(l, "loan.balance", ln.Balance.String(), percent(ln.Contract.NominalRate)) + "\n")
-
 		if s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf); err == nil && len(s.Rows) > 0 {
-			b.WriteString(i18n.T(l, "loan.next", shortDate(l, s.Rows[0].Due, today), s.Rows[0].Payment.String()) + "\n")
-			b.WriteString(i18n.T(l, "loan.remaining", len(s.Rows)) + "\n")
-		} else if err != nil {
+			b.WriteString(i18n.T(l, "loan.line", bare(ln.Balance), percent(ln.Contract.NominalRate), shortDate(l, s.Rows[0].Due, today)) + "\n")
+		} else {
 			// Say the schedule is unavailable rather than omitting the line: a
 			// silently missing number reads as a number of zero.
-			w.Log.WarnContext(ctx, "projecting a loan failed", "error", err)
-			b.WriteString(i18n.T(l, "loan.no_schedule") + "\n")
+			if err != nil {
+				w.Log.WarnContext(ctx, "projecting a loan failed", "error", err)
+			}
+			b.WriteString(i18n.T(l, "loan.balance", bare(ln.Balance), percent(ln.Contract.NominalRate)) + " · " + i18n.T(l, "loan.no_schedule") + "\n")
 		}
-
 		if !ln.Confirmed() {
 			b.WriteString("<i>" + i18n.T(l, "reliability.yours", shortDate(l, ln.AsOf, today)) + "</i>\n")
 		}
-		rows = append(rows, []map[string]any{{
+		working = append(working, []map[string]any{{
 			keyText:     i18n.T(l, "working.button", ln.Name),
 			keyCallback: "work:" + ln.ID,
 		}})
 	}
 
-	// The totals the plan is built on, so the list and the plan agree.
-	if _, owed, required, _, err := w.positions(ctx, loans); err == nil && owed.Sign() > 0 {
-		b.WriteString("\n" + i18n.T(l, "advice.owed") + ": <code>" + owed.String() + "</code>\n")
-		b.WriteString(i18n.T(l, "advice.required") + ": <code>" + required.String() + "</code>\n")
-	}
-
+	// The keyboard: the one next step alone on top, the way to change things
+	// second, the arithmetic behind each loan last.
+	rows := [][]map[string]any{{{keyText: i18n.T(l, "btn.plan"), keyCallback: "goal:cheapest"}}}
 	if w.MiniApp != "" {
-		rows = append(rows, []map[string]any{
-			webAppButton(i18n.T(l, "btn.manage"), w.miniURL("manage")),
-		})
+		rows = append(rows, []map[string]any{webAppButton(i18n.T(l, "btn.manage"), w.miniURL("manage"))})
 	}
-	rows = append(rows, []map[string]any{{keyText: i18n.T(l, "btn.plan"), keyCallback: "goal:cheapest"}})
+	rows = append(rows, working...)
 	return w.Send.SendMessage(ctx, chat, w.withTip(ctx, userID, l, b.String()), map[string]any{keyInline: rows})
+}
+
+// nextInstalment finds the earliest projected instalment across the loans,
+// for the summary block. Loans that cannot be projected are skipped; the
+// figure is a fact about the loans that can.
+func (w *Worker) nextInstalment(loans []UserLoan) (date.Date, money.Amount, bool) {
+	var due date.Date
+	var pay money.Amount
+	found := false
+	for _, ln := range loans {
+		if ln.Balance.Sign() <= 0 {
+			continue
+		}
+		s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
+		if err != nil || len(s.Rows) == 0 {
+			continue
+		}
+		if !found || s.Rows[0].Due.Before(due) {
+			due, pay, found = s.Rows[0].Due, s.Rows[0].Payment, true
+		}
+	}
+	return due, pay, found
 }
 
 // percent renders a rate the way a borrower reads it. The engine holds parts
@@ -537,12 +567,14 @@ func (w *Worker) showWorking(ctx context.Context, userID string, chat int64, l i
 	return w.Send.SendMessage(ctx, chat, b.String(), w.mainMenu(l))
 }
 
-// startText is the whole pitch in three numbered lines, one next action, and
-// a way to switch language. The language hint is written in the other
-// language on purpose: it is the one line a reader who landed in the wrong
-// locale needs to be able to read.
+// startText is a titled card: what Marum is, the three steps, the one next
+// action, and a way to switch language. The language hint is written in the
+// other language on purpose: it is the one line a reader who landed in the
+// wrong locale needs to be able to read.
 func (w *Worker) startText(l i18n.Locale) string {
-	return i18n.T(l, "start.greeting") + "\n\n" +
+	return "<b>" + i18n.T(l, "start.title") + "</b>\n" +
+		i18n.T(l, "start.greeting") + "\n\n" +
+		i18n.T(l, "start.steps") + "\n\n" +
 		i18n.T(l, "start.next") + "\n" +
 		i18n.T(l, "start.language") + "\n\n" +
 		"<i>" + i18n.T(l, "start.no_ai") + "</i>\n" +
@@ -579,8 +611,12 @@ func (w *Worker) helpText(l i18n.Locale) string {
 // A borrower on a phone should never have to remember a command name to see
 // what they owe.
 //
-// The first button opens the Mini App dashboard. Contextual Add loan buttons
-// still open the form directly; the persistent entry point must describe the
+// Four buttons, two rows: open the app, ask what to do, see the loans, set
+// the budget. Language and help live in the "/" command menu Telegram
+// already shows; a keyboard that lists everything lists nothing.
+//
+// The first button opens the Mini App. Contextual Add loan buttons still
+// open the form directly; the persistent entry point must describe the
 // whole product rather than one workflow inside it.
 func (w *Worker) mainMenu(l i18n.Locale) any {
 	rows := [][]map[string]any{}
@@ -594,7 +630,6 @@ func (w *Worker) mainMenu(l i18n.Locale) any {
 	}
 	rows = append(rows,
 		[]map[string]any{button(i18n.Button(l, KindLoans)), button(i18n.Button(l, KindBudget))},
-		[]map[string]any{button(i18n.Button(l, KindLanguage)), button(i18n.Button(l, KindHelp))},
 	)
 	return map[string]any{
 		"keyboard":                rows,

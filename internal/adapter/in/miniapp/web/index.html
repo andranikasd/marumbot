@@ -11,18 +11,26 @@
 <link rel="modulepreload" href="js/api.js">
 <link rel="modulepreload" href="js/nav.js">
 <link rel="modulepreload" href="js/screens/loans.js">
+<link rel="modulepreload" href="js/screens/loan.js">
 <link rel="modulepreload" href="js/screens/add.js">
 <link rel="modulepreload" href="js/screens/budget.js">
+<link rel="modulepreload" href="js/screens/budget-edit.js">
 <link rel="modulepreload" href="js/screens/plan.js">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
 <!--
   The shell is empty on purpose. Every screen is a module under js/screens/
-  that registers itself with the navigator: its markup, its tab, its load
-  logic. Adding a screen is adding a file and one import in js/main.js;
-  nothing here changes.
+  that registers itself with the navigator: its markup, its tab or parent,
+  its load logic. The app bar is owned by the navigator: a screen names its
+  title and, if it wants one, its right-hand action.
 -->
+<header class="appbar" id="appbar">
+  <button type="button" class="back" id="appbar-back" hidden aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <h1 id="appbar-title">Marum</h1>
+  <button type="button" class="txt" id="appbar-action" hidden></button>
+</header>
+<div class="banner" id="offline" hidden><span id="offline-text"></span><button type="button" id="offline-retry"></button></div>
 <main id="view"></main>
 <nav class="tabs" id="tabs" aria-label="Screens"></nav>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

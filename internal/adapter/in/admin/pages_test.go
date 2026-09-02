@@ -364,3 +364,20 @@ func TestUnauthenticatedIsRedirected(t *testing.T) {
 		t.Fatalf("got %d to %q", res.StatusCode, res.Header.Get("Location"))
 	}
 }
+
+// The admin stylesheet opens with the design tokens shared with the Mini
+// App, so the two surfaces cannot drift apart in colour.
+func TestStylesheetCarriesTheSharedTokens(t *testing.T) {
+	ts, cookie := newTestServer(t)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/style.css", nil)
+	req.AddCookie(cookie)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(body), "--brass:") || !strings.Contains(string(body), "aside.side") {
+		t.Fatalf("stylesheet lacks the tokens or the admin styles: %d\n%.200s", res.StatusCode, body)
+	}
+}

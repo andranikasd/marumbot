@@ -197,6 +197,10 @@ type LoanView struct {
 	// Support is the loan summarised as plain text an operator can paste to
 	// the borrower. Empty when the engine cannot read the loan.
 	Support string
+	// Borrower is the loan as the Mini App shows it: the balance, when it
+	// was stated, the next instalment. The operator sees what the borrower
+	// sees before the record behind it. Nil when the engine cannot read it.
+	Borrower *BorrowerView
 }
 
 // Loan returns one loan with its contracts, snapshots and ledger.

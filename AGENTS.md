@@ -10,7 +10,8 @@ product. Full conventions: `docs/engineering-guide.md`. Design:
 cmd/marum/        wiring only, no logic
 pkg/core/         pure engine: money, model, amort, alloc, ledger, rates, plan
 internal/app/     use cases; owns the port interfaces
-internal/adapter/ in/{telegram,httpapi}  out/{postgres,telegramclient,blob,sysclock}
+internal/adapter/ in/{telegram,httpapi,miniapp,admin}  out/{postgres,telegramclient,blob,sysclock}
+internal/design/  the one design-token sheet both UIs prepend to their stylesheet
 migrations/       goose, expand-only        queries/  sqlc input
 testdata/golden/  real lender schedules — the correctness corpus
 ```

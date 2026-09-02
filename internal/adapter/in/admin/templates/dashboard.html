@@ -1,23 +1,23 @@
 {{define "content"}}
 <section class="status-strip{{if not .D.Health.DatabaseOK}} down{{end}}" aria-label="System status">
-  <span><i class="status-icon" aria-hidden="true">{{if .D.Health.DatabaseOK}}✓{{else}}!{{end}}</i><b>{{if .D.Health.DatabaseOK}}System healthy{{else}}System degraded{{end}}</b></span>
-  <span><i class="status-icon" aria-hidden="true">{{if .D.Health.DatabaseOK}}✓{{else}}!{{end}}</i>Database {{if .D.Health.DatabaseOK}}reachable{{else}}unreachable{{end}}</span>
-  <span><i class="status-icon" aria-hidden="true">✓</i>Schema v{{.D.Health.MigrationVersion}}</span>
-  <span><i class="status-icon info" aria-hidden="true">i</i>Build {{.Version}}</span>
+  <span><i class="status-icon" aria-hidden="true"></i><b>{{if .D.Health.DatabaseOK}}System healthy{{else}}System degraded{{end}}</b></span>
+  <span><i class="status-icon" aria-hidden="true"></i>Database {{if .D.Health.DatabaseOK}}reachable{{else}}unreachable{{end}}</span>
+  <span><i class="status-icon" aria-hidden="true"></i>Schema v{{.D.Health.MigrationVersion}}</span>
+  <span><i class="status-icon info" aria-hidden="true"></i>Build <span class="mono">{{.Version}}</span></span>
 </section>
 {{if not .D.Health.DatabaseOK}}<div class="note bad" role="alert">Database unavailable. Queue and account figures may be stale.</div>{{end}}
 {{range .D.Warnings}}<div class="note bad" role="status">{{.}}</div>{{end}}
 
 <section class="metric-grid" aria-label="Key metrics">
-  <a class="metric" href="/loans"><span class="metric-icon loans" aria-hidden="true">▤</span><span><b>Active loans</b><strong>{{.D.Overview.Loans}}</strong><small>{{sum .D.LoansByDay}} new in 14 days</small></span></a>
-  <a class="metric" href="/users"><span class="metric-icon users" aria-hidden="true">○</span><span><b>Users</b><strong>{{.D.Overview.Users}}</strong><small>{{sum .D.UsersByDay}} joined in 14 days</small></span></a>
-  <a class="metric {{if gt .D.Overview.CommandsPending 50}}warning{{end}}" href="/commands?status=pending"><span class="metric-icon pending" aria-hidden="true">◷</span><span><b>Commands pending</b><strong>{{.D.Overview.CommandsPending}}</strong><small>Oldest {{duration .D.Overview.OldestCommandAgeS}}</small></span></a>
-  <a class="metric {{if gt .D.Overview.DeliveriesDead 0}}critical{{end}}" href="/deliveries?status=dead"><span class="metric-icon dead" aria-hidden="true">↗</span><span><b>Dead deliveries</b><strong>{{.D.Overview.DeliveriesDead}}</strong><small>{{if .D.Overview.DeliveriesDead}}Needs review{{else}}None blocked{{end}}</small></span></a>
+  <a class="metric" href="/loans"><b>Active loans</b><strong>{{.D.Overview.Loans}}</strong><small>{{sum .D.LoansByDay}} new in 14 days</small></a>
+  <a class="metric" href="/users"><b>Users</b><strong>{{.D.Overview.Users}}</strong><small>{{sum .D.UsersByDay}} joined in 14 days</small></a>
+  <a class="metric {{if gt .D.Overview.CommandsPending 50}}warning{{end}}" href="/commands?status=pending"><b>Commands pending</b><strong>{{.D.Overview.CommandsPending}}</strong><small>Oldest {{duration .D.Overview.OldestCommandAgeS}}</small></a>
+  <a class="metric {{if gt .D.Overview.DeliveriesDead 0}}critical{{end}}" href="/deliveries?status=dead"><b>Dead deliveries</b><strong>{{.D.Overview.DeliveriesDead}}</strong><small>{{if .D.Overview.DeliveriesDead}}Needs review{{else}}None blocked{{end}}</small></a>
 </section>
 
 <section class="dashboard-grid">
   <div class="panel queue-panel">
-    <div class="hd">Work in flight <span class="tools"><a href="/commands">View all queues →</a></span></div>
+    <div class="hd">Work in flight <span class="tools"><a href="/commands">All queues</a></span></div>
     <div class="queue-list">
       <a href="/commands?status=pending"><span><i class="queue-dot ok"></i>Command queue</span><b>{{.D.Overview.CommandsPending}}</b><small>{{duration .D.Overview.OldestCommandAgeS}}</small></a>
       <a href="/commands?status=dead"><span><i class="queue-dot stop"></i>Dead commands</span><b>{{.D.Overview.CommandsDead}}</b><small>{{if .D.Overview.CommandsDead}}review{{else}}—{{end}}</small></a>
@@ -37,7 +37,7 @@
 </section>
 
 <section class="panel incidents">
-  <div class="hd">Recent incidents <span class="tools"><a href="/commands">View all incidents →</a></span></div>
+  <div class="hd">Recent incidents <span class="tools"><a href="/commands">Inbox</a></span></div>
   {{if .D.Recent}}
   <div class="scroll"><table>
     <thead><tr><th>Status</th><th>Type</th><th>Age</th><th class="num">Attempts</th><th>Error</th><th class="actions">Action</th></tr></thead>
@@ -48,7 +48,7 @@
         <td class="actions"><a class="review" href="/commands?status={{.Status}}">Review</a></td></tr>
     {{end}}</tbody>
   </table></div>
-  {{else}}<div class="empty good-empty"><span aria-hidden="true">✓</span>No recent incidents.</div>{{end}}
+  {{else}}<div class="empty">No recent incidents.</div>{{end}}
 </section>
 {{end}}
 {{define "bars"}}{{$max := maxN .}}{{$n := len .}}

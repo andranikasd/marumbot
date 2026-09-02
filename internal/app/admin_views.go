@@ -136,6 +136,39 @@ type ProjectionRow struct {
 	Explain string
 }
 
+// BorrowerView is the loan as the Mini App presents it, so the admin can
+// show the operator exactly the figures the borrower is looking at.
+type BorrowerView struct {
+	Balance     money.Amount
+	AsOf        date.Date
+	Confirmed   bool
+	PaidShare   int // of the original principal, 0 when unknown
+	HasNext     bool
+	NextDue     date.Date
+	NextPayment money.Amount
+	Rate        string
+	DayCount    string
+	Method      string
+	Maturity    date.Date
+}
+
+// borrowerView builds the borrower's view from the engine's loan and the
+// projection the admin already computed.
+func borrowerView(ln *UserLoan, p *Projection) *BorrowerView {
+	v := &BorrowerView{
+		Balance: ln.Balance, AsOf: ln.AsOf, Confirmed: ln.Confirmed(),
+		Rate: percent(ln.Contract.NominalRate), DayCount: ln.Contract.DayCount.String(),
+		Method: ln.Contract.Type.String(), Maturity: ln.Contract.MaturityDate,
+	}
+	if ln.OriginalPrincipal.Sign() > 0 && ln.OriginalPrincipal.Cmp(ln.Balance) > 0 {
+		v.PaidShare = int((ln.OriginalPrincipal.Minor() - ln.Balance.Minor()) * 100 / ln.OriginalPrincipal.Minor())
+	}
+	if p != nil && len(p.Rows) > 0 {
+		v.HasNext, v.NextDue, v.NextPayment = true, p.Rows[0].Due, p.Rows[0].Payment
+	}
+	return v
+}
+
 // PlanSummary is the borrower's current advice, condensed for an operator.
 type PlanSummary struct {
 	Goal            string
@@ -189,6 +222,7 @@ func (a *Admin) enrich(ctx context.Context, v *LoanView, now time.Time) {
 		return
 	}
 	v.Projection, v.ProjectionNote = project(ln.Contract, ln.Balance, ln.AsOf)
+	v.Borrower = borrowerView(ln, v.Projection)
 	v.Plan, v.PlanNote = a.planFor(ctx, v.Loan.UserID, now)
 	v.Support = supportText(v.Loan, ln, v.Projection)
 }

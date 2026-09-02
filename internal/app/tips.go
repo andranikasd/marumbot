@@ -108,7 +108,7 @@ func (w *Worker) withTip(ctx context.Context, userID string, l i18n.Locale, text
 			return text
 		}
 	}
-	return text + "\n\n💡 <i>" + t + "</i>"
+	return text + "\n\n<i>" + t + "</i>"
 }
 
 // OnLoanFiledMessage is the chat's answer to a loan created in the Mini App.

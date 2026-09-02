@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/andranikasd/marumbot/internal/app"
+	"github.com/andranikasd/marumbot/internal/design"
 	"github.com/andranikasd/marumbot/internal/obs"
 )
 
@@ -299,6 +300,8 @@ func (s *Server) stylesheet(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "stylesheet unavailable", http.StatusInternalServerError)
 		return
 	}
+	// The shared tokens first, so the admin and the Mini App cannot drift.
+	_, _ = w.Write(design.Tokens)
 	_, _ = w.Write(b)
 }
 

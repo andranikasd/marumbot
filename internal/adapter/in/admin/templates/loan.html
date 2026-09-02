@@ -19,6 +19,27 @@
 {{if .Notice}}<div class="note ok">{{.Notice}}</div>{{end}}
 
 <h2>Summary</h2>
+{{if .V.Borrower}}
+<div class="panel">
+  <div class="hd">What the borrower sees <span class="tools muted">the Mini App's loan page, from the same read model</span></div>
+  <div class="bd borrower">
+    <div class="hero">
+      <div class="k"><span>Balance</span><span class="tag">{{if .V.Loan.ArchivedAt}}archived{{else}}active{{end}}</span></div>
+      <div class="v">{{.V.Borrower.Balance}}</div>
+      <div class="sub">{{if .V.Borrower.Confirmed}}bank-confirmed{{else}}borrower's figure{{end}}, {{date .V.Borrower.AsOf}}{{if .V.Borrower.PaidShare}} · {{.V.Borrower.PaidShare}}% paid off{{end}}</div>
+      {{if .V.Borrower.PaidShare}}<div class="track"><i style="width:{{.V.Borrower.PaidShare}}%"></i></div>{{end}}
+    </div>
+    <div class="rows">
+      <div><span>Next due</span><b>{{if .V.Borrower.HasNext}}{{date .V.Borrower.NextDue}}{{else}}—{{end}}</b></div>
+      <div><span>Payment</span><b>{{if .V.Borrower.HasNext}}{{.V.Borrower.NextPayment}}{{else}}—{{end}}</b></div>
+      <div><span>Rate</span><b>{{.V.Borrower.Rate}}% · {{.V.Borrower.DayCount}}</b></div>
+      <div><span>Method</span><b>{{.V.Borrower.Method}}</b></div>
+      <div><span>Maturity</span><b>{{date .V.Borrower.Maturity}}</b></div>
+      <div><span>Reliability</span><b><span class="tag {{if .V.Borrower.Confirmed}}t-ok{{else}}t-warn{{end}}">{{if .V.Borrower.Confirmed}}confirmed{{else}}borrower stated{{end}}</span></b></div>
+    </div>
+  </div>
+</div>
+{{end}}
 <div class="grid2">
   <div class="panel">
     <div class="hd">What the engine projects
@@ -33,7 +54,7 @@
         <dt>Total to pay</dt><dd class="num">{{.V.Projection.TotalPaid}}</dd>
       </dl>
     </div>
-    {{else}}<div class="empty">{{.V.ProjectionNote}}{{if not .V.Contracts}}<a class="next" href="/engine">Try the terms in the playground →</a>{{end}}</div>{{end}}
+    {{else}}<div class="empty">{{.V.ProjectionNote}}{{if not .V.Contracts}}<a class="next" href="/engine">Try the terms in the playground</a>{{end}}</div>{{end}}
   </div>
 
   <div class="panel">
