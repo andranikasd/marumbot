@@ -173,6 +173,19 @@ export default {
         headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
         return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
       }
+      // The deployed build, for the app's own staleness check. Telegram
+      // keeps a minimised Mini App alive across deploys and reopens the same
+      // instance, so a deploy is invisible until the page compares its stamp
+      // with this and reloads itself. Answered here, not by the container:
+      // it must be cheap and must never wait on a cold start.
+      if (url.pathname === "/app/version") {
+        return new Response(JSON.stringify({ version: env.VERSION ?? "dev" }), {
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+          },
+        });
+      }
       if (env.ASSETS) {
         try {
           let rest = url.pathname.slice("/app".length) || "/";
