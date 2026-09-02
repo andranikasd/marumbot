@@ -12,6 +12,9 @@ import (
 // MenuPublisher is the Telegram surface used to describe the bot to itself.
 type MenuPublisher interface {
 	SetMyCommands(ctx context.Context, lang string, cmds []BotCommand) error
+	SetMyName(ctx context.Context, lang, name string) error
+	SetMyShortDescription(ctx context.Context, lang, description string) error
+	SetMyDescription(ctx context.Context, lang, description string) error
 	SetChatMenuButton(ctx context.Context, text, url string) error
 }
 
@@ -92,6 +95,9 @@ func (m *MenuPublication) Publish(ctx context.Context, p MenuPublisher, miniAppU
 // is worse than that.
 func PublishMenus(ctx context.Context, p MenuPublisher, miniAppURL string) error {
 	for _, l := range i18n.Supported() {
+		if err := publishProfile(ctx, p, l); err != nil {
+			return err
+		}
 		cmds := make([]BotCommand, 0, len(commandKeys))
 		for _, c := range commandKeys {
 			cmds = append(cmds, BotCommand{Command: c.cmd, Description: i18n.T(l, c.key)})
@@ -113,6 +119,35 @@ func PublishMenus(ctx context.Context, p MenuPublisher, miniAppURL string) error
 		// Armenian, because the button is global and cannot be per-user.
 		if err := p.SetChatMenuButton(ctx, i18n.DashboardButton(i18n.Default), miniAppURL); err != nil {
 			return fmt.Errorf("setting the menu button: %w", err)
+		}
+	}
+	return nil
+}
+
+// publishProfile keeps Telegram's discovery surfaces in the same language and
+// voice as the conversation. The default copy is Armenian, matching Default;
+// English is a dedicated localisation rather than a different bot identity.
+func publishProfile(ctx context.Context, p MenuPublisher, l i18n.Locale) error {
+	type field struct {
+		lang string
+		key  string
+		set  func(context.Context, string, string) error
+	}
+	profiles := []field{
+		{string(l), "profile.name", p.SetMyName},
+		{string(l), "profile.short", p.SetMyShortDescription},
+		{string(l), "profile.description", p.SetMyDescription},
+	}
+	if l == i18n.Default {
+		profiles = append(profiles,
+			field{"", "profile.name", p.SetMyName},
+			field{"", "profile.short", p.SetMyShortDescription},
+			field{"", "profile.description", p.SetMyDescription},
+		)
+	}
+	for _, profile := range profiles {
+		if err := profile.set(ctx, profile.lang, i18n.T(l, profile.key)); err != nil {
+			return fmt.Errorf("publishing %s profile %s: %w", l, profile.key, err)
 		}
 	}
 	return nil

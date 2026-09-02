@@ -21,6 +21,9 @@ package i18n
 // a user stops trusting the numbers around it.
 var catalogue = map[Locale]map[string]string{
 	HY: {
+		"profile.name":        "Մարում",
+		"profile.short":       "Վարկերի մարման հստակ պլան՝ ձեր թվերով։",
+		"profile.description": "Մարումը մեկ տեղում հավաքում է ձեր վարկերը, համեմատում մարման տարբերակները և ցույց տալիս՝ ում, երբ ու որքան վճարել։ Հաշվարկները հիմնված են միայն ձեր տվյալների և հրապարակված բանաձևերի վրա՝ առանց կռահումների։",
 		// --- greeting ---
 		"start.greeting": "Բարև, ես Մարումն եմ 👋\n\n" +
 			"1️⃣ Ավելացնում եք վարկերը\n" +
@@ -220,6 +223,9 @@ var catalogue = map[Locale]map[string]string{
 	},
 
 	EN: {
+		"profile.name":        "Marum",
+		"profile.short":       "A clear loan repayment plan, built from your numbers.",
+		"profile.description": "Marum keeps your loans in one place, compares repayment options, and shows whom to pay, when, and how much. Every result uses only your data and published formulas—no guesswork.",
 		"start.greeting": "Hi, I am Marum 👋\n\n" +
 			"1️⃣ You add your loans\n" +
 			"2️⃣ You set a monthly budget\n" +
