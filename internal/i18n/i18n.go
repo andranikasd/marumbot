@@ -99,9 +99,13 @@ func Keys() []string {
 	return out
 }
 
+// kindAdd is the command kind behind the Mini App entry point; it recurs in
+// the legacy label map below.
+const kindAdd = "add"
+
 // buttonKeys maps a command kind to the catalogue key labelling its button.
 var buttonKeys = map[string]string{
-	"add":      "btn.dashboard",
+	kindAdd:    "btn.dashboard",
 	"loans":    "btn.loans",
 	"budget":   "btn.budget",
 	"language": "btn.language",
@@ -152,10 +156,10 @@ func MatchButton(text string) (kind string, ok bool) {
 
 // legacyButtons maps retired labels to their commands.
 var legacyButtons = map[string]string{
-	"➕ Ավելացնել վարկ":     "add",
-	"➕ Add a loan":         "add",
-	"📱 Գլխավոր":            "add",
-	"📱 Dashboard":          "add",
+	"➕ Ավելացնել վարկ":     kindAdd,
+	"➕ Add a loan":         kindAdd,
+	"📱 Գլխավոր":            kindAdd,
+	"📱 Dashboard":          kindAdd,
 	"💡 Ի՞նչ անել":          "advice",
 	"💡 What to do":         "advice",
 	"📋 Իմ վարկերը":         "loans",

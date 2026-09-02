@@ -18,7 +18,7 @@ with its figure in green. One green per theme.
 
 ## Tokens
 
-`internal/adapter/in/design/tokens.css` is the only place a colour is named.
+`internal/design/tokens.css` is the only place a colour is named.
 Both surfaces prepend it to their own stylesheet at serve time: the Mini App
 when it serves `styles.css`, the admin when it serves `/style.css`. Radii are
 9, 14 and 16 px; type weights are 400 and 600 only; cards are separated by

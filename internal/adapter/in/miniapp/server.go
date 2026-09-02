@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/andranikasd/marumbot/internal/adapter/in/design"
 	"github.com/andranikasd/marumbot/internal/app"
+	"github.com/andranikasd/marumbot/internal/design"
 	"github.com/andranikasd/marumbot/internal/obs"
 	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 	"github.com/andranikasd/marumbot/pkg/core/date"

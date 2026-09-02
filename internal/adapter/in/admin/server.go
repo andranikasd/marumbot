@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/andranikasd/marumbot/internal/adapter/in/design"
 	"github.com/andranikasd/marumbot/internal/app"
+	"github.com/andranikasd/marumbot/internal/design"
 	"github.com/andranikasd/marumbot/internal/obs"
 )
 

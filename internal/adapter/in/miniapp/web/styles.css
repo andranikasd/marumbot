@@ -1,5 +1,5 @@
 /* Marum Mini App, design system v4. The tokens are prepended at serve time
-   from internal/adapter/in/design/tokens.css; nothing below names a colour.
+   from internal/design/tokens.css; nothing below names a colour.
 
    The grammar of every screen: an app bar, one hero, then cards. Amounts sit
    in key/value rows, right-aligned, tabular. Two font weights. Borders, not
