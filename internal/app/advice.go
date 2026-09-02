@@ -95,7 +95,6 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 	o := rep.Best
 	today := in.ValuationDate
 
-	b.WriteString("\n")
 	writeOutcome(&b, l, rep, required, today)
 
 	total := required
@@ -287,15 +286,46 @@ func writeRow(b *strings.Builder, l i18n.Locale, name string, rep plan.Report, r
 	}
 }
 
-// writeOutcome opens the report with the promise — free of debt when, saving
-// what — then the one extra fact the chosen goal exists to answer. The cost
-// moves to the footer: the reader asked what to do, not for an audit.
+// figures renders label/value rows as one aligned monospace block: label
+// left, value right, padded by rune count so Armenian and Latin labels line
+// up alike. Telegram cannot right-align prose; monospace can. Every figure
+// block in the bot goes through here, so the eye learns one shape.
+func figures(rows [][2]string) string {
+	var labelW, valueW int
+	for _, r := range rows {
+		labelW = max(labelW, utf8.RuneCountInString(r[0]))
+		valueW = max(valueW, utf8.RuneCountInString(r[1]))
+	}
+	var b strings.Builder
+	b.WriteString("<pre>")
+	for i, r := range rows {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(html.EscapeString(pad(r[0], labelW) + "  " + lead(r[1], valueW)))
+	}
+	b.WriteString("</pre>\n")
+	return b.String()
+}
+
+// writeOutcome opens the report with the promise as an aligned block — free
+// of debt when, paying what each month, saving what — then the one extra
+// fact the chosen goal exists to answer. The cost moves to the footer: the
+// reader asked what to do, not for an audit.
 func writeOutcome(b *strings.Builder, l i18n.Locale, rep plan.Report, required money.Amount, today date.Date) {
 	o, m := rep.Best, rep.Minimum
-	b.WriteString(i18n.T(l, "advice.promise", shortDate(l, o.PayoffDate, today), o.Months) + "\n")
-	if saved, err := m.Cost().Sub(o.Cost()); err == nil && saved.Sign() > 0 {
-		b.WriteString(i18n.T(l, "advice.vs_minimum", bare(saved), m.Months-o.Months) + "\n")
+	rows := [][2]string{{i18n.T(l, "fig.debtfree"), shortDate(l, o.PayoffDate, today)}}
+	monthly := required
+	if len(o.Timeline) > 0 {
+		monthly = monthPaid(o.Timeline[0])
 	}
+	rows = append(rows, [2]string{i18n.T(l, "fig.monthly"), bare(monthly)})
+	if saved, err := m.Cost().Sub(o.Cost()); err == nil && saved.Sign() > 0 {
+		rows = append(rows,
+			[2]string{i18n.T(l, "fig.saved"), bare(saved)},
+			[2]string{i18n.T(l, "fig.sooner"), i18n.T(l, "fig.months", m.Months-o.Months)})
+	}
+	b.WriteString(figures(rows))
 	switch rep.Goal.Kind {
 	case plan.Fastest:
 		if len(rep.Ladder) > 1 {
@@ -321,8 +351,8 @@ func writeOutcome(b *strings.Builder, l i18n.Locale, rep plan.Report, required m
 // writeActions renders the first cycle as an aligned monospace table inside
 // <pre>: date, loan, amount, one row per payment. Telegram renders <pre> in a
 // fixed-width face, so the columns line up like a bank statement instead of a
-// sentence per payment. Extras are marked with ⚡ and explained once under the
-// table; per-payment fees are folded into the footer's fee total.
+// sentence per payment. Extras carry a leading + and are explained once under
+// the table; per-payment fees are folded into the footer's fee total.
 //
 // Padding happens before HTML escaping: escaping lengthens the string but not
 // its rendered width, so aligning the escaped text would misalign the screen.
@@ -359,18 +389,15 @@ func writeActions(b *strings.Builder, l i18n.Locale, acts []plan.Action, today d
 			b.WriteString("\n")
 		}
 		b.WriteString(html.EscapeString(pad(r.when, whenW) + "  " + pad(r.name, nameW) + "  " + lead(r.amount, amountW)))
-		if r.extra {
-			b.WriteString(" ⚡")
-		}
 	}
 	b.WriteString("</pre>\n")
 	switch {
 	case extras == 0:
 		b.WriteString(i18n.T(l, "advice.no_surplus") + "\n")
 	case saves.Sign() > 0:
-		b.WriteString(i18n.T(l, "advice.extra_note", bare(saves)) + "\n")
+		b.WriteString(i18n.T(l, "advice.extra_line", bare(saves)) + "\n")
 	default:
-		b.WriteString(i18n.T(l, "advice.extra_note_plain") + "\n")
+		b.WriteString(i18n.T(l, "advice.extra_line_plain") + "\n")
 	}
 }
 
@@ -539,11 +566,10 @@ func goalMenu(l i18n.Locale, active plan.Goal, offerApprove bool, sheetURL strin
 	if offerApprove {
 		rows = append(rows, []map[string]any{{keyText: i18n.T(l, "plan.approve_button"), keyCallback: "approve:" + goalToken(active)}})
 	}
-	inspect := []map[string]any{}
+	inspect := []map[string]any{{keyText: i18n.T(l, "advice.why_button"), keyCallback: "why:" + goalToken(active)}}
 	if sheetURL != "" {
 		inspect = append(inspect, webAppButton(i18n.T(l, "plan.sheet_button"), sheetURL))
 	}
-	inspect = append(inspect, map[string]any{keyText: i18n.T(l, "advice.why_button"), keyCallback: "why:" + goalToken(active)})
 	rows = append(rows, inspect)
 	rows = append(rows, []map[string]any{{keyText: i18n.T(l, "advice.compare"), keyCallback: "goal:compare"}})
 	return map[string]any{keyInline: rows}

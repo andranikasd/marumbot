@@ -152,6 +152,18 @@ func MatchButton(text string) (kind string, ok bool) {
 
 // legacyButtons maps retired labels to their commands.
 var legacyButtons = map[string]string{
-	"➕ Ավելացնել վարկ": "add",
-	"➕ Add a loan":     "add",
+	"➕ Ավելացնել վարկ":     "add",
+	"➕ Add a loan":         "add",
+	"📱 Գլխավոր":            "add",
+	"📱 Dashboard":          "add",
+	"💡 Ի՞նչ անել":          "advice",
+	"💡 What to do":         "advice",
+	"📋 Իմ վարկերը":         "loans",
+	"📋 My loans":           "loans",
+	"💰 Բյուջե":             "budget",
+	"💰 Budget":             "budget",
+	"🌐 Լեզուն":             "language",
+	"🌐 Language":           "language",
+	"❓ Ինչպե՞ս է աշխատում": "help",
+	"❓ How it works":       "help",
 }

@@ -61,7 +61,7 @@ func TestPlanCardIsCompactInBothLanguages(t *testing.T) {
 		for _, l := range []i18n.Locale{i18n.HY, i18n.EN} {
 			out := renderCard(l, rep, today)
 			lines := strings.Count(out, "\n")
-			if lines > 12 {
+			if lines > 14 {
 				t.Errorf("%s/%s: card has %d lines:\n%s", goal, l, lines, out)
 			}
 			// A missing key renders as itself; none may reach a user.

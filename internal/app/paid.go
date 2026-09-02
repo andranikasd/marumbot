@@ -40,7 +40,7 @@ func (w *Worker) askPaidBalance(ctx context.Context, userID string, chat int64, 
 	if err := w.Convos.SetState(ctx, userID, StateAwaitingBalance+":"+loanID); err != nil {
 		return fmt.Errorf("recording the question: %w", err)
 	}
-	text := i18n.T(l, "paid.ask_balance", html.EscapeString(ln.Name))
+	text := "<b>" + i18n.T(l, "paid.title") + "</b>\n" + i18n.T(l, "paid.ask_balance", html.EscapeString(ln.Name))
 	markup := map[string]any{keyInline: [][]map[string]any{{
 		{keyText: i18n.T(l, "paid.skip_button"), keyCallback: "paidskip"},
 	}}}
@@ -108,12 +108,14 @@ func (w *Worker) takeBalance(ctx context.Context, userID string, chat int64, l i
 		return true, w.Send.SendMessage(ctx, chat,
 			i18n.T(l, "paid.cleared", html.EscapeString(ln.Name)), w.mainMenu(l))
 	}
-	msg := i18n.T(l, "paid.saved", html.EscapeString(ln.Name), balance.String())
+	msg := "<b>" + i18n.T(l, "paid.updated") + "</b>\n<b>" + html.EscapeString(ln.Name) + "</b>\n"
+	rows := [][2]string{{i18n.T(l, "fig.balance"), balance.String()}}
 	// The next instalment from the new anchor, when it can be projected: the
 	// confirmation shows the consequence, not just the receipt.
 	if s, err := amortisation.Build(ln.Contract, balance, asOf); err == nil && len(s.Rows) > 0 {
-		msg += "\n" + i18n.T(l, "loan.next", s.Rows[0].Due.String(), s.Rows[0].Payment.String())
+		rows = append(rows, [2]string{i18n.T(l, "fig.next"), shortDate(l, s.Rows[0].Due, asOf) + "  " + bare(s.Rows[0].Payment)})
 	}
+	msg += strings.TrimRight(figures(rows), "\n")
 	return true, w.Send.SendMessage(ctx, chat, w.withTip(ctx, userID, l, msg), w.mainMenu(l))
 }
 
