@@ -68,6 +68,13 @@ Deliberately plain, because one operator on loopback does not need more:
 
 ## Rendering
 
+The stylesheet is served as the shared design tokens
+(`internal/adapter/in/design/tokens.css`) followed by the admin's own sheet,
+so the admin and the Mini App cannot drift apart in colour. The loan page
+opens with "What the borrower sees", the Mini App's hero and rows rendered
+from the same read model, before the record behind it. See
+[Interface v1.1](../design/ui-v1.1.md).
+
 Each page gets its **own template set** containing the layout and itself.
 Parsing them all into one set makes the last file parsed win, because every
 page defines a template called `content` — which is exactly what happened the

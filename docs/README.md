@@ -37,6 +37,7 @@ explain why the code is shaped the way it is.
 | --- | --- |
 | [Correctness corpus](../testdata/golden/README.md) | The real lender schedules the engine is measured against, and what each one currently proves |
 | [Engineering guide](engineering-guide.md) | How code is written: structure, style, testing, the five invariants |
+| [Interface v1.1](design/ui-v1.1.md) | The shared visual language of the Mini App, the bot and the admin |
 | [MVP system and architecture design](design/Marum-MVP-System-and-Architecture-Design.pdf) | The formal design document |
 | [Reliable MVP design v0.3.1](design/reliable-mvp-design.md) | Long-form reference: full DDL, reliability invariants, failure analysis |
 | [Diagrams](diagrams/) | Editable draw.io sources for the design document's figures |
