@@ -86,6 +86,7 @@ id = "set-after-creating-the-dev-hyperdrive-config"
 #   MARUM_BOT_TOKEN            a DIFFERENT bot per environment, always
 #   MARUM_WEBHOOK_SECRET       must match what setWebhook registered
 #   MARUM_SERVICE_TOKEN        Worker to container
+#   MARUM_MINIAPP_URL          absolute URL of the loan form, https://<host>/app/
 #   MARUM_ADMIN_PASSWORD_HASH  absent means no admin interface at all
 #   MARUM_IDENTITY_KEY         AES-GCM key for the identities table
 #   MARUM_DATABASE_URL         through Hyperdrive
