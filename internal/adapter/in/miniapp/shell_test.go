@@ -63,3 +63,23 @@ func TestStampedAssetsAreImmutable(t *testing.T) {
 		t.Fatalf("stamped asset Cache-Control = %q, want immutable", got)
 	}
 }
+
+func TestStylesheetCarriesTheSharedTokens(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{"/styles.css", "/a/1.2.3-dev.abc1234/styles.css"} {
+		w := getPath(t, shellTestServer(), path)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s answered %d", path, w.Code)
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, "--brass:") || !strings.Contains(body, `[data-theme="dark"]`) {
+			t.Fatalf("%s lacks the shared tokens:\n%.300s", path, body)
+		}
+		if !strings.Contains(body, ".appbar") {
+			t.Fatalf("%s lacks the app stylesheet", path)
+		}
+		if got := w.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/css") {
+			t.Fatalf("%s Content-Type = %q", path, got)
+		}
+	}
+}

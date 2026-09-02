@@ -1,7 +1,7 @@
-// The kernel: Telegram bridge, theme, haptics, formatting, toast, and the
-// one MainButton. Everything else imports from here and from nav.js; no
-// module reaches for window.Telegram on its own, so a change in the bridge
-// is a change in one file.
+// The kernel: Telegram bridge, theme, haptics, formatting, toast, the one
+// MainButton and the one BackButton. Everything else imports from here and
+// from nav.js; no module reaches for window.Telegram on its own, so a change
+// in the bridge is a change in one file.
 "use strict";
 
 export const tg = window.Telegram?.WebApp;
@@ -38,13 +38,32 @@ export const haptic = {
 
 export const lang = (tg?.initDataUnsafe?.user?.language_code || "hy").slice(0, 2) === "en" ? "en" : "hy";
 document.documentElement.lang = lang;
+const locale = lang === "en" ? "en-GB" : "hy-AM";
 
 export const fmtMoney = (n, cur) => new Intl.NumberFormat(lang === "en" ? "en-US" : "hy-AM",
   { style: "currency", currency: cur, maximumFractionDigits: 0 }).format(n);
+const parseISO = (iso) => { const d = new Date(iso + "T00:00:00"); return Number.isNaN(d.getTime()) ? null : d; };
+// fmtDate is day + short month, for dates inside the running year.
 export const fmtDate = (iso) => {
-  const d = new Date(iso + "T00:00:00");
-  return Number.isNaN(d.getTime()) ? iso
-    : new Intl.DateTimeFormat(lang === "en" ? "en-GB" : "hy-AM", { day: "numeric", month: "short" }).format(d);
+  const d = parseISO(iso);
+  return d ? new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d) : iso;
+};
+// fmtMonth is month + year: a payoff or milestone sits years out.
+export const fmtMonth = (iso) => {
+  const d = parseISO(iso);
+  return d ? new Intl.DateTimeFormat(locale, { month: "short", year: "numeric" }).format(d) : iso;
+};
+// fmtFull keeps the year: a balance stated long ago, a contract date.
+export const fmtFull = (iso) => {
+  const d = parseISO(iso);
+  return d ? new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(d) : iso;
+};
+// monthsBetween counts whole months from one ISO date to another, for a
+// derived term caption. Approximate on purpose: a caption, not a contract.
+export const monthsBetween = (a, b) => {
+  const s = parseISO(a), e = parseISO(b);
+  if (!s || !e) return 0;
+  return Math.max(0, (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth()));
 };
 // num parses an ordinary decimal field such as a rate. Its punctuation is
 // always decimal; moneyNum has the different grouping rules money needs.
@@ -58,7 +77,7 @@ export const num = (s) => {
 // followed by one or two digits is decimal; three digits means grouping.
 // When both marks occur, the last one is decimal (1,000.50 or 1.000,50).
 export const moneyNum = (s) => {
-  const raw = String(s).replace(/[\s\u00a0']/g, "");
+  const raw = String(s).replace(/[\s ']/g, "");
   if (!/^\d[\d.,]*$/.test(raw)) return NaN;
   const dots = (raw.match(/\./g) || []).length;
   const commas = (raw.match(/,/g) || []).length;
@@ -80,6 +99,8 @@ export const moneyNum = (s) => {
   return Number.isFinite(value) ? value : NaN;
 };
 export const esc = (t) => { const d = document.createElement("span"); d.textContent = t; return d.innerHTML; };
+// initial is the letter on a loan's tile: the first letter of its name.
+export const initial = (name) => (String(name).trim().match(/\p{L}|\p{N}/u) || ["·"])[0].toUpperCase();
 
 let toastTimer;
 export function toast(msg) {
@@ -105,10 +126,46 @@ export const mainButton = {
 };
 tg?.MainButton.onClick(() => { if (mbHandler) mbHandler(); });
 
+// One BackButton. Inside Telegram the client draws it in its own header and
+// ours stays hidden (body.tg-back); outside, the app bar's own button shows.
+let backHandler = null;
+const tgBack = tg?.BackButton;
+if (tgBack) {
+  document.body.classList.add("tg-back");
+  tgBack.onClick(() => { if (backHandler) backHandler(); });
+}
+export const backButton = {
+  show(handler) {
+    backHandler = handler;
+    document.getElementById("appbar-back").hidden = false;
+    tgBack?.show();
+  },
+  hide() {
+    backHandler = null;
+    document.getElementById("appbar-back").hidden = true;
+    tgBack?.hide();
+  },
+};
+
 export const confirmDialog = (msg) => new Promise((resolve) => {
   if (tg?.showConfirm) tg.showConfirm(msg, resolve);
   else resolve(window.confirm(msg));
 });
+
+// Masking: the eye on the loans hero. A phone in public should be able to
+// show the app without showing the debt. Remembered per device, not per
+// account: it is about the room, not the person.
+const maskKey = "marum.masked";
+export const mask = {
+  on() { try { return localStorage.getItem(maskKey) === "1"; } catch { return false; } },
+  toggle() {
+    const next = !mask.on();
+    try { localStorage.setItem(maskKey, next ? "1" : "0"); } catch { /* private mode */ }
+    document.body.classList.toggle("masked", next);
+    return next;
+  },
+};
+document.body.classList.toggle("masked", mask.on());
 
 // group re-renders an amount input with thousand separators as the user
 // types, keeping the caret at the end. Separators are spaces, which num()

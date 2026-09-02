@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/andranikasd/marumbot/internal/adapter/in/design"
 	"github.com/andranikasd/marumbot/internal/app"
 	"github.com/andranikasd/marumbot/internal/obs"
 	"github.com/andranikasd/marumbot/pkg/core/amortisation"
@@ -98,8 +99,8 @@ func (s *Server) Handler() http.Handler {
 	// imports inherit the versioned prefix, so every file the app loads is
 	// cacheable without ever being stale. This is what makes a warm open
 	// instant while /{$} itself stays no-store.
-	mux.Handle("GET /a/", s.immutable(http.StripPrefix("/a/", stripVersion(http.FileServerFS(sub)))))
-	mux.Handle("/", s.static(http.FileServerFS(sub)))
+	mux.Handle("GET /a/", s.immutable(http.StripPrefix("/a/", stripVersion(withTokens(sub, http.FileServerFS(sub))))))
+	mux.Handle("/", s.static(withTokens(sub, http.FileServerFS(sub))))
 	return mux
 }
 
@@ -686,6 +687,27 @@ func stripVersion(next http.Handler) http.Handler {
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = "/" + rest
 		next.ServeHTTP(w, r2)
+	})
+}
+
+// withTokens serves the stylesheet with the shared design tokens in front
+// of it. The tokens live in one package for every surface, and the shell's
+// stamp rewrite and the Worker's both know only about styles.css, so the
+// two are joined here rather than linked as a second file.
+func withTokens(sub fs.FS, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/styles.css" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		b, err := fs.ReadFile(sub, "styles.css")
+		if err != nil {
+			http.Error(w, "unavailable", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		_, _ = w.Write(design.Tokens)
+		_, _ = w.Write(b)
 	})
 }
 
