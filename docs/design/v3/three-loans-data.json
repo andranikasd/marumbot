@@ -1,0 +1,1220 @@
+{
+  "actions": [
+    {
+      "amount": 13354840,
+      "fee": 0,
+      "kind": "extra",
+      "loan": "Phone",
+      "on": "2026-02-01"
+    },
+    {
+      "amount": 4519560,
+      "fee": 0,
+      "kind": "instalment",
+      "loan": "Car",
+      "on": "2026-02-15"
+    },
+    {
+      "amount": 5510270,
+      "fee": 0,
+      "kind": "instalment",
+      "loan": "Home",
+      "on": "2026-02-15"
+    },
+    {
+      "amount": 1615330,
+      "fee": 0,
+      "kind": "instalment",
+      "loan": "Phone",
+      "on": "2026-02-15"
+    }
+  ],
+  "as_of": "2026-01-15",
+  "budget": 25000000,
+  "eligibility": "fixed non-negative rates, one day-count basis, no fees or thresholds, required instalments always met, surplus credited to principal on payment: by exchange, money moved from a lower to a higher daily rate cannot increase interest, and paying earlier cannot increase it",
+  "engine": "plan/2",
+  "fees": 0,
+  "interest": 71370010,
+  "minimum_interest": 312703040,
+  "minimum_months": [
+    {
+      "interest": 6539730,
+      "on": "2026-02-01",
+      "required": 11645160
+    },
+    {
+      "interest": 5834550,
+      "on": "2026-03-01",
+      "required": 11645160
+    },
+    {
+      "interest": 6369900,
+      "on": "2026-04-01",
+      "required": 11645160
+    },
+    {
+      "interest": 6084150,
+      "on": "2026-05-01",
+      "required": 11645150
+    },
+    {
+      "interest": 6199880,
+      "on": "2026-06-01",
+      "required": 11645150
+    },
+    {
+      "interest": 5916790,
+      "on": "2026-07-01",
+      "required": 11645150
+    },
+    {
+      "interest": 6024060,
+      "on": "2026-08-01",
+      "required": 11645140
+    },
+    {
+      "interest": 5935160,
+      "on": "2026-09-01",
+      "required": 11645140
+    },
+    {
+      "interest": 5656170,
+      "on": "2026-10-01",
+      "required": 11645140
+    },
+    {
+      "interest": 5750280,
+      "on": "2026-11-01",
+      "required": 11645140
+    },
+    {
+      "interest": 5474160,
+      "on": "2026-12-01",
+      "required": 11645150
+    },
+    {
+      "interest": 5559030,
+      "on": "2027-01-01",
+      "required": 11645140
+    },
+    {
+      "interest": 5462060,
+      "on": "2027-02-01",
+      "required": 11645140
+    },
+    {
+      "interest": 4844380,
+      "on": "2027-03-01",
+      "required": 11645140
+    },
+    {
+      "interest": 5256540,
+      "on": "2027-04-01",
+      "required": 11645150
+    },
+    {
+      "interest": 4988070,
+      "on": "2027-05-01",
+      "required": 11645150
+    },
+    {
+      "interest": 5048290,
+      "on": "2027-06-01",
+      "required": 11645150
+    },
+    {
+      "interest": 4783020,
+      "on": "2027-07-01",
+      "required": 11645150
+    },
+    {
+      "interest": 4832840,
+      "on": "2027-08-01",
+      "required": 11645140
+    },
+    {
+      "interest": 4723240,
+      "on": "2027-09-01",
+      "required": 11645150
+    },
+    {
+      "interest": 4462960,
+      "on": "2027-10-01",
+      "required": 11645140
+    },
+    {
+      "interest": 4496520,
+      "on": "2027-11-01",
+      "required": 11645140
+    },
+    {
+      "interest": 4239690,
+      "on": "2027-12-01",
+      "required": 11645140
+    },
+    {
+      "interest": 4261900,
+      "on": "2028-01-01",
+      "required": 11645140
+    },
+    {
+      "interest": 4142280,
+      "on": "2028-02-01",
+      "required": 10029820
+    },
+    {
+      "interest": 3794560,
+      "on": "2028-03-01",
+      "required": 10029820
+    },
+    {
+      "interest": 3965970,
+      "on": "2028-04-01",
+      "required": 10029820
+    },
+    {
+      "interest": 3752100,
+      "on": "2028-05-01",
+      "required": 10029820
+    },
+    {
+      "interest": 3785600,
+      "on": "2028-06-01",
+      "required": 10029820
+    },
+    {
+      "interest": 3574790,
+      "on": "2028-07-01",
+      "required": 10029810
+    },
+    {
+      "interest": 3599590,
+      "on": "2028-08-01",
+      "required": 10029810
+    },
+    {
+      "interest": 3504990,
+      "on": "2028-09-01",
+      "required": 10029820
+    },
+    {
+      "interest": 3298940,
+      "on": "2028-10-01",
+      "required": 10029810
+    },
+    {
+      "interest": 3310160,
+      "on": "2028-11-01",
+      "required": 10029820
+    },
+    {
+      "interest": 3107410,
+      "on": "2028-12-01",
+      "required": 10029810
+    },
+    {
+      "interest": 3109230,
+      "on": "2029-01-01",
+      "required": 10029810
+    },
+    {
+      "interest": 3006850,
+      "on": "2029-02-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2694740,
+      "on": "2029-03-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2957160,
+      "on": "2029-04-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2838680,
+      "on": "2029-05-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2908350,
+      "on": "2029-06-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2791010,
+      "on": "2029-07-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2858640,
+      "on": "2029-08-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2833860,
+      "on": "2029-09-01",
+      "required": 5510270
+    },
+    {
+      "interest": 2718250,
+      "on": "2029-10-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2782780,
+      "on": "2029-11-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2668350,
+      "on": "2029-12-01",
+      "required": 5510270
+    },
+    {
+      "interest": 2730740,
+      "on": "2030-01-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2704770,
+      "on": "2030-02-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2419340,
+      "on": "2030-03-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2649680,
+      "on": "2030-04-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2538350,
+      "on": "2030-05-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2595190,
+      "on": "2030-06-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2485130,
+      "on": "2030-07-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2539700,
+      "on": "2030-08-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2511950,
+      "on": "2030-09-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2403810,
+      "on": "2030-10-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2454910,
+      "on": "2030-11-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2348100,
+      "on": "2030-12-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2396830,
+      "on": "2031-01-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2367740,
+      "on": "2031-02-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2112080,
+      "on": "2031-03-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2306640,
+      "on": "2031-04-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2203260,
+      "on": "2031-05-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2245810,
+      "on": "2031-06-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2143850,
+      "on": "2031-07-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2183860,
+      "on": "2031-08-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2152790,
+      "on": "2031-09-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2052990,
+      "on": "2031-10-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2089120,
+      "on": "2031-11-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1990800,
+      "on": "2031-12-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2024280,
+      "on": "2032-01-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1991710,
+      "on": "2032-02-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1832460,
+      "on": "2032-03-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1924480,
+      "on": "2032-04-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1829980,
+      "on": "2032-05-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1856590,
+      "on": "2032-06-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1763670,
+      "on": "2032-07-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1787460,
+      "on": "2032-08-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1752680,
+      "on": "2032-09-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1662170,
+      "on": "2032-10-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1681620,
+      "on": "2032-11-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1592760,
+      "on": "2032-12-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1609250,
+      "on": "2033-01-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1572810,
+      "on": "2033-02-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1387380,
+      "on": "2033-03-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1497500,
+      "on": "2033-04-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1412920,
+      "on": "2033-05-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1421730,
+      "on": "2033-06-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1338900,
+      "on": "2033-07-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1344560,
+      "on": "2033-08-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1305650,
+      "on": "2033-09-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1225520,
+      "on": "2033-10-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1226340,
+      "on": "2033-11-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1148050,
+      "on": "2033-12-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1145560,
+      "on": "2034-01-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1104790,
+      "on": "2034-02-01",
+      "required": 5510260
+    },
+    {
+      "interest": 960700,
+      "on": "2034-03-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1021120,
+      "on": "2034-04-01",
+      "required": 5510260
+    },
+    {
+      "interest": 947600,
+      "on": "2034-05-01",
+      "required": 5510260
+    },
+    {
+      "interest": 936560,
+      "on": "2034-06-01",
+      "required": 5510260
+    },
+    {
+      "interest": 864990,
+      "on": "2034-07-01",
+      "required": 5510260
+    },
+    {
+      "interest": 850430,
+      "on": "2034-08-01",
+      "required": 5510260
+    },
+    {
+      "interest": 806890,
+      "on": "2034-09-01",
+      "required": 5510260
+    },
+    {
+      "interest": 738340,
+      "on": "2034-10-01",
+      "required": 5510260
+    },
+    {
+      "interest": 718380,
+      "on": "2034-11-01",
+      "required": 5510260
+    },
+    {
+      "interest": 651880,
+      "on": "2034-12-01",
+      "required": 5510260
+    },
+    {
+      "interest": 628220,
+      "on": "2035-01-01",
+      "required": 5510260
+    },
+    {
+      "interest": 582600,
+      "on": "2035-02-01",
+      "required": 5510260
+    },
+    {
+      "interest": 484640,
+      "on": "2035-03-01",
+      "required": 5510250
+    },
+    {
+      "interest": 489620,
+      "on": "2035-04-01",
+      "required": 5510250
+    },
+    {
+      "interest": 428430,
+      "on": "2035-05-01",
+      "required": 5510250
+    },
+    {
+      "interest": 395230,
+      "on": "2035-06-01",
+      "required": 5510250
+    },
+    {
+      "interest": 336240,
+      "on": "2035-07-01",
+      "required": 5510250
+    },
+    {
+      "interest": 299110,
+      "on": "2035-08-01",
+      "required": 5510250
+    },
+    {
+      "interest": 250430,
+      "on": "2035-09-01",
+      "required": 5510250
+    },
+    {
+      "interest": 194790,
+      "on": "2035-10-01",
+      "required": 5510250
+    },
+    {
+      "interest": 151630,
+      "on": "2035-11-01",
+      "required": 5510250
+    },
+    {
+      "interest": 98290,
+      "on": "2035-12-01",
+      "required": 5510250
+    },
+    {
+      "interest": 51000,
+      "on": "2036-01-01",
+      "required": 5510240
+    }
+  ],
+  "minimum_payoff": "2036-01-15",
+  "months": [
+    {
+      "cash": 0,
+      "extra": 13354840,
+      "fees": 0,
+      "interest": 6406550,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Car",
+          "owed": 117620710,
+          "paid": 4519560
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 398226720,
+          "paid": 5510270
+        },
+        {
+          "cleared": false,
+          "extra": 13354840,
+          "freed": 0,
+          "name": "Phone",
+          "owed": 15559120,
+          "paid": 14970170
+        }
+      ],
+      "on": "2026-02-01",
+      "owed": 531406550,
+      "required": 11645160
+    },
+    {
+      "cash": 0,
+      "extra": 14104920,
+      "fees": 0,
+      "interest": 5424860,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Car",
+          "owed": 114995970,
+          "paid": 4519560
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 396076830,
+          "paid": 5510270
+        },
+        {
+          "cleared": false,
+          "extra": 14104920,
+          "freed": 0,
+          "name": "Phone",
+          "owed": 758610,
+          "paid": 14970170
+        }
+      ],
+      "on": "2026-03-01",
+      "owed": 511831410,
+      "required": 10895080
+    },
+    {
+      "cash": 43750,
+      "extra": 14926420,
+      "fees": 0,
+      "interest": 5646500,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 14158620,
+          "freed": 0,
+          "name": "Car",
+          "owed": 98254770,
+          "paid": 18678180
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 394266890,
+          "paid": 5510270
+        },
+        {
+          "cleared": true,
+          "extra": 767800,
+          "freed": 1615330,
+          "name": "Phone",
+          "owed": 0,
+          "paid": 767800
+        }
+      ],
+      "on": "2026-04-01",
+      "owed": 492521660,
+      "required": 10029830
+    },
+    {
+      "cash": 0,
+      "extra": 15587170,
+      "fees": 0,
+      "interest": 5134950,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 15587170,
+          "freed": 0,
+          "name": "Car",
+          "owed": 80291640,
+          "paid": 19533480
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 392321220,
+          "paid": 5510270
+        }
+      ],
+      "on": "2026-05-01",
+      "owed": 472612860,
+      "required": 9456580
+    },
+    {
+      "cash": 0,
+      "extra": 16189290,
+      "fees": 0,
+      "interest": 4966900,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 16189290,
+          "freed": 0,
+          "name": "Car",
+          "owed": 62103560,
+          "paid": 19489730
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 390476200,
+          "paid": 5510270
+        }
+      ],
+      "on": "2026-06-01",
+      "owed": 452579760,
+      "required": 8810710
+    },
+    {
+      "cash": 0,
+      "extra": 16876110,
+      "fees": 0,
+      "interest": 4466320,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 16876110,
+          "freed": 0,
+          "name": "Car",
+          "owed": 43549820,
+          "paid": 19489730
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 388496260,
+          "paid": 5510270
+        }
+      ],
+      "on": "2026-07-01",
+      "owed": 432046080,
+      "required": 8123890
+    },
+    {
+      "cash": 0,
+      "extra": 17610280,
+      "fees": 0,
+      "interest": 4264400,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 17610280,
+          "freed": 0,
+          "name": "Car",
+          "owed": 24694980,
+          "paid": 19489730
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 386615500,
+          "paid": 5510270
+        }
+      ],
+      "on": "2026-08-01",
+      "owed": 411310480,
+      "required": 7389720
+    },
+    {
+      "cash": 0,
+      "extra": 18396310,
+      "fees": 0,
+      "interest": 3904210,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 18396310,
+          "freed": 0,
+          "name": "Car",
+          "owed": 5497510,
+          "paid": 19489740
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 384717180,
+          "paid": 5510260
+        }
+      ],
+      "on": "2026-09-01",
+      "owed": 390214690,
+      "required": 6603690
+    },
+    {
+      "cash": 250030,
+      "extra": 19239710,
+      "fees": 0,
+      "interest": 3471100,
+      "loans": [
+        {
+          "cleared": true,
+          "extra": 5548120,
+          "freed": 4519560,
+          "name": "Car",
+          "owed": 0,
+          "paid": 5548120
+        },
+        {
+          "cleared": false,
+          "extra": 13691590,
+          "freed": 0,
+          "name": "Home",
+          "owed": 368935820,
+          "paid": 19201850
+        }
+      ],
+      "on": "2026-10-01",
+      "owed": 368935820,
+      "required": 5510260
+    },
+    {
+      "cash": 0,
+      "extra": 19937740,
+      "fees": 0,
+      "interest": 3362650,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 19937740,
+          "freed": 0,
+          "name": "Home",
+          "owed": 347048440,
+          "paid": 25250030
+        }
+      ],
+      "on": "2026-11-01",
+      "owed": 347048440,
+      "required": 5312290
+    },
+    {
+      "cash": 0,
+      "extra": 19977470,
+      "fees": 0,
+      "interest": 3053410,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 19977470,
+          "freed": 0,
+          "name": "Home",
+          "owed": 325101850,
+          "paid": 25000000
+        }
+      ],
+      "on": "2026-12-01",
+      "owed": 325101850,
+      "required": 5022530
+    },
+    {
+      "cash": 0,
+      "extra": 20269390,
+      "fees": 0,
+      "interest": 2951730,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 20269390,
+          "freed": 0,
+          "name": "Home",
+          "owed": 303053580,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-01-01",
+      "owed": 303053580,
+      "required": 4730610
+    },
+    {
+      "cash": 0,
+      "extra": 20567130,
+      "fees": 0,
+      "interest": 2744490,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 20567130,
+          "freed": 0,
+          "name": "Home",
+          "owed": 280798070,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-02-01",
+      "owed": 280798070,
+      "required": 4432870
+    },
+    {
+      "cash": 0,
+      "extra": 20870850,
+      "fees": 0,
+      "interest": 2281420,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 20870850,
+          "freed": 0,
+          "name": "Home",
+          "owed": 258079490,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-03-01",
+      "owed": 258079490,
+      "required": 4129150
+    },
+    {
+      "cash": 0,
+      "extra": 21180990,
+      "fees": 0,
+      "interest": 2321740,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 21180990,
+          "freed": 0,
+          "name": "Home",
+          "owed": 235401230,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-04-01",
+      "owed": 235401230,
+      "required": 3819010
+    },
+    {
+      "cash": 0,
+      "extra": 21497470,
+      "fees": 0,
+      "interest": 2037590,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 21497470,
+          "freed": 0,
+          "name": "Home",
+          "owed": 212438820,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-05-01",
+      "owed": 212438820,
+      "required": 3502530
+    },
+    {
+      "cash": 0,
+      "extra": 21820570,
+      "fees": 0,
+      "interest": 1892640,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 21820570,
+          "freed": 0,
+          "name": "Home",
+          "owed": 189331460,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-06-01",
+      "owed": 189331460,
+      "required": 3179430
+    },
+    {
+      "cash": 0,
+      "extra": 22150370,
+      "fees": 0,
+      "interest": 1618310,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 22150370,
+          "freed": 0,
+          "name": "Home",
+          "owed": 165949770,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-07-01",
+      "owed": 165949770,
+      "required": 2849630
+    },
+    {
+      "cash": 0,
+      "extra": 22487190,
+      "fees": 0,
+      "interest": 1455500,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 22487190,
+          "freed": 0,
+          "name": "Home",
+          "owed": 142405270,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-08-01",
+      "owed": 142405270,
+      "required": 2512810
+    },
+    {
+      "cash": 0,
+      "extra": 22831120,
+      "fees": 0,
+      "interest": 1234080,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 22831120,
+          "freed": 0,
+          "name": "Home",
+          "owed": 118639350,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-09-01",
+      "owed": 118639350,
+      "required": 2168880
+    },
+    {
+      "cash": 0,
+      "extra": 23182380,
+      "fees": 0,
+      "interest": 974820,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 23182380,
+          "freed": 0,
+          "name": "Home",
+          "owed": 94614170,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-10-01",
+      "owed": 94614170,
+      "required": 1817620
+    },
+    {
+      "cash": 0,
+      "extra": 23541300,
+      "fees": 0,
+      "interest": 784610,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 23541300,
+          "freed": 0,
+          "name": "Home",
+          "owed": 70398780,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-11-01",
+      "owed": 70398780,
+      "required": 1458700
+    },
+    {
+      "cash": 0,
+      "extra": 23908000,
+      "fees": 0,
+      "interest": 535610,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 23908000,
+          "freed": 0,
+          "name": "Home",
+          "owed": 45934390,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-12-01",
+      "owed": 45934390,
+      "required": 1092000
+    },
+    {
+      "cash": 0,
+      "extra": 24282840,
+      "fees": 0,
+      "interest": 326690,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 24282840,
+          "freed": 0,
+          "name": "Home",
+          "owed": 21261080,
+          "paid": 25000000
+        }
+      ],
+      "on": "2028-01-01",
+      "owed": 21261080,
+      "required": 717160
+    },
+    {
+      "cash": 3629990,
+      "extra": 21370010,
+      "fees": 0,
+      "interest": 108930,
+      "loans": [
+        {
+          "cleared": true,
+          "extra": 21370010,
+          "freed": 5510270,
+          "name": "Home",
+          "owed": 0,
+          "paid": 21370010
+        }
+      ],
+      "on": "2028-02-01",
+      "owed": 0,
+      "required": 0
+    }
+  ],
+  "opening": 550000000,
+  "payoff": "2028-02-01",
+  "policies": 96,
+  "source": "Synthetic portfolio from internal/app/advice_render_test.go fixedReport; not bank-verified",
+  "strength": "proven_optimal"
+}
