@@ -50,10 +50,8 @@ window.Telegram?.WebApp?.onEvent?.("activated", checkBuild);
 // tab switch lands on a ready screen instead of a spinner.
 prefetch(["api/loans", "api/budget", "api/plan"]);
 
-const requested = new URLSearchParams(location.search).get("screen");
-go(
-  requested === "budget" ? "budget"
-    : requested === "plan" ? "plan"
-      : requested === "loan" || requested === "add" ? "add"
-        : "loans",
-);
+// The bot deep-links by screen name; an unknown name lands on the loans.
+// A loan id beside the name opens that loan.
+const query = new URLSearchParams(location.search);
+const requested = query.get("screen") || "loans";
+go(requested, query.get("id") ? { id: query.get("id") } : null);

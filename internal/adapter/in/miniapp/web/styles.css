@@ -24,12 +24,14 @@ button{font:inherit;color:inherit}
 
 /* ---------- app bar ---------- */
 .appbar{
-  position:sticky;top:0;z-index:15;display:grid;grid-template-columns:44px 1fr 44px;align-items:center;
+  position:sticky;top:0;z-index:15;display:grid;grid-template-columns:minmax(44px,max-content) minmax(0,1fr) minmax(44px,max-content);align-items:center;
   min-height:52px;padding:0 6px;background:color-mix(in srgb,var(--bg) 92%,transparent);
   backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
 }
-.appbar h1{margin:0;font-size:16px;font-weight:600;text-align:center;letter-spacing:-.01em;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.appbar h1{margin:0;font-size:16px;font-weight:600;text-align:center;letter-spacing:-.01em;grid-column:2;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.appbar .back{grid-column:1;justify-self:start}
+.appbar .txt{grid-column:3}
 .appbar button{border:0;background:none;min-height:44px;min-width:44px;padding:0;cursor:pointer;
   color:var(--hint);display:grid;place-items:center;border-radius:var(--r-sm)}
 .appbar button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -78,8 +80,8 @@ body.tg-back .appbar .back{visibility:hidden}
 .kv div{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line);font-size:13.5px}
 .kv div:first-child{border-top:0;padding-top:2px}
 .kv div:last-child{padding-bottom:2px}
-.kv span{color:var(--hint);min-width:0}
-.kv b{font-weight:600;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0}
+.kv span{color:var(--hint);min-width:0;flex:1 1 auto}
+.kv b{font-weight:600;text-align:right;font-variant-numeric:tabular-nums;flex:0 1 auto;min-width:0;max-width:62%}
 .kv b.gold{color:var(--brass-ink)}
 .kv b.ok{color:var(--ok)}
 .kv b.bad{color:var(--danger)}
@@ -154,15 +156,16 @@ details.fold[open] summary::after{transform:rotate(90deg)}
 details.fold .fold-body{padding:0 14px 12px;display:grid;gap:10px}
 
 /* ---------- choice rows (strategy) ---------- */
-.opt{display:grid;grid-template-columns:18px 1fr auto;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line);
+.opt{display:grid;grid-template-columns:18px minmax(0,1fr);gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line);
   width:100%;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left;cursor:pointer;font:inherit}
 .opt:first-child{border-top:0;padding-top:2px}
 .opt:last-child{padding-bottom:2px}
 .opt i{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--line2);display:block}
 .opt.on i{border-color:var(--accent);background:radial-gradient(var(--accent) 42%,transparent 48%)}
+.opt .l1{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .opt b{font-weight:600;font-size:14px;display:block}
 .opt small{display:block;color:var(--hint);font-size:12px}
-.opt em{font-style:normal;font-size:12.5px;color:var(--hint);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.opt em{font-style:normal;font-size:12.5px;color:var(--hint);text-align:right;flex-shrink:1;min-width:0;font-variant-numeric:tabular-nums}
 .opt.on em{color:var(--brass-ink);font-weight:600}
 
 /* ---------- stacked bar: required in green, extra in brass ---------- */
@@ -211,7 +214,7 @@ nav.tabs button{
 nav.tabs button svg{width:22px;height:22px;display:block;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 nav.tabs button.on{color:var(--accent)}
 body.mb-on nav.tabs,body.sub nav.tabs{display:none}
-body.sub{padding-bottom:24px}
+body.sub{padding-bottom:40px}
 
 /* ---------- states ---------- */
 .toast{

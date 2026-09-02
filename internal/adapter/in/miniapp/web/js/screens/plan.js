@@ -36,9 +36,9 @@ const HTML = `
       <div class="track-cap"><span data-i18n="plan.today">այսօր</span><span id="pl-finish-short"></span></div>
     </div>
     <div class="card" id="plan-goals">
-      <button type="button" class="opt" data-goal="cheapest"><i></i><span><b data-i18n="plan.g.cheapest">Ամենաքիչ տոկոս</b><small data-i18n="plan.g.cheapest.desc"></small></span><em></em></button>
-      <button type="button" class="opt" data-goal="soonest"><i></i><span><b data-i18n="plan.g.soonest">Ամենաշուտ</b><small data-i18n="plan.g.soonest.desc"></small></span><em></em></button>
-      <button type="button" class="opt" data-goal="first"><i></i><span><b data-i18n="plan.g.first">Առաջին հաղթանակ</b><small data-i18n="plan.g.first.desc"></small></span><em></em></button>
+      <button type="button" class="opt" data-goal="cheapest"><i></i><span><span class="l1"><b data-i18n="plan.g.cheapest">Ամենաքիչ տոկոս</b><em></em></span><small data-i18n="plan.g.cheapest.desc"></small></span></button>
+      <button type="button" class="opt" data-goal="soonest"><i></i><span><span class="l1"><b data-i18n="plan.g.soonest">Ամենաշուտ</b><em></em></span><small data-i18n="plan.g.soonest.desc"></small></span></button>
+      <button type="button" class="opt" data-goal="first"><i></i><span><span class="l1"><b data-i18n="plan.g.first">Առաջին հաղթանակ</b><em></em></span><small data-i18n="plan.g.first.desc"></small></span></button>
     </div>
     <div class="card">
       <p class="sec" id="pl-month-lbl" style="margin:0 0 2px"></p>
