@@ -235,5 +235,10 @@ body.sub{padding-bottom:24px}
   border-radius:var(--r-sm);padding:9px 12px;font-size:13px;font-weight:500}
 .banner button{border:0;background:none;color:inherit;font-weight:600;cursor:pointer;padding:4px 6px}
 .banner[hidden]{display:none}
+.banner{margin:6px 16px 0;max-width:528px}
+@media (min-width:592px){.banner{margin-left:auto;margin-right:auto}}
+.row.override{align-items:center}
+.row.override .o-month{flex:1.2;min-width:0}
+.row.override .o-amount{flex:1;min-width:0}
 /* Masked amounts: the eye on the loans hero hides every figure on screen. */
 body.masked .num,body.masked [data-num]{filter:blur(6px);user-select:none}

@@ -6,11 +6,13 @@ import "./screens/loans.js";
 import "./screens/loan.js";
 import "./screens/add.js";
 import "./screens/budget.js";
+import "./screens/budget-edit.js";
 import "./screens/plan.js";
 import { buildTabs, go } from "./nav.js";
-import { prefetch } from "./api.js";
+import { prefetch, watchOffline } from "./api.js";
 
 buildTabs();
+watchOffline();
 
 // The build badge: the one honest answer to "which version am I looking
 // at". It reads the stamp off this module's own URL, so a cached copy

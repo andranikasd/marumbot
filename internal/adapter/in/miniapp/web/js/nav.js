@@ -88,6 +88,8 @@ export function buildTabs() {
     const t = e.target.closest("[data-go]");
     if (t) { haptic.tap(); go(t.dataset.go, t.dataset.arg ? { id: t.dataset.arg } : null); }
   });
+  // The offline banner's retry re-shows the current screen, which reloads it.
+  document.addEventListener("marum:retry", () => { if (current) go(current, params); });
   $("appbar-back").addEventListener("click", () => {
     haptic.tap();
     const s = screens.get(current);

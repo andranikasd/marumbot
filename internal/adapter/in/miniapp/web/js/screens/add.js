@@ -1,116 +1,108 @@
-// The add-a-loan screen: the form, live validation, and the client-side
-// estimate. The estimate is approximate on purpose — the authoritative
-// figure is computed on the server, where it is tested against real bank
-// schedules.
+// The add-a-loan screen: the terms, the dates, a fold for what is optional,
+// and a live estimate. The estimate is approximate on purpose — the
+// authoritative figure is computed on the server, where it is tested
+// against real bank schedules.
 "use strict";
-import { haptic, toast, fmtMoney, moneyNum, num, mainButton, group } from "../core.js";
-import { T } from "../i18n.js";
+import { haptic, toast, fmtMoney, fmtDate, fmtMonth, moneyNum, num, monthsBetween, group } from "../core.js";
+import { T, sub } from "../i18n.js";
 import { api, invalidate } from "../api.js";
 import { register, go, currentScreen } from "../nav.js";
 
 const HTML = `
-<h1 data-i18n="title">Ավելացնել վարկ</h1>
-  <p class="lede" data-i18n="lede">Մուտքագրեք վարկի պայմանագրի տվյալները։</p>
-  <form id="f" novalidate>
-    <p class="grouplbl" data-i18n="group.contract">Պայմանագիր</p>
-    <div class="field">
-      <label for="principal" data-i18n="principal">Վարկի գումար</label>
-      <div class="row">
-        <input id="principal" name="principal" inputmode="decimal" placeholder="0" required>
-        <select id="currency" name="currency" class="narrow">
-          <option value="AMD" selected>AMD ֏</option>
-          <option value="USD">USD $</option>
-          <option value="EUR">EUR €</option>
-          <option value="RUB">RUB ₽</option>
-        </select>
-      </div>
-      <p class="error" id="e-principal"></p>
-    </div>
-    <div class="row">
+  <form id="f" novalidate class="stack">
+    <div class="card stack">
       <div class="field">
-        <label for="rate" data-i18n="rate">Տարեկան տոկոսադրույք</label>
-        <div class="in">
-          <input id="rate" name="rate" inputmode="decimal" placeholder="14" required>
-          <span class="unit">%</span>
+        <label for="title" data-i18n="title.field">Անվանում</label>
+        <input id="title" name="title" autocomplete="off" maxlength="60">
+        <p class="error" id="e-title"></p>
+      </div>
+      <div class="field">
+        <label for="principal" data-i18n="principal">Վարկի գումար</label>
+        <div class="row">
+          <input id="principal" name="principal" inputmode="decimal" placeholder="0" required>
+          <select id="currency" name="currency" class="narrow">
+            <option value="AMD" selected>AMD</option>
+            <option value="USD">USD</option>
+            <option value="EUR">EUR</option>
+            <option value="RUB">RUB</option>
+          </select>
         </div>
-        <p class="error" id="e-rate"></p>
+        <p class="error" id="e-principal"></p>
       </div>
-      <div class="field">
-        <label for="day" data-i18n="day">Վճարման օրը</label>
-        <div class="in">
+      <div class="pair">
+        <div class="field">
+          <label for="rate" data-i18n="rate">Տարեկան տոկոսադրույք</label>
+          <div class="in"><input id="rate" name="rate" inputmode="decimal" placeholder="14" required><span class="unit">%</span></div>
+          <p class="error" id="e-rate"></p>
+        </div>
+        <div class="field">
+          <label for="day" data-i18n="day">Վճարման օրը</label>
           <input id="day" name="day" inputmode="numeric" value="15" required>
-          <span class="unit" data-i18n="unit.day">ամսի օր</span>
+          <p class="error" id="e-day"></p>
         </div>
-        <p class="error" id="e-day"></p>
-      </div>
-    </div>
-    <div class="field">
-      <label data-i18n="method">Մարման եղանակ</label>
-      <div class="seg">
-        <input type="radio" name="method" id="m-annuity" value="annuity" checked>
-        <label for="m-annuity" data-i18n="method.annuity">Անուիտետային</label>
-        <input type="radio" name="method" id="m-declining" value="declining">
-        <label for="m-declining" data-i18n="method.declining">Դիֆերենցված</label>
-      </div>
-      <p class="hint" id="method-hint" data-i18n="method.hint">Անուիտետի դեպքում ամսական վճարը նույնն է։</p>
-    </div>
-    <div class="row">
-      <div class="field">
-        <label for="start" data-i18n="start">Սկիզբ</label>
-        <input id="start" name="start" type="date" required>
-        <p class="error" id="e-start"></p>
       </div>
       <div class="field">
-        <label for="maturity" data-i18n="maturity">Ավարտ</label>
-        <input id="maturity" name="maturity" type="date" required>
-        <p class="error" id="e-maturity"></p>
+        <span class="lbl" data-i18n="method">Մարման եղանակ</span>
+        <div class="seg">
+          <input type="radio" name="method" id="m-annuity" value="annuity" checked>
+          <label for="m-annuity" data-i18n="method.annuity">Անուիտետային</label>
+          <input type="radio" name="method" id="m-declining" value="declining">
+          <label for="m-declining" data-i18n="method.declining">Դիֆերենցված</label>
+        </div>
+        <p class="hint" id="method-hint" data-i18n="method.hint"></p>
       </div>
     </div>
-    <p class="grouplbl" data-i18n="group.optional">Լրացուցիչ</p>
-    <details class="optfold" id="optfold">
-      <summary><span><b data-i18n="details.title">Մանրամասներ</b> — <span data-i18n="details.row">անվանում, նշում, մնացորդ, վաղաժամկետ կանոն</span></span></summary>
+
+    <div class="card stack">
+      <div class="pair">
+        <div class="field">
+          <label for="start" data-i18n="start">Սկիզբ</label>
+          <input id="start" name="start" type="date" required>
+          <p class="error" id="e-start"></p>
+        </div>
+        <div class="field">
+          <label for="maturity" data-i18n="maturity">Ավարտ</label>
+          <input id="maturity" name="maturity" type="date" required>
+          <p class="error" id="e-maturity"></p>
+        </div>
+      </div>
+      <p class="hint" id="term" style="margin:0"></p>
+    </div>
+
+    <details class="fold" id="optfold">
+      <summary><span data-i18n="add.optional">Նշում, մնացորդ այսօր, վաղաժամկետ կանոն</span></summary>
       <div class="fold-body">
         <div class="field">
-          <label for="title" data-i18n="title.field">Անվանում</label>
-          <input id="title" name="title" autocomplete="off" maxlength="60">
-          <p class="hint" data-i18n="title.hint">Ինչպե՞ս եք անվանում այս վարկը։</p>
-          <p class="error" id="e-title"></p>
-        </div>
-        <div class="field">
-          <label for="description" data-i18n="description">Նշում (ըստ ցանկության)</label>
+          <label for="description" data-i18n="description">Նշում</label>
           <input id="description" name="description" autocomplete="off" maxlength="200">
-          <p class="hint" data-i18n="description.hint">Բանկի անուն կամ հաշվեհամար պետք չէ։</p>
+          <p class="hint" data-i18n="description.hint"></p>
         </div>
         <div class="field">
-          <label for="balance" data-i18n="balance">Մնացորդ այսօր (ըստ ցանկության)</label>
-          <div class="in">
-            <input id="balance" name="balance" inputmode="decimal" placeholder="0">
-            <span class="unit" id="u-balance">AMD</span>
-          </div>
-          <p class="hint" data-i18n="balance.hint">Մայր գումարի մնացորդը բանկի քաղվածքից։ Դատարկ՝ եթե վարկը նոր է։</p>
+          <label for="balance" data-i18n="balance">Մնացորդ այսօր</label>
+          <div class="in unit-w"><input id="balance" name="balance" inputmode="decimal" placeholder="0"><span class="unit" id="u-balance">AMD</span></div>
+          <p class="hint" data-i18n="balance.hint"></p>
           <p class="error" id="e-balance"></p>
         </div>
         <div class="field">
           <label for="prepay" data-i18n="prepay">Ավել վճարելուց հետո</label>
           <select id="prepay" name="prepay">
-            <option value="" data-i18n="prepay.unsure">Չգիտեմ՝ կհաշվեմ երկու ձևով</option>
-            <option value="shorten_term" data-i18n="prepay.shorten">Վճարը նույնն է, ժամկետը կրճատվում է</option>
-            <option value="reduce_instalment" data-i18n="prepay.reduce">Բանկը նվազեցնում է ամսական վճարը</option>
+            <option value="" data-i18n="prepay.unsure"></option>
+            <option value="shorten_term" data-i18n="prepay.shorten"></option>
+            <option value="reduce_instalment" data-i18n="prepay.reduce"></option>
           </select>
-          <p class="hint" data-i18n="prepay.hint">Ինչ է անում բանկը վաղաժամկետ մարումից հետո։ Գրված է պայմանագրում։</p>
+          <p class="hint" data-i18n="prepay.hint"></p>
         </div>
       </div>
     </details>
-    <div class="summary" id="summary" hidden>
-      <p class="label" data-i18n="sum.title">Նախնական հաշվարկ</p>
-      <p class="big"><span id="s-payment">—</span><small data-i18n="sum.permonth">ամսական</small></p>
-      <dl>
-        <dt data-i18n="sum.count">Վճարումների թիվ</dt><dd id="s-count">—</dd>
-        <dt data-i18n="sum.interest">Ընդհանուր տոկոս</dt><dd id="s-interest">—</dd>
-        <dt data-i18n="sum.total">Ընդամենը</dt><dd id="s-total">—</dd>
-      </dl>
-      <p class="note" data-i18n="sum.note">Հաշվարկը մոտավոր է մինչև բանկի հաստատումը։</p>
+
+    <div class="card tint kv" id="summary" hidden>
+      <div><span data-i18n="sum.payment">Ամսական վճարում</span><b class="num" id="s-payment">—</b></div>
+      <div><span data-i18n="sum.count">Վճարումների թիվ</span><b class="num" id="s-count">—</b></div>
+      <div><span data-i18n="sum.interest">Ընդհանուր տոկոս</span><b class="num" id="s-interest">—</b></div>
+      <div><span data-i18n="sum.free">Ազատ պարտքից</span><b id="s-free">—</b></div>
     </div>
+    <p class="hint" id="sum-note" style="margin:-4px 2px 0;text-align:center" data-i18n="sum.note" hidden></p>
+    <button class="cta" type="submit" id="add-save" data-i18n="add.save">Պահպանել վարկը</button>
   </form>
 `;
 
@@ -168,16 +160,28 @@ function occurrences(start, day, maturity) {
   return out;
 }
 
+// The term caption: months between the dates and the first instalment, so
+// the form reads like a contract without asking for a term the API does
+// not take.
+function caption() {
+  const s = $("start").value, m = $("maturity").value, d = num($("day").value);
+  const el = $("term");
+  if (!s || !m || m <= s || !Number.isInteger(d)) { el.textContent = ""; return; }
+  const first = occurrences(s, d, m)[0];
+  el.textContent = sub("add.term", { n: monthsBetween(s, m), d: first ? fmtDate(iso(first)) : "—" });
+}
+
 // Dated ACT/365 in floats: approximate on purpose; shaped like the server's
 // integer arithmetic so the preview does not contradict it.
 function estimate() {
   if (currentScreen() !== "add") return;
   $("method-hint").textContent = T(method() === "declining" ? "method.hint.declining" : "method.hint");
   $("u-balance").textContent = $("currency").value;
+  caption();
   const v = validate();
-  if (!v.ok) { $("summary").hidden = true; mainButton.hide(); return; }
+  if (!v.ok) { $("summary").hidden = true; $("sum-note").hidden = true; return; }
   const dates = occurrences($("start").value, v.d, $("maturity").value);
-  if (dates.length === 0) { $("summary").hidden = true; mainButton.hide(); return; }
+  if (dates.length === 0) { $("summary").hidden = true; $("sum-note").hidden = true; return; }
 
   const annual = v.r / 100, declining = method() === "declining";
   const spans = [];
@@ -218,18 +222,19 @@ function estimate() {
   $("s-payment").textContent = fmtMoney(payment, cur);
   $("s-count").textContent = String(spans.length);
   $("s-interest").textContent = fmtMoney(interest, cur);
-  $("s-total").textContent = fmtMoney(v.p + interest, cur);
+  $("s-free").textContent = fmtMonth(iso(dates[dates.length - 1]));
   $("summary").hidden = false;
-  mainButton.show(T("save"));
+  $("sum-note").hidden = false;
 }
 
-async function saveLoan() {
+async function saveLoan(e) {
+  e?.preventDefault();
   if (busy) return;
   submitted = true;
   const v = validate();
   if (!v.ok) { haptic.bad(); return; }
   busy = true;
-  mainButton.busy(T("saving"));
+  $("add-save").disabled = true;
   try {
     // The name is optional on the form: an unnamed loan is filed under its
     // amount, which stays distinct across typical portfolios.
@@ -254,6 +259,7 @@ async function saveLoan() {
     for (const el of $("f").querySelectorAll("input,select")) delete el.dataset.touched;
     submitted = false;
     resetDates();
+    $("optfold").open = false;
     invalidate("api/");
     toast(T("saved"));
     go("loans");
@@ -262,7 +268,7 @@ async function saveLoan() {
     $("e-title").textContent = err.message === "too_many_loans" ? T("err.too_many") : T("err.save");
   } finally {
     busy = false;
-    mainButton.done(T("save"));
+    $("add-save").disabled = false;
   }
 }
 
@@ -270,22 +276,20 @@ register({
   id: "add",
   icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 8.5v7M8.5 12h7"/></svg>',
   labelKey: "tab.add",
+  titleKey: "title",
   html: HTML,
   onMount() {
     resetDates();
     group($("principal"));
     group($("balance"));
+    $("title").placeholder = T("title.ph");
     for (const el of $("f").querySelectorAll("input,select")) {
       el.addEventListener("input", () => { el.dataset.touched = "1"; estimate(); });
       el.addEventListener("change", () => { el.dataset.touched = "1"; estimate(); });
       el.addEventListener("blur", () => { el.dataset.touched = "1"; estimate(); });
     }
     for (const el of document.querySelectorAll('input[name="method"]')) el.addEventListener("change", haptic.pick);
-    $("f").addEventListener("submit", (e) => { e.preventDefault(); saveLoan(); });
-    mainButton.own(saveLoan);
+    $("f").addEventListener("submit", saveLoan);
   },
-  onShow() {
-    mainButton.own(saveLoan);
-    estimate();
-  },
+  onShow() { estimate(); },
 });

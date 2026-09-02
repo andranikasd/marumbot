@@ -1,85 +1,102 @@
-// The plan, told as three facts: what to pay now, when the first loan dies,
-// when it all ends. The hero answers everything at once — pay this much,
-// free on this date, saving this much. Below it only two things remain: this
-// month's payments and the milestones. The month-by-month sheet is one tap
-// away ("all months"), not the default reading: most months of a repayment
-// are the same month repeated, and a reader asked to study them stops
-// reading.
+// The plan. The answer comes first — the debt-free date, the monthly
+// amount, the saving — then the strategy as three rows with their
+// consequence, then this month's payments, then the milestones. The
+// month-by-month sheet is one tap away, not the default reading: most
+// months of a repayment are the same month repeated.
 "use strict";
-import { haptic, toast, fmtMoney, fmtDate, esc, lang } from "../core.js";
+import { haptic, toast, fmtMoney, fmtDate, fmtMonth, fmtFull, esc } from "../core.js";
 import { T, sub } from "../i18n.js";
 import { api, getJSON, invalidate } from "../api.js";
 import { register } from "../nav.js";
 
 const HTML = `
-  <h1 data-i18n="plan.title">Իմ պլանը</h1>
-  <div class="goalseg" id="plan-goals">
-    <button type="button" data-goal="cheapest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5 5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg><span data-i18n="plan.g.cheapest">Ամենաքիչ տոկոս</span></button>
-    <button type="button" data-goal="soonest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4M6 4h11l-2.5 3.5L17 11H6"/></svg><span data-i18n="plan.g.soonest">Ամենաշուտ</span></button>
-    <button type="button" data-goal="first"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg><span data-i18n="plan.g.first">Առաջին վարկը</span></button>
+  <div id="plan-loading" hidden><div class="skel hero-skel"></div><div class="skel" style="margin-top:12px"></div><div class="skel" style="margin-top:10px"></div></div>
+  <div id="plan-blocked" class="card stack" hidden>
+    <b id="plan-blocked-title"></b>
+    <p class="lede" id="plan-blocked-why" style="margin:0"></p>
+    <button class="cta" type="button" id="plan-blocked-fix"></button>
   </div>
-  <p class="goal-caption" id="plan-caption"></p>
-  <div id="plan-loading" hidden><div class="skel hero-skel"></div><div class="skel"></div><div class="skel"></div></div>
-  <div id="plan-blocked" hidden>
-    <div class="card"><b data-i18n="plan.blocked">Բյուջեն չի բավականացնում</b>
-      <p class="meta" id="plan-blocked-why"></p>
-      <button class="cta" type="button" data-go="budget" data-i18n="plan.blocked.fix">💰 Բարձրացնել բյուջեն</button>
-    </div>
-  </div>
-  <div id="plan-empty" hidden>
-    <p class="lede" data-i18n="plan.empty">Պլանի համար պետք են վարկեր և բյուջե։</p>
+  <div class="state" id="plan-empty" hidden>
+    <div class="tile lg">M</div>
+    <b data-i18n="plan.empty.title">Պլան դեռ չկա</b>
+    <span data-i18n="plan.empty">Պլանի համար պետք են վարկեր և բյուջե։</span>
     <button class="cta" type="button" data-go="add" data-i18n="plan.empty.add">Ավելացնել վարկ</button>
   </div>
-  <div id="plan-body" hidden>
+  <div id="plan-body" class="stack" hidden>
     <div class="hero">
-      <div class="k" id="pl-pay"></div>
+      <div class="k"><span data-i18n="plan.debtfree">Ազատ պարտքից</span><span class="pill" id="pl-approved" hidden data-i18n="plan.approved_badge">Հաստատված պլան</span></div>
       <div class="v" id="pl-date"></div>
-      <div class="sub" id="pl-cost"></div>
-      <div class="save" id="pl-save" hidden></div>
-      <div class="plan-progress"><i id="pl-bar"></i></div>
-      <div class="plan-progress-cap"><span data-i18n="plan.today">այսօր</span><span id="pl-finish-short"></span></div>
-      <div><span class="plan-approved" id="pl-approved" hidden data-i18n="plan.approved_badge">✅ Հաստատված պլան</span></div>
+      <div class="sub" id="pl-sub"></div>
+      <div class="kv">
+        <div id="pl-save-row" hidden><span data-i18n="plan.saved">Խնայված տոկոս</span><b class="num gold" id="pl-save"></b></div>
+        <div id="pl-sooner-row" hidden><span data-i18n="plan.sooner">Ավելի շուտ</span><b id="pl-sooner"></b></div>
+        <div><span data-i18n="plan.interest">Ընդհանուր տոկոս</span><b class="num" id="pl-cost"></b></div>
+      </div>
+      <div class="track"><i id="pl-bar"></i></div>
+      <div class="track-cap"><span data-i18n="plan.today">այսօր</span><span id="pl-finish-short"></span></div>
+    </div>
+    <div class="card" id="plan-goals">
+      <button type="button" class="opt" data-goal="cheapest"><i></i><span><b data-i18n="plan.g.cheapest">Ամենաքիչ տոկոս</b><small data-i18n="plan.g.cheapest.desc"></small></span><em></em></button>
+      <button type="button" class="opt" data-goal="soonest"><i></i><span><b data-i18n="plan.g.soonest">Ամենաշուտ</b><small data-i18n="plan.g.soonest.desc"></small></span><em></em></button>
+      <button type="button" class="opt" data-goal="first"><i></i><span><b data-i18n="plan.g.first">Առաջին հաղթանակ</b><small data-i18n="plan.g.first.desc"></small></span><em></em></button>
     </div>
     <div class="card">
-      <p class="cardlbl" id="pl-month-lbl"></p>
-      <div id="pl-month-rows"></div>
+      <p class="sec" id="pl-month-lbl" style="margin:0 0 2px"></p>
+      <div class="stack-bar" id="pl-stack" hidden><i class="req" id="pl-stack-req"></i><i class="extra" id="pl-stack-extra"></i></div>
+      <div class="kv" id="pl-month-rows"></div>
     </div>
     <ol class="ms" id="pl-ms"></ol>
     <button class="alink" type="button" id="pl-all" hidden></button>
     <ol class="tl" id="pl-list" hidden></ol>
-    <div class="approve-space"></div>
-    <div class="approve-pin"><button class="cta" type="button" id="pl-approve" data-i18n="plan.approve" hidden>✅ Հաստատել այս պլանը</button></div>
+    <div class="pin-space"></div>
+    <div class="pin"><button class="cta gold" type="button" id="pl-approve" data-i18n="plan.approve" hidden>Հաստատել պլանը</button></div>
   </div>
-  <div id="plan-error" hidden>
-    <p class="lede" data-i18n="plan.error">Չստացվեց հաշվել պլանը։</p>
-    <button class="cta" type="button" id="plan-retry" data-i18n="retry">Փորձել նորից</button>
+  <div class="state" id="plan-error" hidden>
+    <b data-i18n="plan.error">Չստացվեց հաշվել պլանը։</b>
+    <button class="alink" type="button" id="plan-retry" data-i18n="retry">Փորձել նորից</button>
   </div>
 `;
 
 const $ = (id) => document.getElementById(id);
 let goal = new URLSearchParams(location.search).get("goal") || "";
 let loadVersion = 0;
-
-// A payoff or milestone sits years out, so it reads as month + year; fmtDate
-// (day + month) is for dates inside the running year.
-const fmtMonth = (iso) => {
-  const d = new Date(iso + "T00:00:00");
-  return Number.isNaN(d.getTime()) ? iso
-    : new Intl.DateTimeFormat(lang === "en" ? "en-GB" : "hy-AM", { month: "short", year: "numeric" }).format(d);
-};
-// A full date with its year, for facts that live outside the running year —
-// a balance stated long ago, for one.
-const fmtFull = (iso) => {
-  const d = new Date(iso + "T00:00:00");
-  return Number.isNaN(d.getTime()) ? iso
-    : new Intl.DateTimeFormat(lang === "en" ? "en-GB" : "hy-AM", { day: "numeric", month: "short", year: "numeric" }).format(d);
-};
+const goals = ["cheapest", "soonest", "first"];
+const normalise = (g) => (g === "fastest" ? "soonest" : g === "first_win" ? "first" : g === "soonest" || g === "first" ? g : "cheapest");
 
 function chips(active) {
-  for (const b of document.querySelectorAll("#plan-goals button")) {
+  for (const b of document.querySelectorAll("#plan-goals .opt")) {
     b.classList.toggle("on", b.dataset.goal === active);
+    b.setAttribute("aria-pressed", String(b.dataset.goal === active));
   }
-  $("plan-caption").textContent = T("plan.g." + active + ".desc");
+}
+
+// Each row's consequence: the saving, the finish month, the first loan
+// cleared. Fetched per goal from the plan the server already caches, and
+// filled in as each answer lands; a row without an answer stays quiet.
+function consequences() {
+  for (const g of goals) {
+    getJSON("api/plan?goal=" + g, (d) => {
+      const em = document.querySelector('#plan-goals .opt[data-goal="' + g + '"] em');
+      if (!em || !d || d.empty || d.blocked || !d.summary) return;
+      const m = (minor) => fmtMoney(minor / 100, d.currency);
+      if (g === "cheapest") em.textContent = d.summary.saved_minor > 0 ? sub("plan.saves", { s: m(d.summary.saved_minor) }) : fmtMonth(d.summary.payoff_date);
+      else if (g === "soonest") em.textContent = fmtMonth(d.summary.payoff_date);
+      else {
+        const first = (d.months || []).find((mo) => mo.cleared);
+        em.textContent = first ? first.cleared + ", " + fmtMonth(first.on) : fmtMonth(d.summary.payoff_date);
+      }
+    }).catch(() => { /* the row simply lacks its aside */ });
+  }
+}
+
+function blocked(titleKey, why, fixKey, fixGo) {
+  $("plan-body").hidden = true;
+  $("plan-blocked-title").textContent = T(titleKey);
+  $("plan-blocked-why").textContent = why;
+  const fix = $("plan-blocked-fix");
+  fix.textContent = T(fixKey);
+  fix.dataset.go = fixGo;
+  $("plan-blocked").hidden = false;
 }
 
 async function load(g) {
@@ -95,33 +112,20 @@ async function load(g) {
       $("plan-blocked").hidden = true;
       if (d.empty) { $("plan-body").hidden = true; $("plan-empty").hidden = false; return; }
       // The blocked card serves two facts-with-a-fix: a short budget and a
-      // stale balance. Both branches set every mutable part — title, reason,
-      // button — so whichever fired last cannot leak into the other.
+      // stale balance. A stale as-of is a year-scale fact: it keeps its year.
       if (d.blocked === "balance_stale") {
-        $("plan-body").hidden = true;
-        $("plan-blocked").querySelector("b").textContent = T("plan.stale");
-        // A stale as-of is a year-scale fact: the date keeps its year.
-        $("plan-blocked-why").textContent = sub("plan.stale.why", { d: fmtFull(d.as_of) });
-        const fix = $("plan-blocked").querySelector("button");
-        fix.textContent = T("plan.stale.fix");
-        fix.dataset.go = "loans";
-        $("plan-blocked").hidden = false;
+        blocked("plan.stale", sub("plan.stale.why", { d: fmtFull(d.as_of) }), "plan.stale.fix", "loans");
         return;
       }
       if (d.blocked) {
-        $("plan-body").hidden = true;
-        $("plan-blocked").querySelector("b").textContent = T("plan.blocked");
-        $("plan-blocked-why").textContent = sub("plan.blocked.why", { d: fmtDate(d.on), r: fmtMoney(d.required_major, d.currency), s: fmtMoney(d.short_major, d.currency) });
-        const fix = $("plan-blocked").querySelector("button");
-        fix.textContent = T("plan.blocked.fix");
-        fix.dataset.go = "budget";
-        $("plan-blocked").hidden = false;
+        blocked("plan.blocked", sub("plan.blocked.why", { d: fmtDate(d.on), r: fmtMoney(d.required_major, d.currency), s: fmtMoney(d.short_major, d.currency) }), "plan.blocked.fix", "budget");
         return;
       }
-      goal = g || (d.goal === "fastest" ? "soonest" : d.goal === "first_win" ? "first" : "cheapest");
+      goal = g || normalise(d.goal);
       chips(goal);
       render(d);
       $("plan-body").hidden = false;
+      consequences();
     });
   } catch {
     if (version !== loadVersion) return;
@@ -138,48 +142,56 @@ function render(d) {
   const s = d.summary;
   const months = d.months || [];
 
-  // The hero: the whole promise in two lines and a badge.
-  $("pl-pay").textContent = months.length > 0
-    ? sub("plan.paymo", { p: m(paidOf(months[0])) })
-    : T("plan.hero_k");
   $("pl-date").textContent = fmtMonth(s.payoff_date);
-  $("pl-cost").textContent = sub("plan.cost", { i: m(s.interest_minor) }) +
-    (s.fees_minor > 0 ? sub("plan.cost_fees", { f: m(s.fees_minor) }) : "") +
-    " · " + sub("plan.nmonths", { n: s.months });
-  const save = $("pl-save");
-  if (s.saved_minor > 0) {
-    save.textContent = sub("plan.save", { s: m(s.saved_minor), m: s.saved_months });
-    save.hidden = false;
-  } else save.hidden = true;
+  $("pl-sub").textContent = months.length > 0
+    ? sub("plan.permonth", { n: s.months, p: m(paidOf(months[0])) })
+    : sub("plan.nmonths", { n: s.months });
+  $("pl-save-row").hidden = !(s.saved_minor > 0);
+  $("pl-save").textContent = m(s.saved_minor);
+  $("pl-sooner-row").hidden = !(s.saved_months > 0);
+  $("pl-sooner").textContent = sub("plan.nmonths", { n: s.saved_months });
+  $("pl-cost").textContent = m(s.interest_minor) + (s.fees_minor > 0 ? sub("plan.cost_fees", { f: m(s.fees_minor) }) : "");
   $("pl-finish-short").textContent = fmtMonth(s.payoff_date);
+  $("pl-bar").style.width = "2%";
   $("pl-approved").hidden = !d.approved;
   $("pl-approve").hidden = d.approved;
 
-  // This month: whom to pay and how much. One card, no dates per row — the
-  // cycle has one date and it sits in the label.
+  // This month: whom to pay and how much. The bar splits required from
+  // extra; the rows name each loan; the extra is brass.
   const rows = $("pl-month-rows");
   rows.textContent = "";
   if (months.length > 0) {
-    $("pl-month-lbl").textContent = T("plan.thismonth") + " · " + fmtDate(months[0].on);
-    for (const ln of months[0].loans || []) {
+    const mo = months[0];
+    $("pl-month-lbl").innerHTML = esc(T("plan.thismonth")) + " <span>" + esc(fmtDate(mo.on)) + "</span>";
+    const total = paidOf(mo);
+    $("pl-stack").hidden = total <= 0;
+    $("pl-stack-req").style.width = total > 0 ? ((mo.required_minor + mo.fees_minor) * 100 / total) + "%" : "0";
+    $("pl-stack-extra").style.width = total > 0 ? (mo.extra_minor * 100 / total) + "%" : "0";
+    for (const ln of mo.loans || []) {
       if (ln.paid_minor <= 0) continue;
-      const row = document.createElement("div");
-      row.className = "prow" + (ln.extra_minor > 0 ? " extra" : "");
-      const who = document.createElement("span"); who.className = "who"; who.textContent = ln.name;
-      const amt = document.createElement("span"); amt.className = "amt num"; amt.textContent = m(ln.paid_minor);
-      row.append(who, amt);
-      rows.append(row);
+      const base = ln.paid_minor - ln.extra_minor;
+      if (base > 0) {
+        const row = document.createElement("div");
+        const who = document.createElement("span"); who.textContent = ln.name;
+        const amt = document.createElement("b"); amt.className = "num"; amt.textContent = m(base);
+        row.append(who, amt); rows.append(row);
+      }
+      if (ln.extra_minor > 0) {
+        const row = document.createElement("div");
+        const who = document.createElement("span"); who.textContent = sub("plan.extra_to", { n: ln.name });
+        const amt = document.createElement("b"); amt.className = "num gold"; amt.textContent = m(ln.extra_minor);
+        row.append(who, amt); rows.append(row);
+      }
     }
   }
 
-  // The milestones: today, each payoff with what it frees, the end. The
-  // long "loan clears, frees X" sentence became a name and a brass pill.
+  // The milestones: today, each payoff with what it frees, the end.
   const ms = $("pl-ms");
   ms.textContent = "";
   const li = (when, whatHTML, gold) => {
     const el = document.createElement("li");
     if (gold) el.className = "gold";
-    el.innerHTML = '<div class="when">' + esc(when) + '</div><div class="what">' + whatHTML + "</div>";
+    el.innerHTML = '<span class="when">' + esc(when) + '</span><span class="what">' + whatHTML + "</span>";
     ms.append(el);
   };
   li(T("plan.today"), esc(T("plan.same")), false);
@@ -188,12 +200,12 @@ function render(d) {
     let pill = "";
     for (const ln of mo.loans || []) {
       if (ln.cleared && ln.freed_minor > 0) {
-        pill = ' <span class="pill">' + esc(sub("plan.freed", { f: m(ln.freed_minor) })) + "</span>";
+        pill = ' <span class="pill brass">' + esc(sub("plan.freed", { f: m(ln.freed_minor) })) + "</span>";
       }
     }
     li(fmtMonth(mo.on), esc(sub("plan.paidoff", { n: mo.cleared })) + pill, true);
   }
-  li(fmtMonth(s.payoff_date), esc(T("plan.debtfree")) + " 🏁", true);
+  li(fmtMonth(s.payoff_date), esc(T("plan.debtfree")), true);
 
   // The sheet, one tap away: the timeline renders lazily on first open.
   const all = $("pl-all");
@@ -201,7 +213,7 @@ function render(d) {
   list.hidden = true;
   list.textContent = "";
   all.hidden = months.length === 0;
-  all.textContent = "📄 " + sub("plan.allmonths", { n: s.months });
+  all.textContent = sub("plan.allmonths", { n: s.months });
   all.onclick = () => {
     haptic.tap();
     if (list.textContent === "") renderTimeline(list, months, m, s);
@@ -209,8 +221,8 @@ function render(d) {
   };
 }
 
-// The full timeline, unchanged in spirit: months where something happens,
-// identical stretches folded into one openable line.
+// The full timeline: months where something happens, identical stretches
+// folded into one openable line.
 function renderTimeline(list, months, m, s) {
   const milestone = (mo, i) => {
     if (i === 0 || i === months.length - 1 || mo.cleared) return true;
@@ -247,7 +259,7 @@ function renderTimeline(list, months, m, s) {
     i = j;
   }
   const flag = document.createElement("li");
-  flag.innerHTML = '<div class="finish-flag">🏁 ' + sub("plan.debt_free", { d: fmtDate(s.payoff_date) }) + "</div>";
+  flag.innerHTML = '<div class="finish">' + esc(sub("plan.debt_free", { d: fmtDate(s.payoff_date) })) + "</div>";
   list.appendChild(flag);
 }
 
@@ -263,7 +275,7 @@ function monthCard(mo, m) {
       "</span></li>";
   }
   li.innerHTML = '<div class="mcard">' +
-    '<div class="mhead"><span class="mwhen">' + fmtDate(mo.on) + '</span><span class="mpay">' + m(paid) + "</span></div>" +
+    '<div class="mhead"><span class="mwhen">' + fmtDate(mo.on) + '</span><span class="mpay num">' + m(paid) + "</span></div>" +
     (loans ? '<ul class="mloans">' + loans + "</ul>" : "") +
     (mo.cleared ? '<div class="win">' + esc(sub("plan.paidoff", { n: mo.cleared })) + "</div>" : "") +
     "</div>";
@@ -292,10 +304,11 @@ register({
   id: "plan",
   icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20c5-1 3-7 8-8s3-6 8-7"/><path d="M17 3h4v4"/></svg>',
   labelKey: "tab.plan",
+  titleKey: "plan.title",
   html: HTML,
   onMount() {
-    for (const b of document.querySelectorAll("#plan-goals button")) {
-      b.addEventListener("click", () => { haptic.tap(); load(b.dataset.goal); });
+    for (const b of document.querySelectorAll("#plan-goals .opt")) {
+      b.addEventListener("click", () => { haptic.pick(); chips(b.dataset.goal); load(b.dataset.goal); });
     }
     $("plan-retry").addEventListener("click", () => { haptic.tap(); load(goal); });
     $("pl-approve").addEventListener("click", approve);
