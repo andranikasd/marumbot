@@ -105,6 +105,12 @@ for attempt in 1 2 3 4 5 6 7 8; do
   page=$(get "$base/app/") || true
 done
 [ -n "$shell_ok" ] || fail "the shell does not version its entry script after rollout"
+# The app reloads itself when this disagrees with its stamp, which is how a
+# Mini App Telegram kept alive across the deploy catches up. Served at the
+# edge, so it must name the new build before the container even wakes.
+build=$(get "$base/app/version") || fail "the version endpoint did not answer"
+echo "$build" | grep -Fq "\"version\":\"$expected_version\"" || \
+  fail "the version endpoint reports $build, want $expected_version"
 budget=$(get "$base/app/js/screens/budget.js") || fail "the budget module did not answer"
 echo "$budget" | grep -q 'budget-form' || fail "the budget module does not carry its form"
 planmod=$(get "$base/app/js/screens/plan.js") || fail "the plan module did not answer"

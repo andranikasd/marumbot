@@ -86,6 +86,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("DELETE /api/loans/{id}", s.deleteLoan())
 	mux.Handle("GET /{$}", s.static(s.shell(sub)))
 	mux.Handle("GET /index.html", s.static(s.shell(sub)))
+	// What is deployed right now, for the app to compare against its own
+	// stamp. Telegram keeps a minimised Mini App alive across deploys and
+	// reopens the same instance, so the app has to notice a new build by
+	// itself. The Worker answers this at the edge; this is the self-hosted
+	// path and the fallback.
+	mux.Handle("GET /version", s.version())
 	// Assets live under a build-versioned prefix: /a/<version>/js/main.js.
 	// The version in the path makes the content immutable for as long as
 	// anyone might cache it — a deploy changes the path, and relative module
@@ -627,6 +633,15 @@ func (s *Server) approvePlan() http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"approved": true, "goal": p.Goal, "payoff": p.PayoffDate})
+	})
+}
+
+// version reports the deployed build. Never cached: its one job is to
+// disagree with a stale page.
+func (s *Server) version() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, http.StatusOK, map[string]string{"version": s.Version})
 	})
 }
 
