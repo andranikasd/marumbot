@@ -12,14 +12,14 @@ import { applyI18n, T } from "./i18n.js";
 
 const screens = new Map();
 let current = null;
-let currentParams = null;
+let params = null;
 
 export function register({ id, icon, labelKey, titleKey, parent, html, onMount, onShow }) {
   screens.set(id, { id, icon, labelKey, titleKey, parent, html, onMount, onShow, el: null });
 }
 
 export function currentScreen() { return current; }
-export function currentParams() { return currentParams; }
+export function currentParams() { return params; }
 
 const $ = (id) => document.getElementById(id);
 
@@ -35,7 +35,7 @@ export function setAction(label, handler) {
   b.onclick = () => { haptic.tap(); handler(); };
 }
 
-export function go(id, params) {
+export function go(id, withParams) {
   if (!screens.has(id)) id = "loans";
   const view = $("view");
   for (const s of screens.values()) {
@@ -52,7 +52,7 @@ export function go(id, params) {
     s.onMount?.(s.el);
   }
   current = id;
-  currentParams = params || null;
+  params = withParams || null;
   const tabId = s.parent || id;
   for (const b of document.querySelectorAll("nav.tabs button")) {
     const on = b.dataset.go === tabId;
@@ -67,7 +67,7 @@ export function go(id, params) {
   else backButton.hide();
   mainButton.hide();
   window.scrollTo(0, 0);
-  s.onShow?.(s.el, currentParams);
+  s.onShow?.(s.el, params);
 }
 
 export function buildTabs() {

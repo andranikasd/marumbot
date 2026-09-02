@@ -3,6 +3,7 @@
 // screens/ and one import here.
 "use strict";
 import "./screens/loans.js";
+import "./screens/loan.js";
 import "./screens/add.js";
 import "./screens/budget.js";
 import "./screens/plan.js";

@@ -7,6 +7,8 @@
    one commit button. */
 
 *{box-sizing:border-box}
+[hidden]{display:none!important}
+.stack{display:grid;gap:12px}
 html,body{margin:0;padding:0}
 body{
   background:var(--bg); color:var(--fg);

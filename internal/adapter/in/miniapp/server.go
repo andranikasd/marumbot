@@ -394,6 +394,9 @@ func (s *Server) listLoans() http.Handler {
 				"currency":  l.Contract.Currency.Code,
 				"maturity":  l.Contract.MaturityDate.String(),
 				"confirmed": l.Confirmed(),
+				// When the balance was stated, so the screen can say "your
+				// figure, 2 May" beside it rather than present it as today's.
+				"balance_as_of": l.AsOf.String(),
 				// The contract terms, so the edit form can prefill what is
 				// actually stored rather than make the user re-type it.
 				"start":         l.Contract.StartDate.String(),
