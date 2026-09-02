@@ -93,7 +93,8 @@ echo "$page" | grep -q 'telegram-web-app.js' || \
 
 # The screens live in ES modules now; the shell is deliberately empty. So the
 # shell is checked for its versioned entry script, and the modules for the
-# markup they carry -- the budget form and the plan timeline.
+# markup they carry -- the budget overview, its edit form, the plan screen
+# and the loan detail.
 echo "→ app shell and modules"
 # The old container can still be answering while the new one rolls out, so
 # the marker is polled to a deadline rather than asserted against whichever
@@ -112,9 +113,15 @@ build=$(get "$base/app/version") || fail "the version endpoint did not answer"
 echo "$build" | grep -Fq "\"version\":\"$expected_version\"" || \
   fail "the version endpoint reports $build, want $expected_version"
 budget=$(get "$base/app/js/screens/budget.js") || fail "the budget module did not answer"
-echo "$budget" | grep -q 'budget-form' || fail "the budget module does not carry its form"
+echo "$budget" | grep -q 'budget-view' || fail "the budget module does not carry its overview"
+budgetedit=$(get "$base/app/js/screens/budget-edit.js") || fail "the budget edit module did not answer"
+echo "$budgetedit" | grep -q 'budget-form' || fail "the budget edit module does not carry its form"
 planmod=$(get "$base/app/js/screens/plan.js") || fail "the plan module did not answer"
 echo "$planmod" | grep -q 'plan-goals' || fail "the plan module does not carry its screen"
+loanmod=$(get "$base/app/js/screens/loan.js") || fail "the loan module did not answer"
+echo "$loanmod" | grep -q 'loan-view' || fail "the loan module does not carry its screen"
+styles=$(get "$base/app/a/$expected_version/styles.css") || fail "the stylesheet did not answer"
+echo "$styles" | grep -q -- '--brass:' || fail "the stylesheet lacks the shared design tokens"
 
 echo "→ mini app rejects an unsigned call"
 code=$(status "$base/app/api/loans" 401 POST)
