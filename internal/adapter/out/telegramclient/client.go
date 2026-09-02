@@ -190,6 +190,28 @@ func (c *Client) SetMyCommands(ctx context.Context, lang string, cmds []app.BotC
 	return c.call(ctx, "setMyCommands", body)
 }
 
+func (c *Client) SetMyName(ctx context.Context, lang, name string) error {
+	return c.setLocalizedProfileField(ctx, "setMyName", "name", lang, name)
+}
+
+func (c *Client) SetMyShortDescription(ctx context.Context, lang, description string) error {
+	return c.setLocalizedProfileField(ctx, "setMyShortDescription", "short_description", lang, description)
+}
+
+func (c *Client) SetMyDescription(ctx context.Context, lang, description string) error {
+	return c.setLocalizedProfileField(ctx, "setMyDescription", "description", lang, description)
+}
+
+func (c *Client) setLocalizedProfileField(ctx context.Context, method, field, lang, value string) error {
+	ctx, span := obs.ComponentSender.CallService(ctx, "telegram", method)
+	defer span.End()
+	body := map[string]any{field: value}
+	if lang != "" {
+		body["language_code"] = lang
+	}
+	return c.call(ctx, method, body)
+}
+
 // SetChatMenuButton replaces the chat's menu button with one that opens the
 // Mini App.
 //

@@ -27,6 +27,7 @@ func (menuChatsFake) ChatID(_ context.Context, userID string) (int64, error) {
 
 type menuSenderFake struct {
 	buttons []string
+	profile []string
 }
 
 func (f *menuSenderFake) SendMessage(context.Context, int64, string, any) error { return nil }
@@ -34,6 +35,43 @@ func (f *menuSenderFake) SendChatAction(context.Context, int64, string) error   
 func (f *menuSenderFake) SetChatMenuButtonFor(_ context.Context, _ int64, text, url string) error {
 	f.buttons = append(f.buttons, text+"|"+url)
 	return nil
+}
+
+func (f *menuSenderFake) SetMyCommands(context.Context, string, []BotCommand) error { return nil }
+func (f *menuSenderFake) SetChatMenuButton(context.Context, string, string) error   { return nil }
+func (f *menuSenderFake) SetMyName(_ context.Context, lang, value string) error {
+	f.profile = append(f.profile, "name|"+lang+"|"+value)
+	return nil
+}
+
+func (f *menuSenderFake) SetMyShortDescription(_ context.Context, lang, value string) error {
+	f.profile = append(f.profile, "short|"+lang+"|"+value)
+	return nil
+}
+
+func (f *menuSenderFake) SetMyDescription(_ context.Context, lang, value string) error {
+	f.profile = append(f.profile, "description|"+lang+"|"+value)
+	return nil
+}
+
+func TestPublishMenusPublishesLocalizedProfileAndDefault(t *testing.T) {
+	sender := &menuSenderFake{}
+	if err := PublishMenus(context.Background(), sender, ""); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"name|hy|Մարում", "short|hy|", "description|hy|",
+		"name||Մարում", "short||", "description||",
+		"name|en|Marum", "short|en|", "description|en|",
+	}
+	if len(sender.profile) != len(want) {
+		t.Fatalf("profile calls = %d, want %d: %v", len(sender.profile), len(want), sender.profile)
+	}
+	for i, prefix := range want {
+		if !strings.HasPrefix(sender.profile[i], prefix) {
+			t.Errorf("profile call %d = %q, want prefix %q", i, sender.profile[i], prefix)
+		}
+	}
 }
 
 func TestRefreshMenuButtonsPagesEveryAccount(t *testing.T) {
