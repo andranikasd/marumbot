@@ -3,7 +3,8 @@
 // Tapping a card opens the loan, where the everyday act — restating the
 // balance after a payment — is the first button.
 "use strict";
-import { haptic, fmtMoney, fmtDate, initial, mask } from "../core.js";
+import {icon} from "../icons.js";
+import { haptic, fmtMoney, fmtDate, mask } from "../core.js";
 import { T, sub } from "../i18n.js";
 import { getJSON } from "../api.js";
 import { register } from "../nav.js";
@@ -51,13 +52,14 @@ function loanCard(loan) {
   el.dataset.go = "loan";
   el.dataset.arg = loan.id;
 
-  const tile = document.createElement("span"); tile.className = "tile"; tile.textContent = initial(loan.name);
+  const tile = document.createElement("span"); tile.className = "tile"; tile.innerHTML = icon(loan.icon);
   const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = loan.name;
   const meta = document.createElement("small");
   const bits = [];
   if (loan.rate_percent != null) bits.push(loan.rate_percent + "%");
   bits.push(T(loan.method === "declining" ? "method.declining" : "method.annuity").toLowerCase());
-  if (!loan.confirmed) bits.push(T("manage.yours_figure"));
+  bits.push(fmtDate(loan.balance_as_of));
+  if (loan.optional_excluded) bits.push(T("loan.noextra"));
   if (mainCurrency && loan.currency !== mainCurrency && loan.balance_major > 0) bits.push(loan.currency + " · " + T("manage.excluded"));
   meta.textContent = bits.join(" · ");
   nm.append(meta);

@@ -2,12 +2,15 @@
 // of imports is the order of the tabs. Adding a screen is one file under
 // screens/ and one import here.
 "use strict";
+import "./screens/home.js";
+import "./screens/plan.js";
 import "./screens/loans.js";
+import "./screens/activity.js";
+import "./screens/more.js";
 import "./screens/loan.js";
 import "./screens/add.js";
 import "./screens/budget.js";
 import "./screens/budget-edit.js";
-import "./screens/plan.js";
 import { buildTabs, go } from "./nav.js";
 import { prefetch, watchOffline } from "./api.js";
 
@@ -53,5 +56,5 @@ prefetch(["api/loans", "api/budget", "api/plan"]);
 // The bot deep-links by screen name; an unknown name lands on the loans.
 // A loan id beside the name opens that loan.
 const query = new URLSearchParams(location.search);
-const requested = query.get("screen") || "loans";
+const requested = query.get("screen") || "home";
 go(requested, query.get("id") ? { id: query.get("id") } : null);

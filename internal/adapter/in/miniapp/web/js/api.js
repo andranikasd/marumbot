@@ -23,19 +23,21 @@ const TTL = 30_000;
 // Returns the fresh body, or throws when there is no cache to fall back on.
 export async function getJSON(path, onData) {
   const hit = cache.get(path);
-  if (hit && onData) onData(hit.body, { stale: true });
+  // Financial values are rendered only after a fresh response.
   try {
     const res = await api(path);
     if (!res.ok) throw new Error("http " + res.status);
     const body = await res.json();
     offline(false);
-    const same = hit && JSON.stringify(hit.body) === JSON.stringify(body);
     cache.set(path, { body, at: Date.now() });
-    if (onData && !same) onData(body, { stale: false });
+    if (onData) onData(body, { stale: false });
     return body;
   } catch (err) {
     if (err instanceof TypeError) offline(true); // the network, not the server
-    if (hit && Date.now() - hit.at < TTL) return hit.body;
+    if (err instanceof TypeError && hit && Date.now() - hit.at < TTL) {
+      if (onData) onData(hit.body, { stale:true });
+      return hit.body;
+    }
     throw err;
   }
 }

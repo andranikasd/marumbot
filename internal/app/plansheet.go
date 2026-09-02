@@ -62,13 +62,38 @@ func (p ApprovedPlan) PlanGoal(cur money.Currency) plan.Goal {
 // Sheet is the whole plan, month by month, ready to render: every figure a
 // spreadsheet would carry, in minor units with the currency named once.
 type Sheet struct {
-	Currency string       `json:"currency"`
-	Goal     string       `json:"goal"`
-	CapMinor int64        `json:"cap_minor,omitempty"`
-	Approved bool         `json:"approved"` // this goal is the stored commitment
-	AnyPlan  bool         `json:"any_plan"` // some commitment exists
-	Summary  SheetSummary `json:"summary"`
-	Months   []SheetMonth `json:"months"`
+	Currency          string           `json:"currency"`
+	CurrencyExponent  uint8            `json:"currency_exponent"`
+	SettlementQuantum int64            `json:"settlement_quantum"` // minor units
+	AsOf              string           `json:"as_of"`
+	EngineVersion     string           `json:"engine_version"`
+	InputHash         string           `json:"input_hash"` // normalized input, shared across goals
+	BaselineAvailable bool             `json:"baseline_available"`
+	Certificate       SheetCertificate `json:"certificate"`
+	Goal              string           `json:"goal"`
+	CapMinor          int64            `json:"cap_minor,omitempty"`
+	Approved          bool             `json:"approved"` // this goal is the stored commitment
+	AnyPlan           bool             `json:"any_plan"` // some commitment exists
+	Summary           SheetSummary     `json:"summary"`
+	Months            []SheetMonth     `json:"months"`
+	MinimumMonths     []SheetMonth     `json:"minimum_months"`
+}
+
+// SheetCertificate is the JSON-safe search evidence. Policies counts attempts
+// across explored rollovers, including infeasible candidates; monetary fields
+// are minor units, never the engine's opaque money.Amount values.
+type SheetCertificate struct {
+	Strength         plan.Strength `json:"strength"`
+	Eligibility      string        `json:"eligibility"`
+	Policies         int           `json:"policies"`
+	FeasiblePolicies int           `json:"feasible_policies"`
+	Orders           int           `json:"orders"`
+	EffectVectors    int           `json:"effect_vectors"`
+	TimingVectors    int           `json:"timing_vectors"`
+	Truncation       string        `json:"truncation"`
+	BestCostMinor    int64         `json:"best_cost_minor"`
+	LowerBoundMinor  *int64        `json:"lower_bound_minor"`
+	GapMinor         *int64        `json:"gap_minor"`
 }
 
 // SheetSummary is the header numbers.
@@ -79,8 +104,8 @@ type SheetSummary struct {
 	Months        int    `json:"months"`
 	InterestMinor int64  `json:"interest_minor"`
 	FeesMinor     int64  `json:"fees_minor"`
-	SavedMinor    int64  `json:"saved_minor"`  // vs paying only the minimum
-	SavedMonths   int    `json:"saved_months"` // ditto
+	SavedMinor    *int64 `json:"saved_minor"`  // signed difference vs minimum; null if unavailable
+	SavedMonths   *int   `json:"saved_months"` // ditto, independent of cost savings
 	Strength      string `json:"strength"`
 }
 
@@ -99,9 +124,11 @@ type SheetMonth struct {
 
 // SheetLoan is one loan inside a month: whom to pay, how much, what remains.
 type SheetLoan struct {
+	ID         string `json:"id"`
 	Name       string `json:"name"`
 	PaidMinor  int64  `json:"paid_minor"`
 	ExtraMinor int64  `json:"extra_minor"`
+	FeesMinor  int64  `json:"fees_minor"`
 	OwedMinor  int64  `json:"owed_minor"`
 	Cleared    bool   `json:"cleared,omitempty"`
 	FreedMinor int64  `json:"freed_minor,omitempty"`
@@ -144,37 +171,92 @@ func (w *Worker) PlanSheet(ctx context.Context, userID string, goal *plan.Goal) 
 		g = *goal
 	}
 
+	now := w.Clock.Now()
+	asOf := date.From(now, time.UTC)
 	in := plan.Input{
-		ValuationDate: date.From(w.Clock.Now(), time.UTC),
-		Cash:          budget.CashPlan(date.From(w.Clock.Now(), time.UTC)),
+		ValuationDate: asOf,
+		Cash:          budget.CashPlan(asOf),
 		Loans:         positions,
 	}
 	// The inputs above are read fresh; only the pure search is cached, keyed
 	// by a fingerprint of exactly those inputs.
-	rep, err := w.plans.search(in, g, w.Clock.Now())
+	rep, err := w.plans.search(in, g, now)
+	if err != nil {
+		return Sheet{}, err
+	}
+	return sheetFromReport(in, g, rep, owed, budget.Monthly, approved)
+}
+
+func sheetFromReport(in plan.Input, g plan.Goal, rep plan.Report, owed, budget money.Amount, approved *ApprovedPlan) (Sheet, error) {
+	// Chart series for different goals share one normalized input identity.
+	// The search cache remains goal-specific; the active goal is carried
+	// separately in the sheet. Never substitute a raw hash on normalization failure.
+	normalized, _, err := plan.Normalize(in)
 	if err != nil {
 		return Sheet{}, err
 	}
 	o := rep.Best
+	cur := in.Cash.Monthly.Currency()
+	c := rep.Certificate
 
 	sh := Sheet{
-		Currency: cur.Code,
+		Currency:          cur.Code,
+		CurrencyExponent:  cur.Exponent,
+		SettlementQuantum: c.Quantum,
+		AsOf:              in.ValuationDate.String(),
+		EngineVersion:     c.EngineVersion,
+		InputHash:         searchFingerprint(normalized, plan.Goal{}),
+		Certificate: SheetCertificate{
+			Strength: c.Strength, Eligibility: c.Eligibility,
+			Policies: c.Policies, FeasiblePolicies: c.FeasiblePolicies,
+			Orders: c.Orders, EffectVectors: c.EffectVectors, TimingVectors: c.TimingVectors,
+			Truncation: c.Truncation, BestCostMinor: c.BestCost.Minor(),
+		},
 		Goal:     g.Kind.String(),
 		CapMinor: g.Cap.Minor(),
 		AnyPlan:  approved != nil,
 		Approved: approved != nil && approved.Goal == g.Kind.String() && approved.CapMinor == g.Cap.Minor(),
 		Summary: SheetSummary{
-			OwedMinor: owed.Minor(), BudgetMinor: budget.Monthly.Minor(),
+			OwedMinor: owed.Minor(), BudgetMinor: budget.Minor(),
 			PayoffDate: o.PayoffDate.String(), Months: o.Months,
 			InterestMinor: o.TotalInterest.Minor(), FeesMinor: o.TotalFees.Minor(),
 			Strength: string(rep.Certificate.Strength),
 		},
+		Months:        sheetTimeline(o.Timeline),
+		MinimumMonths: []SheetMonth{},
 	}
-	if saved, err := rep.Minimum.Cost().Sub(o.Cost()); err == nil && saved.Sign() > 0 {
-		sh.Summary.SavedMinor = saved.Minor()
-		sh.Summary.SavedMonths = rep.Minimum.Months - o.Months
+	if c.LowerBound != nil {
+		minor := c.LowerBound.Minor()
+		sh.Certificate.LowerBoundMinor = &minor
 	}
-	for _, m := range o.Timeline {
+	if c.Gap != nil {
+		minor := c.Gap.Minor()
+		sh.Certificate.GapMinor = &minor
+	}
+	// An infeasible minimum is swallowed by Rank and leaves a zero Result.
+	// Only a completed, dated engine timeline can support a comparison.
+	minimum := rep.Minimum
+	if len(minimum.Timeline) > 0 && minimum.Months > 0 && !minimum.PayoffDate.IsZero() {
+		last := minimum.Timeline[len(minimum.Timeline)-1]
+		sh.BaselineAvailable = !last.On.IsZero() && last.Owed.Sign() == 0 && last.Owed.Currency().Code == cur.Code
+	}
+	if sh.BaselineAvailable {
+		sh.MinimumMonths = sheetTimeline(minimum.Timeline)
+		if saved, err := minimum.Cost().Sub(o.Cost()); err == nil {
+			minor := saved.Minor()
+			sh.Summary.SavedMinor = &minor
+		}
+		months := minimum.Months - o.Months
+		sh.Summary.SavedMonths = &months
+	}
+	return sh, nil
+}
+
+// sheetTimeline preserves the engine's rows, including monthly and per-loan
+// fees, for either chart series.
+func sheetTimeline(timeline []plan.MonthState) []SheetMonth {
+	out := make([]SheetMonth, 0, len(timeline))
+	for _, m := range timeline {
 		sm := SheetMonth{
 			N: m.Month, On: m.On.String(),
 			RequiredMinor: m.Required.Minor(), ExtraMinor: m.Extra.Minor(),
@@ -183,13 +265,14 @@ func (w *Worker) PlanSheet(ctx context.Context, userID string, goal *plan.Goal) 
 		}
 		for _, ml := range m.Loans {
 			sm.Loans = append(sm.Loans, SheetLoan{
-				Name: ml.Name, PaidMinor: ml.Paid.Minor(), ExtraMinor: ml.Extra.Minor(),
+				ID: ml.ID, Name: ml.Name, PaidMinor: ml.Paid.Minor(), ExtraMinor: ml.Extra.Minor(),
+				FeesMinor: ml.Fees.Minor(),
 				OwedMinor: ml.Owed.Minor(), Cleared: ml.Cleared, FreedMinor: ml.Freed.Minor(),
 			})
 		}
-		sh.Months = append(sh.Months, sm)
+		out = append(out, sm)
 	}
-	return sh, nil
+	return out
 }
 
 // ApprovePlanFor stores the commitment to a goal, with the figures the

@@ -6,6 +6,7 @@
  * the Go application. Anything that needs to look at a loan happens in Go.
  */
 import { Container, getContainer } from "@cloudflare/containers";
+import designTokens from "../../../internal/design/tokens.css";
 
 export class MarumApp extends Container<Env> {
   defaultPort = 8080;
@@ -190,8 +191,13 @@ export default {
         try {
           let rest = url.pathname.slice("/app".length) || "/";
           let immutable = false;
-          const versioned = rest.match(/^\/a\/[^/]+(\/.*)$/);
-          if (versioned) { rest = versioned[1]; immutable = true; }
+          const versioned = rest.match(/^\/a\/([^/]+)(\/.*)$/);
+          if (versioned) {
+            if (versioned[1] !== encodeURIComponent(env.VERSION ?? "dev")) {
+              return new Response("Build expired; reopen the Mini App", { status: 410, headers: { "Cache-Control": "no-store" } });
+            }
+            rest = versioned[2]; immutable = true;
+          }
           if (rest === "/") rest = "/index.html";
           const assetURL = new URL(request.url);
           assetURL.pathname = rest;
@@ -208,6 +214,12 @@ export default {
               return new Response(body, { status: asset.status, headers });
             }
             headers.set("Cache-Control", immutable ? "public, max-age=31536000, immutable" : "no-store");
+            if (rest === "/styles.css") {
+              headers.delete("Content-Length");
+              headers.delete("ETag");
+              headers.set("Content-Type", "text/css; charset=utf-8");
+              return new Response(designTokens + "\n" + await asset.text(), { status: asset.status, headers });
+            }
             return new Response(asset.body, { status: asset.status, headers });
           }
           // fall through: an asset the edge does not have comes from the container

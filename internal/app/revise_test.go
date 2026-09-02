@@ -2,11 +2,13 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
 )
@@ -147,5 +149,21 @@ func TestReviseLoanRenamesWords(t *testing.T) {
 	}
 	if f.renamed != 1 || len(f.revised) != 0 {
 		t.Errorf("rename wrote wrong things: renamed=%d revised=%d", f.renamed, len(f.revised))
+	}
+}
+
+func TestBackdatedSnapshotCannotUseNewTerms(t *testing.T) {
+	f := &reviseFakes{paidFakes: paidFakes{loan: paidLoan(t)}}
+	w := reviseWorker(t, f)
+	e := baseEdit(f.loan)
+	e.NominalRate = money.RateFromPercent(15, 0)
+	n := int64(10000)
+	e.BalanceMinor = &n
+	e.BalanceAsOf = date.AddDays(date.From(w.Clock.Now(), time.UTC), -1)
+	if err := w.ReviseLoan(context.Background(), "loan-a", "user-1", e); !errors.Is(err, ErrSnapshotContractDate) {
+		t.Fatalf("historical balance accepted: %v", err)
+	}
+	if len(f.revised) != 0 || len(f.recorded) != 0 {
+		t.Fatal("partial mutation before refusal")
 	}
 }

@@ -53,11 +53,13 @@ func (r Rollover) String() string {
 // credit an early payment while another holds it, and one contract may fix
 // the prepayment effect while another leaves it to the borrower.
 type Policy struct {
-	Name     string // avalanche, snowball, minimum, or order
-	Order    []int
-	Timing   []Timing
-	Effect   []model.PrepaymentEffect
-	Rollover Rollover
+	// RequiredOnly forbids every optional action, including an early payoff.
+	RequiredOnly bool
+	Name         string // avalanche, snowball, minimum, or order
+	Order        []int
+	Timing       []Timing
+	Effect       []model.PrepaymentEffect
+	Rollover     Rollover
 	// MinPrepay withholds an optional payment smaller than this, carrying
 	// the cash to the next cycle. Zero means pay whatever is available. It
 	// is how a fixed per-event fee is answered: batch, then pay.
@@ -69,6 +71,9 @@ type Policy struct {
 func (p Policy) ID() string {
 	var b strings.Builder
 	b.WriteString(p.Name)
+	if p.RequiredOnly {
+		b.WriteString("/required-only")
+	}
 	fmt.Fprint(&b, p.Order)
 	for _, t := range p.Timing {
 		b.WriteString("/" + t.String())

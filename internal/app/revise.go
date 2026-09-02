@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -18,18 +19,24 @@ import (
 // every past balance keeps meaning what it meant; and the balance is a new
 // snapshot, never an edit of an old one. One form, three write disciplines.
 
+// ErrSnapshotContractDate refuses a balance that predates its attached terms.
+var ErrSnapshotContractDate = errors.New("balance date precedes the current contract")
+
 // LoanEdit is everything the borrower may change about a loan. The currency
 // is deliberately absent: the ledger behind a loan is in one currency, and
 // "changing" it would re-denominate history. That loan is archive-and-refile.
 type LoanEdit struct {
-	Name         string
-	Description  string
-	NominalRate  money.Rate
-	Type         model.RepaymentType
-	StartDate    date.Date
-	MaturityDate date.Date
-	PaymentDay   int
-	PrepayEffect model.PrepaymentEffect
+	BalanceAsOf      date.Date
+	Icon             *string
+	OptionalExcluded *bool
+	Name             string
+	Description      string
+	NominalRate      money.Rate
+	Type             model.RepaymentType
+	StartDate        date.Date
+	MaturityDate     date.Date
+	PaymentDay       int
+	PrepayEffect     model.PrepaymentEffect
 	// BalanceMinor restates what is owed today; nil leaves the anchor alone.
 	BalanceMinor *int64
 }
@@ -43,6 +50,9 @@ type ContractReviser interface {
 // LoanRevision is one atomic borrower edit. Nil fields mean that part did not
 // change; persistence must commit every supplied part together or none of it.
 type LoanRevision struct {
+	BalanceAsOf       date.Date
+	Icon              *string
+	OptionalExcluded  *bool
 	Name, Description string
 	Rename            bool
 	Contract          *model.Contract
@@ -72,21 +82,39 @@ func (w *Worker) ReviseLoan(ctx context.Context, loanID, userID string, e LoanEd
 	next.Prepayment.Effect = e.PrepayEffect
 
 	today := date.From(w.Clock.Now(), time.UTC)
+	balanceAsOf := today
+	if !e.BalanceAsOf.IsZero() {
+		if e.BalanceAsOf.After(today) || e.BalanceAsOf.Before(ln.Contract.StartDate) {
+			return fmt.Errorf("invalid balance date")
+		}
+		balanceAsOf = e.BalanceAsOf
+	}
 	termsChanged := next.NominalRate != ln.Contract.NominalRate ||
 		next.Type != ln.Contract.Type ||
 		next.StartDate != ln.Contract.StartDate ||
 		next.MaturityDate != ln.Contract.MaturityDate ||
 		next.PaymentDay != ln.Contract.PaymentDay ||
 		next.Prepayment.Effect != ln.Contract.Prepayment.Effect
+	if e.BalanceMinor != nil && (balanceAsOf.Before(ln.Contract.EffectiveFrom) || (termsChanged && balanceAsOf.Before(today))) {
+		return ErrSnapshotContractDate
+	}
+	if e.Icon != nil {
+		icon, err := LoanIcon(*e.Icon)
+		if err != nil {
+			return err
+		}
+		e.Icon = &icon
+	}
 	revision := LoanRevision{
+		Icon: e.Icon, OptionalExcluded: e.OptionalExcluded,
 		Name: e.Name, Description: e.Description,
 		Rename:       e.Name != ln.Name || e.Description != ln.Description,
-		BalanceMinor: e.BalanceMinor, EffectiveFrom: today,
+		BalanceMinor: e.BalanceMinor, BalanceAsOf: balanceAsOf, EffectiveFrom: today,
 	}
 	if termsChanged {
 		revision.Contract = &next
 	}
-	if revision.Rename || revision.Contract != nil || revision.BalanceMinor != nil {
+	if revision.Icon != nil || revision.OptionalExcluded != nil || revision.Rename || revision.Contract != nil || revision.BalanceMinor != nil {
 		if err := w.Contracts.ApplyLoanRevision(ctx, loanID, userID, revision); err != nil {
 			return fmt.Errorf("applying loan revision: %w", err)
 		}

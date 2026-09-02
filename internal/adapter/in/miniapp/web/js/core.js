@@ -13,18 +13,8 @@ function applyTheme() {
   document.documentElement.dataset.theme = scheme;
   document.documentElement.style.colorScheme = scheme;
   if (!tg) return;
-  const p = tg.themeParams || {};
-  const root = document.documentElement.style;
-  // Telegram supplies only the ground: background, ink, hint, surfaces.
-  // Accent, buttons and links stay brand green in every client theme —
-  // mapping them too painted half the screen Telegram blue under a green
-  // hero, two brands on one screen.
-  const map = {
-    bg_color: "--bg", text_color: "--fg", hint_color: "--hint",
-    secondary_bg_color: "--field", section_bg_color: "--card",
-  };
-  for (const [k, v] of Object.entries(map)) if (p[k]) root.setProperty(v, p[k]);
-  try { tg.setHeaderColor?.("bg_color"); tg.setBackgroundColor?.("bg_color"); } catch { /* older clients */ }
+  const background=scheme==="dark"?"#101113":"#f2f3f5";
+  try { tg.setHeaderColor?.(background); tg.setBackgroundColor?.(background); } catch { /* older clients */ }
 }
 applyTheme();
 tg?.onEvent?.("themeChanged", applyTheme);
@@ -41,7 +31,7 @@ document.documentElement.lang = lang;
 const locale = lang === "en" ? "en-GB" : "hy-AM";
 
 export const fmtMoney = (n, cur) => new Intl.NumberFormat(lang === "en" ? "en-US" : "hy-AM",
-  { style: "currency", currency: cur, maximumFractionDigits: 0 }).format(n);
+  { style: "currency", currency: cur, minimumFractionDigits: 0 }).format(n);
 const parseISO = (iso) => { const d = new Date(iso + "T00:00:00"); return Number.isNaN(d.getTime()) ? null : d; };
 // fmtDate is day + short month, for dates inside the running year.
 export const fmtDate = (iso) => {

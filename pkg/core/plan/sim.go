@@ -45,6 +45,7 @@ type Action struct {
 // MonthLoan is one loan's share of a cycle: what it was paid and where it
 // ended, so a sheet can answer "whom do I pay, how much, in month seven".
 type MonthLoan struct {
+	Fees    money.Amount // cash fees paid this cycle, excluded from Extra
 	ID      string
 	Name    string
 	Paid    money.Amount // everything handed to this loan this cycle, fees included
@@ -110,7 +111,8 @@ func (r Result) Cost() money.Amount {
 type eventKind uint8
 
 const (
-	evLump eventKind = iota
+	evPeriod eventKind = iota
+	evLump
 	evIncome
 	evDue
 )
@@ -141,6 +143,7 @@ type loanState struct {
 	// The cycle's running figures, reset when a cycle opens.
 	cyclePaid    money.Amount
 	cycleExtra   money.Amount
+	cycleFees    money.Amount
 	cycleCleared bool
 	cycleFreed   money.Amount
 }
@@ -233,6 +236,8 @@ type sim struct {
 	month       MonthState
 	lumps       []CashEvent
 	inflow      money.Amount // every credit to the pool, for the identity
+	nextPeriod  date.Date
+	periodLeft  money.Amount
 	err         error
 }
 
@@ -247,6 +252,9 @@ func run(in Input, pol Policy, c cache) (Result, error) {
 	cur := in.Cash.Monthly.Currency()
 	zero := money.Zero(cur)
 	s := &sim{in: in, pol: pol, cache: c, cur: cur, cash: in.Cash.OpeningCash, budget: in.Cash.Monthly, inflow: zero}
+	if in.Cash.Spending != nil {
+		s.budget = in.Cash.Spending.Monthly
+	}
 	if s.cash.Currency().Code == "" {
 		s.cash = zero
 	}
@@ -274,7 +282,14 @@ func run(in Input, pol Policy, c cache) (Result, error) {
 		}
 		s.loans = append(s.loans, ls)
 	}
-	s.lumps = append([]CashEvent(nil), in.Cash.Lumps...)
+	for _, event := range in.Cash.Lumps {
+		if !event.Expected {
+			s.lumps = append(s.lumps, event)
+		}
+	}
+	if in.Cash.Spending != nil {
+		s.nextPeriod = in.ValuationDate
+	}
 	s.nextIncome = s.firstIncome()
 
 	horizon := date.AddMonths(in.ValuationDate, in.horizon())
@@ -284,6 +299,8 @@ func run(in Input, pol Policy, c cache) (Result, error) {
 			return Result{}, ErrHorizon
 		}
 		switch kind {
+		case evPeriod:
+			s.period(on)
 		case evLump:
 			s.lump(idx)
 		case evIncome:
@@ -364,6 +381,9 @@ func (s *sim) nextEvent() (eventKind, date.Date, int) {
 			kind, on, idx, have = k, d, i, true
 		}
 	}
+	if !s.nextPeriod.IsZero() {
+		consider(evPeriod, s.nextPeriod, -1)
+	}
 	if !s.nextIncome.IsZero() {
 		consider(evIncome, s.nextIncome, -1)
 	}
@@ -409,6 +429,7 @@ func (s *sim) openCycle(on date.Date) {
 	s.month = MonthState{Month: s.cycle, On: on, Required: zero, Extra: zero, Fees: zero, Interest: zero, Owed: zero, Cash: zero}
 	for _, ls := range s.loans {
 		ls.cyclePaid, ls.cycleExtra, ls.cycleCleared = zero, zero, false
+		ls.cycleFees = zero
 	}
 }
 
@@ -426,7 +447,7 @@ func (s *sim) closeCycle() {
 		}
 		s.month.Loans = append(s.month.Loans, MonthLoan{
 			ID: ls.pos.ID, Name: ls.pos.Name,
-			Paid: ls.cyclePaid, Extra: ls.cycleExtra,
+			Paid: ls.cyclePaid, Extra: ls.cycleExtra, Fees: ls.cycleFees,
 			Owed: ls.balance, Cleared: ls.cycleCleared, Freed: ls.cycleFreed,
 		})
 	}
@@ -457,10 +478,10 @@ func (s *sim) lump(i int) {
 // due date before any income opens the first, so nothing is counted twice
 // and no empty cycle precedes the money.
 func (s *sim) income(on date.Date) {
-	if s.cycle > 0 && !s.cycleIncome.Equal(on) {
+	if s.in.Cash.Spending == nil && s.cycle > 0 && !s.cycleIncome.Equal(on) {
 		s.closeCycle()
 	}
-	if s.cycle == 0 || !s.cycleIncome.Equal(on) {
+	if s.cycle == 0 || (s.in.Cash.Spending == nil && !s.cycleIncome.Equal(on)) {
 		s.openCycle(on)
 	}
 	credit := s.credit(on)
@@ -479,6 +500,9 @@ func (s *sim) income(on date.Date) {
 func (s *sim) credit(on date.Date) money.Amount {
 	if v, ok := s.in.Cash.MonthlyOverrides[MonthKey(on)]; ok {
 		return v
+	}
+	if s.in.Cash.Spending != nil {
+		return s.in.Cash.Monthly
 	}
 	return s.budget
 }
@@ -507,13 +531,16 @@ func (s *sim) reserved() money.Amount {
 // receipt by a lender that credits it is paid now; otherwise its share is
 // held for its due date. Whatever no loan can absorb stays in the pool.
 func (s *sim) allocate(on date.Date) {
-	surplus := s.sub(s.cash, s.reserved())
+	if s.pol.RequiredOnly {
+		return
+	}
+	surplus := s.optionalCash(on)
 	if s.err != nil || surplus.Sign() <= 0 {
 		return
 	}
 	for _, idx := range s.pol.Order {
 		ls := s.loans[idx]
-		if ls.closed || surplus.Sign() <= 0 {
+		if ls.closed || ls.pos.OptionalExcluded || surplus.Sign() <= 0 {
 			continue
 		}
 		q, err := s.quote(ls, on, surplus)
@@ -532,7 +559,7 @@ func (s *sim) allocate(on date.Date) {
 		} else {
 			// Held to the due date. The full quote is reserved so the cash
 			// cannot be promised twice; the amount is re-quoted then.
-			ls.pending = s.add(ls.pending, q.Principal)
+			ls.pending = s.add(ls.pending, q.Outflow)
 		}
 		surplus = s.sub(surplus, q.Outflow)
 	}
@@ -568,29 +595,32 @@ func (s *sim) quote(ls *loanState, on date.Date, available money.Amount) (Quote,
 	if c.Prepayment.MinAmount.Sign() > 0 && available.Cmp(c.Prepayment.MinAmount) < 0 {
 		return Quote{Principal: zero, Interest: zero, Fee: zero, Outflow: zero}, nil
 	}
-	// A partial payment credits principal; the fee is paid on top, so the
-	// principal is what remains of `available` after its own fee. Solve by
-	// one correction step, which is exact when the fee is proportional.
+	// Choose a payable principal quantum below the allowance. Lender rounding
+	// still governs interest and fees, but rounding a spending permission up
+	// would consume protected money. Requote the fee on the actual principal.
 	principal := available
 	fee, err := charge(c, on, principal, used)
 	if err != nil {
 		return Quote{}, err
 	}
-	if fee.Sign() > 0 {
-		if principal, err = available.Sub(fee); err != nil {
-			return Quote{}, err
-		}
-		if principal.Sign() <= 0 {
-			return Quote{Principal: zero, Interest: zero, Fee: zero, Outflow: zero}, nil
-		}
-		if fee, err = charge(c, on, principal, used); err != nil {
-			return Quote{}, err
-		}
+	principal, err = available.Sub(fee)
+	if err != nil {
+		return Quote{}, err
 	}
-	principal = money.Quantise(principal, c.Rounding)
+	principal = money.Quantise(principal, money.Policy{Mode: money.Down, Unit: c.Rounding.Unit})
+	if principal.Sign() <= 0 || (c.Prepayment.MinAmount.Sign() > 0 && principal.Cmp(c.Prepayment.MinAmount) < 0) {
+		return Quote{Principal: zero, Interest: zero, Fee: zero, Outflow: zero}, nil
+	}
+	fee, err = charge(c, on, principal, used)
+	if err != nil {
+		return Quote{}, err
+	}
 	out, err := principal.Add(fee)
 	if err != nil {
 		return Quote{}, err
+	}
+	if out.Cmp(available) > 0 {
+		return Quote{}, fmt.Errorf("%w: optional quote exceeds allowance", ErrInvariant)
 	}
 	return Quote{Principal: principal, Interest: zero, Fee: fee, Outflow: out}, nil
 }
@@ -617,8 +647,12 @@ func (s *sim) accrueTo(ls *loanState, on date.Date) error {
 // prepay applies a quoted optional payment.
 func (s *sim) prepay(ls *loanState, on date.Date, q Quote, early bool) {
 	c := ls.pos.Contract
+	if s.in.Cash.Spending != nil {
+		s.periodLeft = s.sub(s.periodLeft, q.Outflow)
+	}
 	s.cash = s.sub(s.cash, q.Outflow)
 	ls.cyclePaid = s.add(ls.cyclePaid, q.Outflow)
+	ls.cycleFees = s.add(ls.cycleFees, q.Fee)
 	ls.cycleExtra = s.add(ls.cycleExtra, s.sub(q.Outflow, q.Fee))
 	s.res.TotalPaid = s.add(s.res.TotalPaid, q.Outflow)
 	s.res.TotalFees = s.add(s.res.TotalFees, q.Fee)
@@ -679,10 +713,18 @@ func (s *sim) due(ls *loanState, on date.Date) {
 	if s.err != nil {
 		return
 	}
+	if s.in.Cash.Spending != nil && s.periodLeft.Cmp(required) < 0 {
+		short := s.sub(required, s.periodLeft)
+		s.err = &InfeasibleError{On: on, LoanID: ls.pos.ID, Required: required, Available: s.periodLeft, Shortfall: short, Constraint: "spending_limit"}
+		return
+	}
 	if s.cash.Cmp(required) < 0 {
 		short, _ := required.Sub(s.cash)
 		s.err = &InfeasibleError{On: on, LoanID: ls.pos.ID, Required: required, Available: s.cash, Shortfall: short}
 		return
+	}
+	if s.in.Cash.Spending != nil {
+		s.periodLeft = s.sub(s.periodLeft, required)
 	}
 	s.cash = s.sub(s.cash, required)
 	ls.cyclePaid = s.add(ls.cyclePaid, required)
@@ -703,11 +745,24 @@ func (s *sim) due(ls *loanState, on date.Date) {
 		return
 	}
 	// Money held for this date, re-quoted against what is owed now.
+	if s.in.Cash.Spending != nil {
+		if err := s.refresh(ls); err != nil {
+			s.err = err
+			return
+		}
+	}
 	if ls.pending.Sign() > 0 {
 		want := ls.pending
 		ls.pending = money.Zero(s.cur)
-		if want.Cmp(s.cash) > 0 {
-			want = s.cash
+		available := s.cash
+		if s.in.Cash.Spending != nil {
+			available = s.optionalCash(on)
+		}
+		if want.Cmp(available) > 0 {
+			want = available
+		}
+		if want.Sign() <= 0 {
+			return
 		}
 		q, err := s.quote(ls, on, want)
 		if err != nil {

@@ -82,6 +82,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/plan", s.planSheet())
 	mux.Handle("POST /api/plan/approve", s.approvePlan())
 	mux.Handle("GET /api/budget", s.getBudget())
+	mux.Handle("GET /api/activity", s.activity())
 	mux.Handle("GET /api/loans", s.listLoans())
 	mux.Handle("PATCH /api/loans/{id}", s.updateLoan())
 	mux.Handle("DELETE /api/loans/{id}", s.deleteLoan())
@@ -201,6 +202,25 @@ func (s *Server) getBudget() http.Handler {
 			out["currency"] = b.Currency
 			out["monthly_major"] = major(b.Monthly)
 			out["pay_day"] = b.PayDay
+			out["version"] = b.Version
+			if b.Funding != nil {
+				today := date.From(s.Clock.Now(), time.UTC)
+				funding := *b.Funding
+				if plan.MonthKey(b.OpeningAsOf) != plan.MonthKey(today) || b.OpeningAsOf.After(today) {
+					funding.SpentMinor = 0
+					b.Opening = money.Zero(b.Monthly.Currency())
+				}
+				funding.Events = nil
+				for _, event := range b.Funding.Events {
+					on, err := date.Parse(event.On)
+					if err == nil && !on.Before(today) {
+						funding.Events = append(funding.Events, event)
+					}
+				}
+				b.Funding = &funding
+			}
+			out["funding"] = b.Funding
+			out["currency_exponent"] = b.Monthly.Currency().Exponent
 			if b.Opening.Sign() > 0 {
 				out["opening_major"] = major(b.Opening)
 				out["opening_as_of"] = b.OpeningAsOf.String()
@@ -314,7 +334,7 @@ func (s *Server) setBudget() http.Handler {
 				return
 			}
 		}
-		if reserve > 0 && (opening == nil || reserve > *opening) {
+		if in.Funding == nil && reserve > 0 && (opening == nil || reserve > *opening) {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{
 				jsonError: "protected reserve exceeds opening cash",
 			})
@@ -330,7 +350,12 @@ func (s *Server) setBudget() http.Handler {
 			http.Error(w, `{"error":"unavailable"}`, http.StatusServiceUnavailable)
 			return
 		}
+		if err := in.ValidateFunding(date.From(s.Clock.Now(), time.UTC)); err != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
+			return
+		}
 		configuration := app.BudgetConfiguration{
+			Funding: in.Funding, ExpectedVersion: in.ExpectedVersion,
 			UserID: userID, Currency: cur, MonthlyMinor: minor, PayDay: payDay,
 			OpeningAsOf: date.From(s.Clock.Now(), time.UTC), Overrides: overrides,
 			ReserveMinor: reserve,
@@ -339,6 +364,10 @@ func (s *Server) setBudget() http.Handler {
 			configuration.OpeningMinor = *opening
 		}
 		if err := s.BudgetConfig.SetBudgetConfiguration(ctx, configuration); err != nil {
+			if errors.Is(err, app.ErrConflict) {
+				writeJSON(w, http.StatusConflict, map[string]string{jsonError: "budget changed; reload before saving"})
+				return
+			}
 			span.RecordError(err)
 			s.Log.ErrorContext(ctx, "recording the budget failed", "error", err)
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
@@ -389,7 +418,7 @@ func (s *Server) listLoans() http.Handler {
 		out := make([]map[string]any, 0, len(loans))
 		for _, l := range loans {
 			row := map[string]any{
-				"id": l.ID, "name": l.Name, "description": l.Description,
+				"id": l.ID, "name": l.Name, "description": l.Description, "currency_exponent": l.Contract.Currency.Exponent, "icon": l.Icon, "optional_excluded": l.OptionalExcluded,
 				"balance": l.Balance.String(), "balance_major": major(l.Balance),
 				"currency":  l.Contract.Currency.Code,
 				"maturity":  l.Contract.MaturityDate.String(),
@@ -480,7 +509,15 @@ func (s *Server) updateLoan() http.Handler {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
 			return
 		}
+		if edit.BalanceAsOf.After(date.From(s.Clock.Now(), time.UTC)) {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "balance date cannot be in the future"})
+			return
+		}
 		if err := s.Reviser.ReviseLoan(ctx, loanID, userID, edit); err != nil {
+			if errors.Is(err, app.ErrSnapshotContractDate) {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
+				return
+			}
 			if errors.Is(err, app.ErrNotFound) {
 				http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
 				return
@@ -524,9 +561,11 @@ func writeJSON(w http.ResponseWriter, code int, body any) {
 
 // LoanRequest is what the form posts.
 type LoanRequest struct {
-	Title          string  `json:"title"`
-	Description    string  `json:"description"`
-	PrincipalMajor float64 `json:"principal_major"`
+	Icon             string  `json:"icon"`
+	OptionalExcluded bool    `json:"optional_excluded"`
+	Title            string  `json:"title"`
+	Description      string  `json:"description"`
+	PrincipalMajor   float64 `json:"principal_major"`
 	// BalanceMajor is what is owed TODAY, for a loan that has been running.
 	// Zero means "same as principal": a loan filed on its drawdown date.
 	BalanceMajor float64 `json:"balance_major"`

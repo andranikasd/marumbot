@@ -18,6 +18,11 @@ compatibility_flags = ["nodejs_compat"]
 # hostname is an extra thing to secure.
 workers_dev = false
 
+[[rules]]
+type = "Text"
+globs = ["**/tokens.css"]
+fallthrough = true
+
 [observability]
 enabled = true
 

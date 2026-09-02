@@ -1,48 +1,42 @@
-/* Marum design tokens. The one theme boundary for every surface.
-
-   Identity: deep bottle green is the colour of the institutions Marum argues
-   with; brass marks only money that works for the borrower — the paid-off
-   share, the safe extra, freed money, and the one commit button.
-
-   Light: green is a surface (the hero, the buttons). Dark: the ground is a
-   neutral near-black and green becomes an accent — the hero is a dark card
-   with its figure in green, never a green slab. One green per theme. */
 :root{
-  --bg:#f6f4ef; --card:#ffffff; --field:#ffffff; --fg:#1a2321; --hint:#6b7672;
-  --line:#e2e5e1; --line2:#cfd5d1;
-  --green:#134236; --green-soft:#eaf1ed; --green-ink:#ffffff; --accent:#134236;
-  --brass:#c2932f; --brass-ink:#5b3f0d; --brass-soft:#f6eedd;
+  --raised:#eceff1; --button:#256345; --button-ink:#ffffff;
+  --bg:#f2f3f5; --card:#ffffff; --field:#ffffff; --fg:#1b2027; --hint:#58616c;
+  --line:#ccd2d8; --line2:#ccd2d8;
+  --green:#226342; --green-soft:#eceff1; --green-ink:#ffffff; --accent:#226342;
+  --brass:#226342; --brass-ink:#226342; --brass-soft:#eceff1;
   --ok:#1f7a59; --ok-soft:#e9f4ee;
   --warn:#8f6420; --warn-soft:#fbf2e2;
   --danger:#b3313a; --danger-soft:#fbeeee;
-  --hero-bg:#134236; --hero-fg:#ffffff; --hero-sub:rgba(255,255,255,.72);
-  --hero-line:rgba(255,255,255,.18); --hero-gold:#f0cd7d; --hero-num:#ffffff;
+  --hero-bg:var(--card); --hero-fg:var(--fg); --hero-sub:var(--hint);
+  --hero-line:var(--line); --hero-gold:var(--accent); --hero-num:var(--fg);
   --r-sm:9px; --r:14px; --r-lg:16px;
   color-scheme:light;
 }
 :root[data-theme="dark"]{
-  --bg:#0f1412; --card:#171d1a; --field:#171d1a; --fg:#eef1ee; --hint:#98a49e;
-  --line:#252d29; --line2:#334039;
-  --green:#3ea583; --green-soft:#1a2822; --green-ink:#0f1412; --accent:#3ea583;
-  --brass:#d3a955; --brass-ink:#e8c983; --brass-soft:#2a2314;
+  --raised:#22252a;
+  --bg:#101113; --card:#191b1e; --field:#22252a; --fg:#f1f2f4; --hint:#a5aab3;
+  --line:#373c43; --line2:#373c43;
+  --green:#86bd9e; --green-soft:#22252a; --green-ink:#101113; --accent:#86bd9e;
+  --brass:#86bd9e; --brass-ink:#86bd9e; --brass-soft:#22252a;
   --ok:#5cc79b; --ok-soft:#16281f;
   --warn:#e0b568; --warn-soft:#2b2214;
   --danger:#f08a90; --danger-soft:#33201f;
-  --hero-bg:#171d1a; --hero-fg:#eef1ee; --hero-sub:#98a49e;
-  --hero-line:#252d29; --hero-gold:#d3a955; --hero-num:#3ea583;
+  --hero-bg:#191b1e; --hero-fg:#f1f2f4; --hero-sub:#a5aab3;
+  --hero-line:#373c43; --hero-gold:#86bd9e; --hero-num:var(--fg);
   color-scheme:dark;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --bg:#0f1412; --card:#171d1a; --field:#171d1a; --fg:#eef1ee; --hint:#98a49e;
-    --line:#252d29; --line2:#334039;
-    --green:#3ea583; --green-soft:#1a2822; --green-ink:#0f1412; --accent:#3ea583;
-    --brass:#d3a955; --brass-ink:#e8c983; --brass-soft:#2a2314;
+    --raised:#22252a;
+    --bg:#101113; --card:#191b1e; --field:#22252a; --fg:#f1f2f4; --hint:#a5aab3;
+    --line:#373c43; --line2:#373c43;
+    --green:#86bd9e; --green-soft:#22252a; --green-ink:#101113; --accent:#86bd9e;
+    --brass:#86bd9e; --brass-ink:#86bd9e; --brass-soft:#22252a;
     --ok:#5cc79b; --ok-soft:#16281f;
     --warn:#e0b568; --warn-soft:#2b2214;
     --danger:#f08a90; --danger-soft:#33201f;
-    --hero-bg:#171d1a; --hero-fg:#eef1ee; --hero-sub:#98a49e;
-    --hero-line:#252d29; --hero-gold:#d3a955; --hero-num:#3ea583;
+    --hero-bg:#191b1e; --hero-fg:#f1f2f4; --hero-sub:#a5aab3;
+    --hero-line:#373c43; --hero-gold:#86bd9e; --hero-num:var(--fg);
     color-scheme:dark;
   }
 }

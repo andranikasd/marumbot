@@ -1,6 +1,8 @@
 # Marum v3 implementation review
 
-Status: design for review; no application changes in this pass.
+Status: implementation in progress on `feature/v1.1.0-complete-ui-redesign`.
+Release target: v2.0.0 on development only; no production deployment.
+See `release-checklist.md` for remaining acceptance work.
 Baseline inspected: de1e0ab, 2 September 2026.
 Source: specification.md, supplied by the user. External product claims in that document have not been independently reverified.
 

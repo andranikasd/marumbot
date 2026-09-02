@@ -529,7 +529,7 @@ func (w *Worker) positions(ctx context.Context, loans []UserLoan) ([]plan.Positi
 		}
 		out = append(out, plan.Position{
 			ID: ln.ID, Name: ln.Name, Contract: ln.Contract,
-			Balance: ln.Balance, From: ln.AsOf, Excess: ln.Excess, Trust: ln.Trust,
+			Balance: ln.Balance, From: ln.AsOf, Excess: ln.Excess, Trust: ln.Trust, OptionalExcluded: ln.OptionalExcluded,
 		})
 	}
 	return out, owed, required, cur, nil

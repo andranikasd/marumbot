@@ -3,6 +3,7 @@
 // authoritative figure is computed on the server, where it is tested
 // against real bank schedules.
 "use strict";
+import {iconPicker} from "../icons.js";
 import { haptic, toast, fmtMoney, fmtDate, fmtMonth, moneyNum, num, monthsBetween, group } from "../core.js";
 import { T, sub } from "../i18n.js";
 import { api, invalidate } from "../api.js";
@@ -11,6 +12,7 @@ import { register, go, currentScreen } from "../nav.js";
 const HTML = `
   <form id="f" novalidate class="stack">
     <div class="card stack">
+      ${iconPicker("add-icon")}
       <div class="field">
         <label for="title" data-i18n="title.field">Անվանում</label>
         <input id="title" name="title" autocomplete="off" maxlength="60">
@@ -242,7 +244,7 @@ async function saveLoan(e) {
     const res = await api("api/loans", {
       method: "POST",
       body: JSON.stringify({
-        title,
+        title, icon:$("add-icon").value,
         description: $("description").value.trim(),
         principal_major: v.p, balance_major: v.rem || 0, currency: $("currency").value, rate_percent: v.r,
         prepay_effect: $("prepay").value,
@@ -274,6 +276,7 @@ async function saveLoan(e) {
 
 register({
   id: "add",
+  parent:"loans",
   icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 8.5v7M8.5 12h7"/></svg>',
   labelKey: "tab.add",
   titleKey: "title",

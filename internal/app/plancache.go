@@ -3,7 +3,10 @@ package app
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
+	"reflect"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,13 +45,82 @@ type searchEntry struct {
 	addedAt time.Time
 }
 
-// fingerprint reduces everything the search reads to one key. %+v is stable
-// here because Input and Goal are trees of value types — no pointers, no maps
-// — and the engine's determinism tests hold exactly that shape still.
+// searchFingerprint encodes raw values, never display strings or addresses.
+// The schema prefix versions the encoding independently of the engine.
 func searchFingerprint(in plan.Input, g plan.Goal) string {
-	h := sha256.New()
-	_, _ = fmt.Fprintf(h, "%s|%+v|%+v", plan.EngineVersion, in, g) // sha256 never errors
-	return hex.EncodeToString(h.Sum(nil))
+	var b strings.Builder
+	fingerprintToken(&b, "marum/search-fingerprint/v2")
+	fingerprintToken(&b, plan.EngineVersion)
+	fingerprintValue(&b, reflect.ValueOf(in))
+	fingerprintValue(&b, reflect.ValueOf(g))
+	sum := sha256.Sum256([]byte(b.String()))
+	return hex.EncodeToString(sum[:])
+}
+
+// Length framing prevents collisions between adjacent strings or containers.
+func fingerprintToken(b *strings.Builder, s string) {
+	b.WriteString(strconv.Itoa(len(s)))
+	b.WriteByte(':')
+	b.WriteString(s)
+}
+
+// Input and Goal are acyclic value trees. Walk every field, including private
+// money minor units, full currency metadata and date components, without
+// Interface or Stringer calls. New unsupported kinds are programmer errors.
+func fingerprintValue(b *strings.Builder, v reflect.Value) {
+	t := v.Type()
+	fingerprintToken(b, v.Kind().String())
+	fingerprintToken(b, t.PkgPath())
+	fingerprintToken(b, t.String())
+	switch v.Kind() {
+	case reflect.Bool:
+		fingerprintToken(b, strconv.FormatBool(v.Bool()))
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		fingerprintToken(b, strconv.FormatInt(v.Int(), 10))
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		fingerprintToken(b, strconv.FormatUint(v.Uint(), 10))
+	case reflect.String:
+		fingerprintToken(b, v.String())
+	case reflect.Struct:
+		fingerprintToken(b, strconv.Itoa(v.NumField()))
+		for i := 0; i < v.NumField(); i++ {
+			fingerprintToken(b, t.Field(i).Name)
+			fingerprintValue(b, v.Field(i))
+		}
+	case reflect.Pointer:
+		if v.IsNil() {
+			fingerprintToken(b, "nil")
+			return
+		}
+		fingerprintToken(b, "value")
+		fingerprintValue(b, v.Elem())
+	case reflect.Slice, reflect.Array:
+		if v.Kind() == reflect.Slice && v.IsNil() {
+			fingerprintToken(b, "nil")
+			return
+		}
+		fingerprintToken(b, strconv.Itoa(v.Len()))
+		for i := 0; i < v.Len(); i++ {
+			fingerprintValue(b, v.Index(i))
+		}
+	case reflect.Map:
+		if t.Key().Kind() != reflect.String {
+			panic("search fingerprint: unsupported map key kind " + t.Key().Kind().String())
+		}
+		if v.IsNil() {
+			fingerprintToken(b, "nil")
+			return
+		}
+		keys := v.MapKeys()
+		sort.Slice(keys, func(i, j int) bool { return keys[i].String() < keys[j].String() })
+		fingerprintToken(b, strconv.Itoa(len(keys)))
+		for _, k := range keys {
+			fingerprintValue(b, k)
+			fingerprintValue(b, v.MapIndex(k))
+		}
+	default:
+		panic("search fingerprint: unsupported kind " + v.Kind().String())
+	}
 }
 
 // search returns the cached report for this exact input, computing and

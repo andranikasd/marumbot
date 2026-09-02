@@ -60,6 +60,10 @@ func repaymentTypeName(t model.RepaymentType) string {
 // balance in one statement, so a loan cannot exist without the terms that
 // explain it or the anchor that gives it a balance.
 func (s *Store) CreateLoan(ctx context.Context, d app.LoanDraft) (string, error) {
+	icon, err := app.LoanIcon(d.Icon)
+	if err != nil {
+		return "", err
+	}
 	c := d.Contract
 	title := d.Title
 	if title == "" {
@@ -67,14 +71,14 @@ func (s *Store) CreateLoan(ctx context.Context, d app.LoanDraft) (string, error)
 	}
 
 	var got string
-	err := s.pool.QueryRow(ctx, q("CreateLoan"),
+	err = s.pool.QueryRow(ctx, q("CreateLoan"),
 		uuid.NewString(), d.UserID, title, d.Description, c.Currency.Code,
 		uuid.NewString(), c.StartDate.String(),
 		c.NominalRate.String(), dayCountName(c.DayCount), repaymentTypeName(c.Type),
 		c.MaturityDate.String(), c.PaymentDay,
 		roundingModeName(c.Rounding.Mode), c.Rounding.Unit,
 		uuid.NewString(), d.Balance.Minor(), d.AsOf.String(),
-		prepaymentJSON(c.Prepayment), plan.MaxLoans,
+		prepaymentJSON(c.Prepayment), plan.MaxLoans, icon, d.OptionalExcluded,
 	).Scan(&got)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", app.ErrTooManyLoans
@@ -97,26 +101,28 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 	var out []app.UserLoan
 	for rows.Next() {
 		var (
-			l         app.UserLoan
-			code      string
-			rate      string
-			dayCount  string
-			repayment string
-			mode      string
-			unit      int32
-			start     string
-			maturity  string
-			day       int16
-			principal *int64
-			asOf      *string
-			trust     *string
-			excess    string
-			prepay    string
-			first     *int64
+			l               app.UserLoan
+			code            string
+			rate            string
+			dayCount        string
+			repayment       string
+			mode            string
+			unit            int32
+			start           string
+			maturity        string
+			day             int16
+			principal       *int64
+			asOf            *string
+			trust           *string
+			excess          string
+			prepay          string
+			first           *int64
+			contractVersion int
+			effectiveFrom   string
 		)
 		if err := rows.Scan(&l.ID, &l.Name, &l.Description, &code,
 			&rate, &repayment, &dayCount, &start, &maturity, &day,
-			&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first); err != nil {
+			&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom); err != nil {
 			return nil, err
 		}
 		if l.Excess, err = allocation.ParseExcessRule(excess); err != nil {
@@ -156,9 +162,13 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 		if err != nil {
 			return nil, fmt.Errorf("decoding loan rounding mode: %w", err)
 		}
+		effective, err := date.Parse(effectiveFrom)
+		if err != nil {
+			return nil, err
+		}
 		l.Contract = model.Contract{
-			LoanID:       model.ID(l.ID),
-			Version:      1,
+			LoanID:  model.ID(l.ID),
+			Version: contractVersion, EffectiveFrom: effective,
 			Currency:     cur,
 			NominalRate:  parsedRate,
 			DayCount:     parsedDayCount,
@@ -274,12 +284,24 @@ func (s *Store) SetBudgetConfiguration(ctx context.Context, configuration app.Bu
 	if err != nil {
 		return fmt.Errorf("encoding budget overrides: %w", err)
 	}
+	var funding any
+	if configuration.Funding != nil {
+		encoded, err := json.Marshal(configuration.Funding)
+		if err != nil {
+			return err
+		}
+		funding = string(encoded)
+	}
 	var got int64
-	return s.pool.QueryRow(ctx, q("SetBudgetConfiguration"),
+	err = s.pool.QueryRow(ctx, q("SetBudgetConfiguration"),
 		configuration.UserID, configuration.Currency, configuration.MonthlyMinor,
 		configuration.PayDay, configuration.OpeningMinor,
-		configuration.OpeningAsOf.String(), string(raw), configuration.ReserveMinor,
+		configuration.OpeningAsOf.String(), string(raw), configuration.ReserveMinor, funding, configuration.ExpectedVersion,
 	).Scan(&got)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.ErrConflict
+	}
+	return err
 }
 
 // Budget returns the borrower's most recently stated budget, or Set=false
@@ -294,9 +316,10 @@ func (s *Store) Budget(ctx context.Context, userID string) (app.Budget, error) {
 		opening  int64
 		reserve  int64
 		openedOn *string
+		funding  *string
 	)
 	err := s.pool.QueryRow(ctx, q("GetBudget"), userID).Scan(
-		&b.Currency, &minor, &payDay, &overRaw, &opening, &openedOn, &reserve)
+		&b.Currency, &minor, &payDay, &overRaw, &opening, &openedOn, &reserve, &funding, &b.Version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return app.Budget{}, nil
 	}
@@ -306,6 +329,11 @@ func (s *Store) Budget(ctx context.Context, userID string) (app.Budget, error) {
 	cur, err := money.Lookup(b.Currency)
 	if err != nil {
 		return app.Budget{}, err
+	}
+	if funding != nil {
+		if err := json.Unmarshal([]byte(*funding), &b.Funding); err != nil {
+			return app.Budget{}, err
+		}
 	}
 	b.Monthly, b.Set, b.PayDay = money.FromMinor(minor, cur), true, int(payDay)
 	if overRaw != "" && overRaw != "{}" {
@@ -380,27 +408,29 @@ func (s *Store) ArchiveLoan(ctx context.Context, loanID, userID string) error {
 // date on every mid-life loan.
 func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.UserLoan, error) {
 	var (
-		l         app.UserLoan
-		code      string
-		rate      string
-		dayCount  string
-		repayment string
-		mode      string
-		unit      int32
-		start     string
-		maturity  string
-		day       int16
-		principal *int64
-		asOf      *string
-		trust     *string
-		excess    string
-		prepay    string
-		first     *int64
+		l               app.UserLoan
+		code            string
+		rate            string
+		dayCount        string
+		repayment       string
+		mode            string
+		unit            int32
+		start           string
+		maturity        string
+		day             int16
+		principal       *int64
+		asOf            *string
+		trust           *string
+		excess          string
+		prepay          string
+		first           *int64
+		contractVersion int
+		effectiveFrom   string
 	)
 	err := s.pool.QueryRow(ctx, q("GetLoanForUser"), loanID, userID).Scan(
 		&l.ID, &l.Name, &l.Description, &code,
 		&rate, &repayment, &dayCount, &start, &maturity, &day,
-		&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first)
+		&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return app.UserLoan{}, app.ErrNotFound
 	}
@@ -442,8 +472,12 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 	if err != nil {
 		return app.UserLoan{}, fmt.Errorf("decoding loan rounding mode: %w", err)
 	}
+	effective, err := date.Parse(effectiveFrom)
+	if err != nil {
+		return app.UserLoan{}, err
+	}
 	l.Contract = model.Contract{
-		LoanID: model.ID(l.ID), Version: 1, Currency: cur,
+		LoanID: model.ID(l.ID), Version: contractVersion, Currency: cur, EffectiveFrom: effective,
 		NominalRate: parsedRate, DayCount: parsedDayCount,
 		Type: parsedType, StartDate: startDate,
 		MaturityDate: maturityDate, PaymentDay: int(day),
@@ -475,10 +509,16 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 
 // ApplyLoanRevision persists every part of one edit in a single SQL statement.
 func (s *Store) ApplyLoanRevision(ctx context.Context, loanID, userID string, r app.LoanRevision) error {
+	if r.BalanceAsOf.IsZero() {
+		r.BalanceAsOf = r.EffectiveFrom
+	}
 	c := model.Contract{}
 	terms := r.Contract != nil
 	if terms {
 		c = *r.Contract
+	} else {
+		// PostgreSQL parses typed parameters even when the contract CTE is disabled.
+		c.StartDate, c.MaturityDate = r.EffectiveFrom, r.EffectiveFrom
 	}
 	balance := int64(0)
 	hasBalance := r.BalanceMinor != nil
@@ -491,7 +531,7 @@ func (s *Store) ApplyLoanRevision(ctx context.Context, loanID, userID string, r 
 		terms, uuid.NewString(), r.EffectiveFrom.String(), c.NominalRate.String(),
 		dayCountName(c.DayCount), repaymentTypeName(c.Type), c.StartDate.String(),
 		c.MaturityDate.String(), c.PaymentDay, roundingModeName(c.Rounding.Mode),
-		c.Rounding.Unit, prepaymentJSON(c.Prepayment), hasBalance, uuid.NewString(), balance,
+		c.Rounding.Unit, prepaymentJSON(c.Prepayment), hasBalance, uuid.NewString(), balance, r.Icon, r.OptionalExcluded, r.BalanceAsOf.String(),
 	).Scan(&got)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return app.ErrNotFound

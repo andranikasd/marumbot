@@ -77,6 +77,7 @@ echo "$ready" | grep -q '"database":true' || fail "database unreachable: $ready"
 echo "→ schema version"
 version=$(echo "$ready" | sed -n 's/.*"migration_version":\([0-9]*\).*/\1/p')
 [ -n "$version" ] && [ "$version" -gt 0 ] || fail "no schema version reported"
+[ "$version" -ge 11 ] || fail "schema is behind this application (requires at least 11)"
 echo "  schema at version $version"
 
 echo "→ status endpoint"
@@ -120,6 +121,11 @@ planmod=$(get "$base/app/js/screens/plan.js") || fail "the plan module did not a
 echo "$planmod" | grep -q 'plan-goals' || fail "the plan module does not carry its screen"
 loanmod=$(get "$base/app/js/screens/loan.js") || fail "the loan module did not answer"
 echo "$loanmod" | grep -q 'loan-view' || fail "the loan module does not carry its screen"
+for module in home activity more plan-chart budget-funding; do
+  get "$base/app/js/screens/$module.js" > /dev/null || fail "missing $module module"
+done
+get "$base/app/js/icons.js" > /dev/null || fail "missing loan icons"
+
 styles=$(get "$base/app/a/$expected_version/styles.css") || fail "the stylesheet did not answer"
 echo "$styles" | grep -q -- '--brass:' || fail "the stylesheet lacks the shared design tokens"
 

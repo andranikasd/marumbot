@@ -17,8 +17,8 @@
 -- own figure arrives -- which is the whole reliability model working as
 -- intended rather than an omission.
 WITH new_loan AS (
-    INSERT INTO loans (id, user_id, name, description, currency)
-    SELECT $1, $2, $3, $4, $5
+    INSERT INTO loans (id, user_id, name, description, currency, icon, optional_excluded)
+    SELECT $1, $2, $3, $4, $5, $20, $21
      WHERE (SELECT count(*) FROM loans WHERE user_id = $2 AND archived_at IS NULL) < $19
     RETURNING id
 ), new_contract AS (
@@ -64,7 +64,7 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        s.principal_minor, s.as_of::text, s.trust,
        coalesce(p.excess_rule, 'unknown'),
        c.prepayment_policy::text,
-       f.principal_minor AS first_principal_minor
+       f.principal_minor AS first_principal_minor, l.icon, l.optional_excluded, c.version, c.effective_from::text
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
@@ -104,9 +104,12 @@ RETURNING monthly_amount_minor;
 -- pay_day is replaced exactly: zero deliberately clears it.
 INSERT INTO budgets (
     user_id, currency, monthly_amount_minor, overrides_schema_version,
-    pay_day, opening_cash_minor, opening_as_of, overrides, reserve_floor_minor
+    pay_day, opening_cash_minor, opening_as_of, overrides, reserve_floor_minor, funding
 )
-VALUES ($1, $2, $3, 1, $4, $5, $6::date, $7::jsonb, $8)
+SELECT $1, $2, $3, 1, $4, $5, $6::date, $7::jsonb, $8, $9::jsonb
+WHERE $10::bigint IS NULL OR $10::bigint = 0 OR EXISTS (
+    SELECT 1 FROM budgets WHERE user_id = $1 AND currency = $2 AND version = $10::bigint
+)
 ON CONFLICT (user_id, currency) DO UPDATE
    SET monthly_amount_minor = EXCLUDED.monthly_amount_minor,
        pay_day = EXCLUDED.pay_day,
@@ -114,7 +117,9 @@ ON CONFLICT (user_id, currency) DO UPDATE
        opening_as_of = EXCLUDED.opening_as_of,
        overrides = EXCLUDED.overrides,
        reserve_floor_minor = EXCLUDED.reserve_floor_minor,
+       funding = EXCLUDED.funding,
        updated_at = now()
+WHERE $10::bigint IS NULL OR budgets.version = $10::bigint
 RETURNING monthly_amount_minor;
 
 -- name: GetBudget
@@ -123,7 +128,7 @@ RETURNING monthly_amount_minor;
 -- currency had the bigger unit. The one the user last set is the one they
 -- mean.
 SELECT currency, monthly_amount_minor, pay_day,
-       overrides::text, opening_cash_minor, opening_as_of::text, reserve_floor_minor
+       overrides::text, opening_cash_minor, opening_as_of::text, reserve_floor_minor, funding::text, version
   FROM budgets
  WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1;
 
@@ -174,7 +179,7 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        s.principal_minor, s.as_of::text, s.trust,
        coalesce(p.excess_rule, 'unknown'),
        c.prepayment_policy::text,
-       f.principal_minor AS first_principal_minor
+       f.principal_minor AS first_principal_minor, l.icon, l.optional_excluded, c.version, c.effective_from::text
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
@@ -233,9 +238,8 @@ RETURNING id;
 -- Trust is 'user_entered' -- the honest grade for a typed figure; only a
 -- lender-confirmed number resets drift.
 --
--- Ownership lives in the predicate. The idempotency key is loan and date, so
--- restating the balance on the same day corrects the same claim rather than
--- stacking a contradiction; a new day is a new claim and a new row.
+-- Ownership lives in the predicate. Every statement gets a new identity;
+-- later same-day statements supersede earlier anchors without rewriting them.
 WITH owned AS (
     SELECT l.id FROM loans l
      WHERE l.id = $1 AND l.user_id = $2 AND l.archived_at IS NULL
@@ -251,12 +255,11 @@ INSERT INTO loan_snapshots (
     id, loan_id, contract_version_id, as_of, trust,
     principal_minor, source_note, idempotency_key
 )
-SELECT $3, loan_id, contract_id, $4, 'user_entered', $5,
+SELECT $3::uuid, loan_id, contract_id, $4, 'user_entered', $5,
        'balance stated by the borrower after a payment',
-       'balance:' || loan_id::text || ':' || $4
+       'balance:' || loan_id::text || ':' || $3::text
   FROM latest
-ON CONFLICT (idempotency_key) DO UPDATE
-   SET principal_minor = EXCLUDED.principal_minor, captured_at = now()
+ON CONFLICT (idempotency_key) DO NOTHING
 RETURNING id;
 
 -- name: ApplyLoanRevision
@@ -266,9 +269,16 @@ RETURNING id;
 WITH owned AS (
     SELECT id FROM loans
      WHERE id = $1 AND user_id = $2 AND archived_at IS NULL
+       AND (NOT $18::boolean OR (
+           $23::date >= (SELECT effective_from FROM loan_contract_versions
+                       WHERE loan_id = $1 ORDER BY version DESC LIMIT 1)
+           AND (NOT $6::boolean OR $23::date >= $8::date)
+       ))
 ), renamed AS (
-    UPDATE loans SET name = $4, description = $5
-     WHERE id IN (SELECT id FROM owned) AND $3::boolean
+    UPDATE loans SET name = CASE WHEN $3::boolean THEN $4 ELSE name END,
+           description = CASE WHEN $3::boolean THEN $5 ELSE description END,
+           icon = coalesce($21::text, icon), optional_excluded = coalesce($22::boolean, optional_excluded)
+     WHERE id IN (SELECT id FROM owned) AND ($3::boolean OR $21::text IS NOT NULL OR $22::boolean IS NOT NULL)
     RETURNING id
 ), prev AS (
     SELECT v.id, v.version, v.allocation_policy_version_id
@@ -298,12 +308,11 @@ WITH owned AS (
         id, loan_id, contract_version_id, as_of, trust, principal_minor,
         source_note, idempotency_key
     )
-    SELECT $19, c.loan_id, c.id, $8, 'user_entered', $20,
+    SELECT $19::uuid, c.loan_id, c.id, $23::date, 'user_entered', $20,
            'balance stated by the borrower after a payment',
-           'balance:' || c.loan_id::text || ':' || $8
+           'balance:' || c.loan_id::text || ':' || $19::text
       FROM current_contract c WHERE $18::boolean
-    ON CONFLICT (idempotency_key) DO UPDATE
-       SET principal_minor = EXCLUDED.principal_minor, captured_at = now()
+    ON CONFLICT (idempotency_key) DO NOTHING
     RETURNING id
 )
 SELECT id FROM owned;
@@ -383,3 +392,11 @@ SELECT goal, cap_minor, policy, engine, payoff_date::text, months, interest_mino
 
 -- name: ClearApprovedPlan
 DELETE FROM approved_plans WHERE user_id = $1 RETURNING user_id;
+
+-- name: BorrowerActivity
+-- Source facts only; a projection never appears as a recorded payment.
+SELECT sn.id::text, l.id::text, l.name, l.currency, sn.as_of::text,
+       sn.principal_minor, sn.trust
+FROM loan_snapshots sn JOIN loans l ON l.id = sn.loan_id
+WHERE l.user_id = $1
+ORDER BY sn.captured_at DESC, sn.id DESC LIMIT 100;

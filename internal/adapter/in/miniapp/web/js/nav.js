@@ -53,7 +53,8 @@ export function go(id, withParams) {
   }
   current = id;
   params = withParams || null;
-  const tabId = s.parent || id;
+  let tabId=id;
+  while(screens.get(tabId)?.parent) tabId=screens.get(tabId).parent;
   for (const b of document.querySelectorAll("nav.tabs button")) {
     const on = b.dataset.go === tabId;
     b.classList.toggle("on", on);

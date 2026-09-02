@@ -8,30 +8,31 @@
 // every past balance keeps meaning what it meant. The currency alone is
 // fixed: re-denominating a ledger is archive-and-refile, not an edit.
 "use strict";
+import {iconPicker} from "../icons.js";
 import { haptic, toast, fmtMoney, fmtFull, fmtMonth, moneyNum, num, confirmDialog, group } from "../core.js";
 import { T, sub, addStrings } from "../i18n.js";
 import { api, getJSON, invalidate } from "../api.js";
 import { register, go, setAction, setTitle } from "../nav.js";
 
 addStrings({
-  "loan.balance": "Մնացորդ", "loan.stated": "ձեր թիվը, {d}", "loan.confirmed": "բանկի հաստատած, {d}",
+  "loan.zero":"Զրոյական մնացորդ է գրանցված", "loan.snapshotdate":"Մնացորդի ամսաթիվը", "loan.balance": "Մնացորդ", "loan.stated": "ձեր թիվը, {d}", "loan.confirmed": "բանկի հաստատած, {d}",
   "loan.paid": "{p}% մարված", "loan.active": "ակտիվ",
   "loan.next": "Հաջորդ վճարումը", "loan.payment": "Վճարում", "loan.day": "Վճարման օրը",
   "loan.rate": "Տոկոսադրույք", "loan.method": "Մարման եղանակ", "loan.maturity": "Ավարտ",
   "loan.contract": "Պայմանագիր", "loan.principal": "Վարկի գումար", "loan.start": "Սկիզբ",
   "loan.prepay": "Ավել վճարելուց հետո", "loan.note": "Նշում",
-  "loan.update": "Թարմացնել մնացորդը", "loan.edit": "Խմբագրել", "loan.remove": "Հեռացնել վարկը",
+  "loan.update": "Թարմացնել մնացորդը", "loan.edit": "Խմբագրել վարկը", "loan.remove": "Հեռացնել վարկը",
   "loan.newbalance": "Նոր մնացորդ", "loan.newbalance.hint": "Մայր գումարի մնացորդը, որը ցույց է տալիս բանկի հավելվածը։",
   "loan.editing": "Խմբագրել պայմանները", "loan.save": "Պահպանել փոփոխությունները",
   "loan.missing": "Վարկը չի գտնվել։", "loan.day.unit": "ամսի օր",
 }, {
-  "loan.balance": "Balance", "loan.stated": "your figure, {d}", "loan.confirmed": "bank-confirmed, {d}",
+  "loan.zero":"Zero balance reported", "loan.snapshotdate":"Balance as of", "loan.balance": "Balance", "loan.stated": "your figure, {d}", "loan.confirmed": "bank-confirmed, {d}",
   "loan.paid": "{p}% paid off", "loan.active": "active",
   "loan.next": "Next due", "loan.payment": "Payment", "loan.day": "Payment day",
   "loan.rate": "Rate", "loan.method": "Method", "loan.maturity": "Maturity",
   "loan.contract": "Contract", "loan.principal": "Loan amount", "loan.start": "Start",
   "loan.prepay": "After an extra payment", "loan.note": "Note",
-  "loan.update": "Update balance", "loan.edit": "Edit", "loan.remove": "Remove loan",
+  "loan.update": "Update balance", "loan.edit": "Edit loan", "loan.remove": "Remove loan",
   "loan.newbalance": "New balance", "loan.newbalance.hint": "The principal the bank app shows now.",
   "loan.editing": "Edit terms", "loan.save": "Save changes",
   "loan.missing": "This loan was not found.", "loan.day.unit": "of the month",
@@ -46,14 +47,14 @@ const HTML = `
       <div class="track" id="ln-track" hidden><i id="ln-track-fill"></i></div>
     </div>
     <div class="card kv" id="ln-facts"></div>
-    <p class="sec" data-i18n="loan.contract">Պայմանագիր</p>
-    <div class="card kv" id="ln-contract"></div>
+    <details class="card"><summary data-i18n="loan.contract">Պայմանագիր</summary><div class="kv" id="ln-contract"></div></details>
     <button class="cta" type="button" id="ln-update" data-i18n="loan.update">Թարմացնել մնացորդը</button>
     <button class="alink red" type="button" id="ln-remove" data-i18n="loan.remove">Հեռացնել վարկը</button>
   </div>
 
   <form id="loan-balance" hidden novalidate class="card stack">
     <div class="field">
+      <label for="ln-asof" data-i18n="loan.snapshotdate">As of</label><input id="ln-asof" type="date" required>
       <label for="ln-newbal" data-i18n="loan.newbalance">Նոր մնացորդ</label>
       <div class="in unit-w"><input id="ln-newbal" inputmode="decimal" placeholder="0"><span class="unit" id="ln-newbal-unit"></span></div>
       <p class="hint" data-i18n="loan.newbalance.hint"></p>
@@ -64,6 +65,8 @@ const HTML = `
   </form>
 
   <form id="loan-edit" class="stack" hidden novalidate>
+    ${iconPicker("le-icon")}
+    <label class="card"><input id="le-excluded" type="checkbox"><span data-i18n="loan.noextra">Required payments only</span></label>
     <div class="card stack">
       <div class="field"><label for="le-name" data-i18n="title.field">Անվանում</label><input id="le-name" maxlength="60"><p class="error" id="e-le-name"></p></div>
       <div class="field"><label for="le-desc" data-i18n="loan.note">Նշում</label><input id="le-desc" maxlength="200"></div>
@@ -127,7 +130,7 @@ function mode(which) {
 function render() {
   const cur = loan.currency;
   $("ln-balance").textContent = fmtMoney(loan.balance_major, cur);
-  $("ln-state").textContent = T("loan.active");
+  $("ln-state").textContent = T(loan.balance_major===0?"loan.zero":"loan.active");
   const bits = [];
   if (loan.balance_as_of) bits.push(sub(loan.confirmed ? "loan.confirmed" : "loan.stated", { d: fmtFull(loan.balance_as_of) }));
   let share = 0;
@@ -159,6 +162,8 @@ function render() {
 
 function fill() {
   $("le-name").value = loan.name;
+  $("le-icon").value = loan.icon || "bank";
+  $("le-excluded").checked = !!loan.optional_excluded;
   $("le-desc").value = loan.description || "";
   $("le-rate").value = loan.rate_percent != null ? String(loan.rate_percent) : "";
   $("le-day").value = loan.payment_day != null ? String(loan.payment_day) : "";
@@ -200,11 +205,13 @@ const terms = () => ({
 async function saveBalance(e) {
   e.preventDefault();
   const raw = $("ln-newbal").value.trim(), v = moneyNum(raw);
-  const err = !raw ? T("err.required") : Number.isNaN(v) ? T("err.number") : v <= 0 ? T("err.positive") : "";
+  const err = !raw ? T("err.required") : Number.isNaN(v) ? T("err.number") : v < 0 ? T("err.positive") : "";
   $("e-newbal").textContent = err;
   $("ln-newbal").setAttribute("aria-invalid", err ? "true" : "false");
   if (err) { haptic.bad(); return; }
-  if (await patch({ ...terms(), balance_major: v }, "saved")) { await load(loan.id); mode("view"); }
+  const minor=Math.round(v*10**(loan.currency_exponent??2));
+  if (!Number.isSafeInteger(minor) || !$("ln-asof").value) {$("e-newbal").textContent=T("err.number");return;}
+  if (await patch({ ...terms(), snapshot_minor:minor, snapshot_as_of:$("ln-asof").value }, "saved")) { await load(loan.id); mode("view"); }
 }
 
 async function saveEdit(e) {
@@ -224,7 +231,7 @@ async function saveEdit(e) {
   }
   if (Object.values(errs).some(Boolean)) { haptic.bad(); return; }
   const body = {
-    name, description: $("le-desc").value.trim(), rate_percent: rate, payment_day: day,
+    name, icon:$("le-icon").value, optional_excluded:$("le-excluded").checked, description: $("le-desc").value.trim(), rate_percent: rate, payment_day: day,
     start_date: start, maturity_date: maturity,
     method: document.querySelector('input[name="le-method"]:checked')?.value || "annuity",
     prepay_effect: $("le-prepay").value, balance_major: 0,
@@ -267,7 +274,7 @@ register({
   html: HTML,
   onMount() {
     group($("ln-newbal"));
-    $("ln-update").addEventListener("click", () => { haptic.tap(); $("ln-newbal").value = ""; $("e-newbal").textContent = ""; mode("balance"); $("ln-newbal").focus({ preventScroll: true }); });
+    $("ln-update").addEventListener("click", () => { haptic.tap(); $("ln-newbal").value = ""; $("ln-asof").value = new Date().toLocaleDateString("en-CA"); $("e-newbal").textContent = ""; mode("balance"); $("ln-newbal").focus({ preventScroll: true }); });
     $("ln-bal-cancel").addEventListener("click", () => { haptic.tap(); mode("view"); });
     $("ln-edit-cancel").addEventListener("click", () => { haptic.tap(); mode("view"); });
     $("loan-balance").addEventListener("submit", saveBalance);

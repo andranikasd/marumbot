@@ -3,6 +3,7 @@ package plan
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/andranikasd/marumbot/pkg/core/allocation"
 	"github.com/andranikasd/marumbot/pkg/core/date"
@@ -12,7 +13,7 @@ import (
 
 // EngineVersion is printed in every certificate so a stored report can be
 // traced to the arithmetic that produced it.
-const EngineVersion = "plan/2"
+const EngineVersion = "plan/3"
 
 // Strength is how much a result may claim.
 type Strength string
@@ -36,9 +37,16 @@ const (
 // Certificate says how the answer was found and how far to trust it. The
 // borrower sees one sentence; the admin sees all of it.
 type Certificate struct {
-	Strength        Strength
-	Eligibility     string // the rule a proof relied on, when Strength is ProvenOptimal
-	Policies        int    // simulated
+	Strength    Strength
+	Eligibility string // the rule a proof relied on, when Strength is ProvenOptimal
+	// Policies counts candidate simulation attempts, including infeasible
+	// policies, across all rollovers explored so far (at most 4096 each).
+	// FeasiblePolicies counts their successful results. Both exclude the
+	// report's named baselines, minimum and budget ladder runs.
+	Policies         int
+	FeasiblePolicies int
+	// Axis sizes describe the candidate set after vector/order fallback;
+	// the attempt cap may stop before every axis entry is visited.
 	Orders          int
 	EffectVectors   int
 	TimingVectors   int
@@ -112,10 +120,21 @@ type Universe struct {
 	assumed   map[string]int
 	cache     cache
 	feeBearer bool
+	attempted int
 }
 
-// explore simulates every policy for one rollover. Freed-cash behaviour is
-// a policy dimension the goals select on, so it is explored on demand: the
+func (u *Universe) truncate(reason string) {
+	if strings.Contains(u.trunc, reason) {
+		return
+	}
+	if u.trunc != "" {
+		u.trunc += "; "
+	}
+	u.trunc += reason
+}
+
+// explore attempts at most maxPolicies candidates for one rollover.
+// Freed-cash behaviour is a policy dimension explored on demand: the
 // least-interest family never needs the kept-cash runs and vice versa.
 func (u *Universe) explore(r Rollover) error {
 	if u.explored == nil {
@@ -125,10 +144,20 @@ func (u *Universe) explore(r Rollover) error {
 		return nil
 	}
 	u.explored[r] = true
+	attempted := 0
 	for _, o := range u.orders {
 		for _, e := range u.effects {
 			for _, t := range u.timings {
 				for _, b := range u.batches {
+					// Bound actual attempts even when dropping permutations was
+					// insufficient. Keep the deterministic order/effect/timing/batch
+					// prefix, and charge infeasible runs against the same cap.
+					if attempted == maxPolicies {
+						u.truncate(fmt.Sprintf("policies: attempted simulation cap of %d per rollover; candidate prefix only", maxPolicies))
+						return nil
+					}
+					attempted++
+					u.attempted++
 					pol := Policy{Name: o.name, Order: o.idx, Timing: t, Effect: e, Rollover: r, MinPrepay: b}
 					res, err := run(u.Input, pol, u.cache)
 					if err != nil {
@@ -146,7 +175,7 @@ func (u *Universe) explore(r Rollover) error {
 	return nil
 }
 
-// Explore simulates the whole candidate set for an input.
+// Explore simulates the bounded candidate set for an input with RollFreed.
 func Explore(in Input) (*Universe, error) {
 	norm, assumed, err := Normalize(in)
 	if err != nil {
@@ -176,6 +205,24 @@ func Explore(in Input) (*Universe, error) {
 		return nil, fmt.Errorf("plan: empty candidate axis")
 	}
 	u.effects, u.timings = effects, timings
+	freeEffects, freeTimings := 0, 0
+	for _, l := range norm.Loans {
+		if l.Balance.Sign() <= 0 {
+			continue
+		}
+		if l.Contract.Prepayment.Effect == model.PrepayBorrowerChooses && l.Contract.Type == model.Annuity {
+			freeEffects++
+		}
+		if norm.Cash.PayDay > 0 && l.Excess == allocation.ExcessReducePrincipal {
+			freeTimings++
+		}
+	}
+	if freeEffects > maxVectorLoans {
+		u.truncate(fmt.Sprintf("effects: %d free loans exceed the vector limit of %d; uniform vectors only", freeEffects, maxVectorLoans))
+	}
+	if freeTimings > maxVectorLoans {
+		u.truncate(fmt.Sprintf("timings: %d free loans exceed the vector limit of %d; uniform vectors only", freeTimings, maxVectorLoans))
+	}
 	u.batches = []money.Amount{{}}
 	if u.feeBearer {
 		u.batches = append(u.batches, batchThresholds(norm)...)
@@ -188,7 +235,7 @@ func Explore(in Input) (*Universe, error) {
 		u.orders = namedOrders(norm.Loans)
 		u.orders = dedupeOrders(u.orders)
 		u.nOrders = len(u.orders)
-		u.trunc = fmt.Sprintf("policies: %d candidates exceed the cap of %d; permutations dropped", total, maxPolicies)
+		u.truncate(fmt.Sprintf("policies: %d candidates exceed the cap of %d; permutations dropped", total, maxPolicies))
 	}
 
 	if err := u.explore(RollFreed); err != nil {
@@ -313,7 +360,7 @@ func Search(in Input, goal Goal) (Report, error) {
 func (u *Universe) certificate(goal Goal, rep Report) Certificate {
 	in := u.Input
 	c := Certificate{
-		Policies: len(u.Results), Orders: u.nOrders, EffectVectors: u.nEffects, TimingVectors: u.nTimings,
+		Policies: u.attempted, FeasiblePolicies: len(u.Results), Orders: u.nOrders, EffectVectors: u.nEffects, TimingVectors: u.nTimings,
 		Truncation: u.trunc, BestCost: rep.Best.Cost(), Quantum: money.DefaultPolicy(in.Cash.Monthly.Currency()).Unit,
 		EngineVersion: EngineVersion, AssumedPayments: u.assumed,
 	}
@@ -353,7 +400,7 @@ func (u *Universe) certificate(goal Goal, rep Report) Certificate {
 // a proof when the ranked winner is that policy.
 func (u *Universe) provable(goal Goal, rep Report) (string, bool) {
 	in := u.Input
-	if goal.Kind != LeastInterest || u.feeBearer || u.trunc != "" {
+	if goal.Kind != LeastInterest || u.feeBearer || u.trunc != "" || in.Cash.Spending != nil {
 		return "", false
 	}
 	// Every precondition the proof's own sentence states is checked here;
@@ -365,6 +412,11 @@ func (u *Universe) provable(goal Goal, rep Report) (string, bool) {
 	var dc *money.DayCount
 	var rp *money.Policy
 	for _, l := range in.Loans {
+		// The exchange argument does not yet cover spending permissions
+		// or loans that are excluded from optional allocation.
+		if l.OptionalExcluded {
+			return "", false
+		}
 		if l.Balance.Sign() > 0 {
 			live++
 			if dc == nil {
@@ -486,12 +538,17 @@ func reliefMonth(goal Goal, baseline money.Amount, r Result) int {
 }
 
 // minimum pays only what the contracts require, on their dates, with no
-// optional payment: the budget each cycle is exactly that cycle's
-// instalments, so a changing required total is followed rather than fixed
-// at today's figure.
+// optional payment. Explicit spending preserves the declared cash and
+// permissions; legacy inputs retain the required-instalment budget baseline.
 func minimum(in Input, c cache) (Result, error) {
 	n := len(in.Loans)
-	pol := Policy{Name: "minimum", Order: identity(n), Timing: uniform(n, OnDue), Effect: uniform(n, model.PrepayReduceInstalment), Rollover: KeepFreed}
+	pol := Policy{Name: "minimum", RequiredOnly: true, Order: identity(n), Timing: uniform(n, OnDue), Effect: uniform(n, model.PrepayReduceInstalment), Rollover: KeepFreed}
+	if in.Cash.Spending != nil {
+		// Funding and permission are independent in this domain. Preserve
+		// all dated cash, reserves and spending declarations; suppress extras
+		// explicitly rather than manufacturing a required-payment budget.
+		return run(in, pol, c)
+	}
 	req, err := requiredNow(in, c)
 	if err != nil {
 		return Result{}, err
@@ -499,8 +556,8 @@ func minimum(in Input, c cache) (Result, error) {
 	// Under KeepFreed the budget falls as loans close; between closures the
 	// required total of an annuity is level, so the first cycle's figure
 	// carries. Declining-principal loans require less each month; the
-	// surplus that creates is not spent because MinPrepay is set above any
-	// balance.
+	// surplus that creates is not spent because RequiredOnly forbids extras,
+	// including closing payments that would bypass MinPrepay.
 	// Overrides ride along: a month the borrower stated as tight can be too
 	// tight even for the required instalments, and the minimum run is where
 	// that becomes a typed refusal with the date instead of a generic "no
