@@ -149,19 +149,27 @@ code=$(status "$base/app/api/budget" 401 POST)
 # the bot's own credentials, and a self-hosted smoke may not have them.
 if [ -n "${MARUM_BOT_TOKEN:-}" ]; then
   echo "→ telegram menu button"
-  want="v=$(printf '%s' "$expected_version" | sed 's/[^A-Za-z0-9._-]/./g')"
+  want="v=$expected_version"
   button=""
-  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  # A retry can replace a container carrying the same version stamp. Its
+  # health response is not proof that the replacement has started, so give
+  # menu publication the full cold-start window independently of liveness.
+  menu_started=$(date +%s)
+  while [ "$(( $(date +%s) - menu_started ))" -lt "$deadline_s" ]; do
     button=$(curl -s --max-time 20 \
       "https://api.telegram.org/bot${MARUM_BOT_TOKEN}/getChatMenuButton" 2>/dev/null || true)
-    if printf '%s' "$button" | grep -Eq "\"url\":\"[^\"]*[?&]${want}"; then
+    if jq -e --arg want "$want" '
+      .ok == true and .result.type == "web_app" and
+      (((.result.web_app.url // "" | split("?")[1] // "" |
+        split("#")[0] | split("&")) | index($want)) != null)
+    ' <<< "$button" >/dev/null 2>&1; then
       echo "  menu button opens the app at $expected_version"
       break
     fi
     button=""
     sleep 5
   done
-  [ -n "$button" ] || fail "the chat menu button does not point at $expected_version; the container is running without its Mini App URL, or publishing the menus failed"
+  [ -n "$button" ] || fail "the chat menu button does not point at $expected_version after ${deadline_s}s; the container is running without its Mini App URL, or publishing the menus failed"
 fi
 
 echo "→ cold start"
