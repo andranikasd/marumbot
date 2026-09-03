@@ -60,6 +60,10 @@ func repaymentTypeName(t model.RepaymentType) string {
 // balance in one statement, so a loan cannot exist without the terms that
 // explain it or the anchor that gives it a balance.
 func (s *Store) CreateLoan(ctx context.Context, d app.LoanDraft) (string, error) {
+	return createLoan(ctx, s.pool, d)
+}
+
+func createLoan(ctx context.Context, db loanQuery, d app.LoanDraft) (string, error) {
 	icon, err := app.LoanIcon(d.Icon)
 	if err != nil {
 		return "", err
@@ -71,7 +75,7 @@ func (s *Store) CreateLoan(ctx context.Context, d app.LoanDraft) (string, error)
 	}
 
 	var got string
-	err = s.pool.QueryRow(ctx, q("CreateLoan"),
+	err = db.QueryRow(ctx, q("CreateLoan"),
 		uuid.NewString(), d.UserID, title, d.Description, c.Currency.Code,
 		uuid.NewString(), c.StartDate.String(),
 		c.NominalRate.String(), dayCountName(c.DayCount), repaymentTypeName(c.Type),
@@ -92,7 +96,11 @@ func (s *Store) CreateLoan(ctx context.Context, d app.LoanDraft) (string, error)
 // contract terms and then dropped them on the floor, which left the bot unable
 // to show a payment amount for a loan whose terms it had just read.
 func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([]app.UserLoan, error) {
-	rows, err := s.pool.Query(ctx, q("ListLoansForUser"), userID, limit)
+	return loansForUser(ctx, s.pool, userID, limit)
+}
+
+func loansForUser(ctx context.Context, db budgetQuerier, userID string, limit int32) ([]app.UserLoan, error) {
+	rows, err := db.Query(ctx, q("ListLoansForUser"), userID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -121,10 +129,12 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 			effectiveFrom   string
 			nextDue         *string
 			nextPayment     *int64
+			policyKey       string
+			policyVersion   int
 		)
 		if err := rows.Scan(&l.ID, &l.Name, &l.Description, &code,
 			&rate, &repayment, &dayCount, &start, &maturity, &day,
-			&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom, &l.UnreconciledPayments, &nextDue, &nextPayment); err != nil {
+			&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom, &l.UnreconciledPayments, &nextDue, &nextPayment, &policyKey, &policyVersion, &l.MutationVersion); err != nil {
 			return nil, err
 		}
 		if l.Excess, err = allocation.ParseExcessRule(excess); err != nil {
@@ -169,8 +179,9 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 			return nil, err
 		}
 		l.Contract = model.Contract{
-			LoanID:  model.ID(l.ID),
-			Version: contractVersion, EffectiveFrom: effective,
+			AllocationPolicy: model.PolicyRef{Key: policyKey, Version: policyVersion},
+			LoanID:           model.ID(l.ID),
+			Version:          contractVersion, EffectiveFrom: effective,
 			Currency:     cur,
 			NominalRate:  parsedRate,
 			DayCount:     parsedDayCount,
@@ -284,11 +295,19 @@ func roundingModeFrom(s string) (money.Mode, error) {
 // SetBudget records the monthly amount a borrower can put towards loans.
 func (s *Store) SetBudget(ctx context.Context, userID, currency string, minor int64, payDay int) error {
 	var got int64
-	return s.pool.QueryRow(ctx, q("SetBudget"), userID, currency, minor, payDay).Scan(&got)
+	err := s.pool.QueryRow(ctx, q("SetBudget"), userID, currency, minor, payDay).Scan(&got)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.ErrConflict
+	}
+	return err
 }
 
 // SetBudgetConfiguration records the Mini App's complete form atomically.
 func (s *Store) SetBudgetConfiguration(ctx context.Context, configuration app.BudgetConfiguration) error {
+	return setBudgetConfiguration(ctx, s.pool, configuration)
+}
+
+func setBudgetConfiguration(ctx context.Context, db budgetQuerier, configuration app.BudgetConfiguration) error {
 	overrides := configuration.Overrides
 	if overrides == nil {
 		overrides = map[string]int64{}
@@ -306,7 +325,7 @@ func (s *Store) SetBudgetConfiguration(ctx context.Context, configuration app.Bu
 		funding = string(encoded)
 	}
 	var got int64
-	err = s.pool.QueryRow(ctx, q("SetBudgetConfiguration"),
+	err = db.QueryRow(ctx, q("SetBudgetConfiguration"),
 		configuration.UserID, configuration.Currency, configuration.MonthlyMinor,
 		configuration.PayDay, configuration.OpeningMinor,
 		configuration.OpeningAsOf.String(), string(raw), configuration.ReserveMinor, funding, configuration.ExpectedVersion,
@@ -321,6 +340,10 @@ func (s *Store) SetBudgetConfiguration(ctx context.Context, configuration app.Bu
 // when there is none. Absent is a state the caller must handle, not an error:
 // a user who has not set a budget is the normal case, not a fault.
 func (s *Store) Budget(ctx context.Context, userID string) (app.Budget, error) {
+	return budget(ctx, s.pool, userID)
+}
+
+func budget(ctx context.Context, db budgetQuerier, userID string) (app.Budget, error) {
 	var (
 		b        app.Budget
 		minor    int64
@@ -330,9 +353,10 @@ func (s *Store) Budget(ctx context.Context, userID string) (app.Budget, error) {
 		reserve  int64
 		openedOn *string
 		funding  *string
+		policies string
 	)
-	err := s.pool.QueryRow(ctx, q("GetBudget"), userID).Scan(
-		&b.Currency, &minor, &payDay, &overRaw, &opening, &openedOn, &reserve, &funding, &b.Version)
+	err := db.QueryRow(ctx, q("GetBudget"), userID).Scan(
+		&b.Currency, &minor, &payDay, &overRaw, &opening, &openedOn, &reserve, &funding, &b.Version, &policies)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return app.Budget{}, nil
 	}
@@ -347,6 +371,9 @@ func (s *Store) Budget(ctx context.Context, userID string) (app.Budget, error) {
 		if err := json.Unmarshal([]byte(*funding), &b.Funding); err != nil {
 			return app.Budget{}, err
 		}
+	}
+	if err := json.Unmarshal([]byte(policies), &b.Policies); err != nil {
+		return app.Budget{}, err
 	}
 	b.Monthly, b.Set, b.PayDay = money.FromMinor(minor, cur), true, int(payDay)
 	if overRaw != "" && overRaw != "{}" {
@@ -363,7 +390,48 @@ func (s *Store) Budget(ctx context.Context, userID string) (app.Budget, error) {
 		}
 		b.OpeningAsOf = d
 	}
+	if len(b.Policies) > 0 {
+		rows, err := db.Query(ctx, q("GetBudgetReleaseFacts"), userID, b.Currency)
+		if err != nil {
+			return app.Budget{}, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var fact app.BudgetReleaseFact
+			if err := rows.Scan(&fact.PolicyVersion, &fact.SourceID, &fact.On, &fact.BeforeMinor, &fact.AfterMinor, &fact.PriorSourceID); err != nil {
+				return app.Budget{}, err
+			}
+			b.Releases = append(b.Releases, fact)
+		}
+		if err := rows.Err(); err != nil {
+			return app.Budget{}, err
+		}
+	}
 	return b, nil
+}
+
+// AppendBudgetPolicy records permission separately from reconciled cash facts.
+func (s *Store) AppendBudgetPolicy(ctx context.Context, userID, currency string, expectedVersion int64, policy app.BudgetPolicy) (int64, error) {
+	return appendBudgetPolicy(ctx, s.pool, userID, currency, expectedVersion, policy)
+}
+
+func appendBudgetPolicy(ctx context.Context, db budgetQuerier, userID, currency string, expectedVersion int64, policy app.BudgetPolicy) (int64, error) {
+	if expectedVersion < 1 {
+		return 0, app.ErrConflict
+	}
+	if err := policy.Validate(currency); err != nil {
+		return 0, err
+	}
+	raw, err := json.Marshal(policy)
+	if err != nil {
+		return 0, err
+	}
+	var version int64
+	err = db.QueryRow(ctx, q("AppendBudgetPolicy"), userID, currency, expectedVersion, string(raw)).Scan(&version)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, app.ErrConflict
+	}
+	return version, err
 }
 
 // SetOpening states cash on hand for loans, stamped with the day it was said.
@@ -420,6 +488,10 @@ func (s *Store) ArchiveLoan(ctx context.Context, loanID, userID string) error {
 // than in the list, and with a zero AsOf the schedule re-accrued from the start
 // date on every mid-life loan.
 func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.UserLoan, error) {
+	return loanForUser(ctx, s.pool, loanID, userID)
+}
+
+func loanForUser(ctx context.Context, db loanQuery, loanID, userID string) (app.UserLoan, error) {
 	var (
 		l               app.UserLoan
 		code            string
@@ -441,11 +513,13 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 		effectiveFrom   string
 		nextDue         *string
 		nextPayment     *int64
+		policyKey       string
+		policyVersion   int
 	)
-	err := s.pool.QueryRow(ctx, q("GetLoanForUser"), loanID, userID).Scan(
+	err := db.QueryRow(ctx, q("GetLoanForUser"), loanID, userID).Scan(
 		&l.ID, &l.Name, &l.Description, &code,
 		&rate, &repayment, &dayCount, &start, &maturity, &day,
-		&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom, &l.UnreconciledPayments, &nextDue, &nextPayment)
+		&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom, &l.UnreconciledPayments, &nextDue, &nextPayment, &policyKey, &policyVersion, &l.MutationVersion)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return app.UserLoan{}, app.ErrNotFound
 	}
@@ -492,7 +566,8 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 		return app.UserLoan{}, err
 	}
 	l.Contract = model.Contract{
-		LoanID: model.ID(l.ID), Version: contractVersion, Currency: cur, EffectiveFrom: effective,
+		AllocationPolicy: model.PolicyRef{Key: policyKey, Version: policyVersion},
+		LoanID:           model.ID(l.ID), Version: contractVersion, Currency: cur, EffectiveFrom: effective,
 		NominalRate: parsedRate, DayCount: parsedDayCount,
 		Type: parsedType, StartDate: startDate,
 		MaturityDate: maturityDate, PaymentDay: int(day),
@@ -535,6 +610,10 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 
 // ApplyLoanRevision persists every part of one edit in a single SQL statement.
 func (s *Store) ApplyLoanRevision(ctx context.Context, loanID, userID string, r app.LoanRevision) error {
+	return applyLoanRevision(ctx, s.pool, loanID, userID, r)
+}
+
+func applyLoanRevision(ctx context.Context, db loanQuery, loanID, userID string, r app.LoanRevision) error {
 	if r.BalanceAsOf.IsZero() {
 		r.BalanceAsOf = r.EffectiveFrom
 	}
@@ -552,7 +631,7 @@ func (s *Store) ApplyLoanRevision(ctx context.Context, loanID, userID string, r 
 		balance = *r.BalanceMinor
 	}
 	var got string
-	err := s.pool.QueryRow(ctx, q("ApplyLoanRevision"),
+	err := db.QueryRow(ctx, q("ApplyLoanRevision"),
 		loanID, userID, r.Rename, r.Name, r.Description,
 		terms, uuid.NewString(), r.EffectiveFrom.String(), c.NominalRate.String(),
 		dayCountName(c.DayCount), repaymentTypeName(c.Type), c.StartDate.String(),

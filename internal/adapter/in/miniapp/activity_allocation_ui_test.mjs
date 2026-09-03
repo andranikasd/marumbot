@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import vm from 'node:vm';
+const source=(await readFile(new URL('./web/js/screens/activity.js',import.meta.url),'utf8')).replace(/^import .*;$/gm,'');
+const fields=new Map();const field=id=>{if(!fields.has(id))fields.set(id,{value:'',innerHTML:'',textContent:'',addEventListener(){}});return fields.get(id);};
+let screen;
+const env={BigInt,Map,JSON,encodeURIComponent,document:{getElementById:field},register:s=>screen=s,icon:()=>'',addStrings(){},T:s=>s,esc:s=>String(s),fmtFull:s=>s,fmtMoney:s=>s,getJSON:async path=>path.startsWith('api/payment-actuals')?{month:'2026-09',totals:[{currency:'AMD',currency_exponent:2,paid_minor:'12508040',unknown_paid_minor:'100',known_count:1,unknown_count:1,pending_count:1,principal_minor:'5603410',interest_minor:'6904530',fees_minor:'0'},{currency:'USD',currency_exponent:2,paid_minor:'1',unknown_paid_minor:'1',known_count:0,unknown_count:1,pending_count:0,principal_minor:null,interest_minor:null,fees_minor:null}]}:{facts:[{id:'known',kind:'payment_reported',currency:'AMD',currency_exponent:2,amount_minor:12507940,allocation:{principal_minor:5603410,interest_minor:6904530,fees_minor:0}},{id:'unknown',kind:'payment_reported',currency:'AMD',currency_exponent:2,amount_minor:100,allocation:null}]}};
+vm.runInNewContext(source,env);field('activity-filter').value='all';await screen.onShow();
+const totals=field('activity-actuals').innerHTML,activity=field('activity-list').innerHTML;
+assert.match(totals,/role="img"/);assert.match(totals,/activity\.unknown: 1\.00 AMD/);assert.match(totals,/69045\.30 AMD/);assert.match(totals,/0\.00 AMD/);assert.match(totals,/activity\.coverage: 1 \/ 1 \/ 1/);assert.match(totals,/activity\.unknown/);assert.doesNotMatch(totals,/0\.00 USD/);
+assert.match(activity,/69045\.30 AMD/);assert.match(activity,/0\.00 AMD/);assert.match(activity,/payment\.allocation\.unknown/);
+assert.equal(vm.runInNewContext("exactMoney('9007199254740993',2,'AMD')",env),'90071992547409.93 AMD');
+console.log('Activity known components, unknown coverage, and exact aggregate strings passed');

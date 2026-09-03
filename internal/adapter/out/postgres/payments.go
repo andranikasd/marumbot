@@ -53,7 +53,7 @@ func (p *paymentTx) Duplicate(ctx context.Context, c app.PaymentCommand) (bool, 
 }
 
 func (p *paymentTx) Append(ctx context.Context, loanID, key string, e app.PaymentEntry) (app.PaymentReceipt, error) {
-	payload, err := json.Marshal(map[string]string{"transaction_date": e.TransactionDate, "trust": "user_entered", "request_hash": e.Hash})
+	payload, err := paymentPayload(e)
 	if err != nil {
 		return app.PaymentReceipt{}, err
 	}
@@ -99,4 +99,13 @@ func (s *Store) PaymentContext(ctx context.Context, loanID, userID string) (app.
 	}
 	out.CurrencyExponent = cur.Exponent
 	return out, nil
+}
+
+func paymentPayload(e app.PaymentEntry) ([]byte, error) {
+	return json.Marshal(struct {
+		TransactionDate string                 `json:"transaction_date"`
+		Trust           string                 `json:"trust"`
+		RequestHash     string                 `json:"request_hash"`
+		Allocation      *app.PaymentAllocation `json:"allocation,omitempty"`
+	}{e.TransactionDate, "user_entered", e.Hash, e.Allocation})
 }

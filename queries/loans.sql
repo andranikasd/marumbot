@@ -71,7 +71,7 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
  AND NOT EXISTS (SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id = e.id))
  OR EXISTS (SELECT 1 FROM loan_events v WHERE v.loan_id=l.id AND v.kind='entry_voided'
  AND EXISTS(SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id=v.voids_event_id)
- AND v.recorded_seq>coalesce(s.observed_event_seq,0)), CASE WHEN s.contract_version_id=c.id THEN s.next_due_date::text END, CASE WHEN s.contract_version_id=c.id THEN s.next_installment_minor END
+ AND v.recorded_seq>coalesce(s.observed_event_seq,0)), CASE WHEN s.contract_version_id=c.id THEN s.next_due_date::text END, CASE WHEN s.contract_version_id=c.id THEN s.next_installment_minor END, coalesce(p.policy_key,'unknown'),coalesce(p.version,0), l.mutation_version
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
@@ -102,6 +102,7 @@ ON CONFLICT (user_id, currency) DO UPDATE
    SET monthly_amount_minor = EXCLUDED.monthly_amount_minor,
        pay_day = CASE WHEN EXCLUDED.pay_day > 0 THEN EXCLUDED.pay_day ELSE budgets.pay_day END,
        updated_at = now()
+WHERE budgets.policies = '[]'::jsonb
 RETURNING monthly_amount_minor;
 
 -- name: SetBudgetConfiguration
@@ -126,7 +127,8 @@ ON CONFLICT (user_id, currency) DO UPDATE
        reserve_floor_minor = EXCLUDED.reserve_floor_minor,
        funding = EXCLUDED.funding,
        updated_at = now()
-WHERE $10::bigint IS NULL OR budgets.version = $10::bigint
+WHERE ($10::bigint IS NULL OR budgets.version = $10::bigint)
+ AND budgets.policies = '[]'::jsonb
 RETURNING monthly_amount_minor;
 
 -- name: GetBudget
@@ -135,9 +137,18 @@ RETURNING monthly_amount_minor;
 -- currency had the bigger unit. The one the user last set is the one they
 -- mean.
 SELECT currency, monthly_amount_minor, pay_day,
-       overrides::text, opening_cash_minor, opening_as_of::text, reserve_floor_minor, funding::text, version
+       overrides::text, opening_cash_minor, opening_as_of::text, reserve_floor_minor, funding::text, version, policies::text
   FROM budgets
  WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1;
+
+-- name: AppendBudgetPolicy
+-- One aggregate compare-and-swap. Never touches spent, cash, or receipts.
+UPDATE budgets SET
+ policies = policies || jsonb_build_array($4::jsonb || jsonb_build_object('version', version + 1)),
+ updated_at = now()
+WHERE user_id = $1 AND currency = $2 AND version = $3
+ AND funding IS NOT NULL
+RETURNING version;
 
 -- name: SetBudgetOpening
 -- The borrower states what is on hand today for loans. Stamped with the day
@@ -154,7 +165,7 @@ RETURNING opening_cash_minor;
 -- real statement ("nothing spare that month").
 UPDATE budgets
    SET overrides = $3::jsonb, updated_at = now()
- WHERE user_id = $1 AND currency = $2
+ WHERE user_id = $1 AND currency = $2 AND policies = '[]'::jsonb
 RETURNING overrides::text;
 
 -- name: UpdateLoanForUser
@@ -193,7 +204,7 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
  AND NOT EXISTS (SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id = e.id))
  OR EXISTS (SELECT 1 FROM loan_events v WHERE v.loan_id=l.id AND v.kind='entry_voided'
  AND EXISTS(SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id=v.voids_event_id)
- AND v.recorded_seq>coalesce(s.observed_event_seq,0)), CASE WHEN s.contract_version_id=c.id THEN s.next_due_date::text END, CASE WHEN s.contract_version_id=c.id THEN s.next_installment_minor END
+ AND v.recorded_seq>coalesce(s.observed_event_seq,0)), CASE WHEN s.contract_version_id=c.id THEN s.next_due_date::text END, CASE WHEN s.contract_version_id=c.id THEN s.next_installment_minor END, coalesce(p.policy_key,'unknown'),coalesce(p.version,0), l.mutation_version
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
@@ -368,7 +379,7 @@ SELECT o.id, o.user_id, o.loan_id, o.due_date::text, o.offset_days,
        l.name, l.currency
   FROM reminder_occurrences o
   JOIN loans l ON l.id = o.loan_id
- WHERE o.status = 'scheduled' AND o.target_send_at <= now()
+ WHERE o.approved_plan_id IS NULL AND o.status = 'scheduled' AND o.target_send_at <= now()
    AND l.archived_at IS NULL
  ORDER BY o.target_send_at
  LIMIT $1;
@@ -430,3 +441,27 @@ SELECT id::text, loan_id::text, name, currency, as_of, principal_minor, trust, k
 FROM facts WHERE $2::text = '' OR (recorded_at,id) <
  (SELECT recorded_at,id FROM facts WHERE id::text = $2)
 ORDER BY recorded_at DESC, id DESC LIMIT 100;
+
+-- name: BudgetPeriodPolicies
+SELECT policies::text FROM budgets WHERE user_id=$1 AND currency=$2 FOR UPDATE;
+
+-- name: GetBudgetReleaseFacts
+-- Only verified statements captured after a policy declaration can release
+-- its budget. Earlier facts are already known when a new total is approved.
+WITH verified AS (
+ SELECT l.user_id,l.currency,s.id,s.as_of,s.captured_at,
+ lag(s.id) OVER(PARTITION BY s.loan_id ORDER BY s.as_of,s.captured_at,s.id) AS prior_id,
+ CASE WHEN s.principal_minor=0 THEN 0 ELSE s.next_installment_minor END AS after_minor,
+ lag(CASE WHEN s.principal_minor=0 THEN 0 ELSE s.next_installment_minor END)
+ OVER(PARTITION BY s.loan_id ORDER BY s.as_of,s.captured_at,s.id) AS before_minor
+ FROM loan_snapshots s JOIN loans l ON l.id=s.loan_id
+ WHERE l.user_id=$1 AND l.currency=$2 AND s.trust IN ('bank_confirmed','imported_verified')
+)
+SELECT (policy->>'version')::bigint,v.id::text,v.as_of::text,v.before_minor,v.after_minor,coalesce(v.prior_id::text,'')
+FROM budgets b CROSS JOIN LATERAL jsonb_array_elements(b.policies) policy
+JOIN budget_versions bv ON bv.user_id=b.user_id AND bv.currency=b.currency
+ AND bv.version=(policy->>'version')::bigint
+JOIN verified v ON v.user_id=b.user_id AND v.currency=b.currency
+ AND v.captured_at>bv.declared_at AND v.as_of>=(policy->>'effective_from')::date
+WHERE b.user_id=$1 AND b.currency=$2 AND policy->>'released_payment_rule'<>'roll_all'
+ORDER BY (policy->>'version')::bigint,v.as_of,v.captured_at,v.id;

@@ -40,6 +40,29 @@ func (c CashPlan) validateFunding(valuation date.Date) error {
 	if c.Spending == nil {
 		return nil
 	}
+	if c.Spending.RuleError != "" {
+		return &UnsupportedError{Feature: c.Spending.RuleError}
+	}
+	if c.Spending.CycleDay < 0 || c.Spending.CycleDay > 31 {
+		return fmt.Errorf("plan: invalid spending cycle")
+	}
+	if err := validateCarry(c.Spending.CarryRule, c.Spending.CarryMinimum, c.Spending.CarryUntil, cur); err != nil {
+		return err
+	}
+	for i, change := range c.Spending.Changes {
+		if err := validateCarry(change.CarryRule, change.CarryMinimum, change.CarryUntil, cur); err != nil {
+			return err
+		}
+		if !budgetRuleDateValid(change.On) || (i > 0 && !change.On.After(c.Spending.Changes[i-1].On)) {
+			return fmt.Errorf("plan: spending changes must be strictly dated")
+		}
+		if change.Limit.Currency() != cur {
+			return fmt.Errorf("plan: invalid spending change currency")
+		}
+		if err := check(change.Limit); err != nil {
+			return err
+		}
+	}
 	if c.PayDay == 0 {
 		return &UnsupportedError{Feature: "explicit funding requires a known payday"}
 	}
@@ -60,32 +83,89 @@ func (c CashPlan) validateFunding(valuation date.Date) error {
 	return nil
 }
 
-// period opens spending permission without crediting any cash. Unused cash
-// carries; unused permission expires. Funding events do not reset permission.
+// PeriodStart returns the start of the monthly permission cycle containing on.
+func (p SpendingPlan) PeriodStart(on date.Date) date.Date {
+	day := p.CycleDay
+	if day == 0 {
+		day = 1
+	}
+	start := date.OnDayOfMonth(on, day)
+	if start.After(on) {
+		start = date.OnDayOfMonth(date.AddMonths(on, -1), day)
+	}
+	return start
+}
+
+func (p SpendingPlan) periodEnd(on date.Date) date.Date {
+	day := p.CycleDay
+	if day == 0 {
+		day = 1
+	}
+	return date.OnDayOfMonth(date.AddMonths(p.PeriodStart(on), 1), day)
+}
+
+// period changes permission without crediting cash or restoring spent permission.
 func (s *sim) period(on date.Date) {
 	p := s.in.Cash.Spending
+	start := p.PeriodStart(on)
 	limit := s.budget
-	if v, ok := p.Overrides[MonthKey(on)]; ok {
+	rule, minimum, until := p.CarryRule, p.CarryMinimum, p.CarryUntil
+	if v, ok := p.Overrides[MonthKey(start)]; ok {
 		limit = v
 	}
-	s.periodLeft = limit
-	if MonthKey(on) == MonthKey(s.in.ValuationDate) && p.Spent.Sign() > 0 {
-		s.periodLeft = s.sub(s.periodLeft, p.Spent)
-		if s.periodLeft.Sign() < 0 {
-			s.err = &InfeasibleError{On: on, Required: p.Spent, Available: limit, Shortfall: s.sub(p.Spent, limit), Constraint: "spending_limit"}
-			return
+	for _, change := range p.Changes {
+		if change.On.After(on) {
+			break
+		}
+		limit = change.Limit
+		if change.CarryRule != "" {
+			rule, minimum, until = change.CarryRule, change.CarryMinimum, change.CarryUntil
 		}
 	}
-	s.nextPeriod = date.OnDayOfMonth(date.AddMonths(on, 1), 1)
-	// A reservation was a policy intention, not spending. Reconsider it under
-	// the new month's permission and current contractual obligations.
+	samePeriod := !s.periodStart.IsZero() && s.periodStart.Equal(start)
+	if !samePeriod {
+		s.periodStart = start
+		s.periodSpent = money.Zero(s.cur)
+		if start.Equal(p.PeriodStart(s.in.ValuationDate)) && p.Spent.Sign() > 0 {
+			s.periodSpent = p.Spent
+		}
+	}
+	s.periodLeft = s.sub(limit, s.periodSpent)
+	if s.periodLeft.Sign() < 0 {
+		s.err = &InfeasibleError{On: on, Required: s.periodSpent, Available: limit, Shortfall: s.sub(s.periodSpent, limit), Constraint: "spending_limit"}
+		return
+	}
+	s.nextPeriod = p.periodEnd(on)
+	for _, change := range p.Changes {
+		if change.On.After(on) && change.On.Before(s.nextPeriod) {
+			s.nextPeriod = change.On
+			break
+		}
+	}
+	// Reconsider reservations without returning actual spending to permission.
 	for _, l := range s.loans {
 		l.pending = money.Zero(s.cur)
 	}
-	if s.cycle > 0 {
-		s.closeCycle()
+	if !samePeriod {
+		if s.cycle > 0 && s.carryRule == NoCarry {
+			// Retain the reserve and contractual amounts needed before the next
+			// funding date. Expired optional reservations cannot trap household cash.
+			transfer := s.sub(s.cash, s.reserved())
+			if transfer.Sign() > 0 {
+				s.cash = s.sub(s.cash, transfer)
+				s.res.HouseholdCash = s.add(s.res.HouseholdCash, transfer)
+				s.month.HouseholdCash = transfer
+			}
+		}
+		if s.cycle > 0 {
+			s.closeCycle()
+		}
+		s.openCycle(on)
 	}
-	s.openCycle(on)
+	s.carryRule, s.carryMinimum, s.carryUntil = rule, minimum, until
+	if rule == CarryToDate && until.After(on) && until.Before(s.nextPeriod) {
+		s.nextPeriod = until
+	}
 	s.allocate(on)
 }
 
@@ -97,7 +177,7 @@ func (s *sim) optionalPermission(on date.Date) money.Amount {
 		if l.closed {
 			continue
 		}
-		if MonthKey(l.due) == MonthKey(on) {
+		if !l.due.Before(on) && l.due.Before(s.in.Cash.Spending.periodEnd(on)) {
 			left = s.sub(left, l.required)
 		}
 		left = s.sub(left, l.pending)
@@ -106,6 +186,9 @@ func (s *sim) optionalPermission(on date.Date) money.Amount {
 }
 
 func (s *sim) optionalCash(on date.Date) money.Amount {
+	if s.in.Cash.Spending != nil && s.carryRule == CarryToDate && on.Before(s.carryUntil) {
+		return money.Zero(s.cur)
+	}
 	surplus := s.sub(s.cash, s.reserved())
 	if s.in.Cash.Spending != nil {
 		permission := s.optionalPermission(on)
@@ -114,4 +197,31 @@ func (s *sim) optionalCash(on date.Date) money.Amount {
 		}
 	}
 	return surplus
+}
+
+func validateCarry(rule string, minimum money.Amount, until date.Date, cur money.Currency) error {
+	switch rule {
+	case "", CarryCash, NoCarry:
+		if minimum.Sign() != 0 || !until.IsZero() {
+			return fmt.Errorf("plan: unexpected carry parameters")
+		}
+	case BatchUntil:
+		if minimum.Currency() != cur || minimum.Sign() <= 0 || !until.IsZero() {
+			return fmt.Errorf("plan: invalid carry threshold")
+		}
+	case CarryToDate:
+		if !budgetRuleDateValid(until) || minimum.Sign() != 0 {
+			return fmt.Errorf("plan: invalid carry date")
+		}
+	default:
+		return fmt.Errorf("plan: invalid carry rule")
+	}
+	return nil
+}
+
+// spendPermission records actual outflow, including fees, independently of
+// reporting cycles. Only a new spending period may reset this ledger.
+func (s *sim) spendPermission(outflow money.Amount) {
+	s.periodSpent = s.add(s.periodSpent, outflow)
+	s.periodLeft = s.sub(s.periodLeft, outflow)
 }

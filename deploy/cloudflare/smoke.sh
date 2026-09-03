@@ -77,7 +77,7 @@ echo "$ready" | grep -q '"database":true' || fail "database unreachable: $ready"
 echo "→ schema version"
 version=$(echo "$ready" | sed -n 's/.*"migration_version":\([0-9]*\).*/\1/p')
 [ -n "$version" ] && [ "$version" -gt 0 ] || fail "no schema version reported"
-[ "$version" -ge 13 ] || fail "schema is behind this application (requires at least 13)"
+[ "$version" -ge 22 ] || fail "schema is behind this application (requires at least 22)"
 echo "  schema at version $version"
 
 echo "→ status endpoint"
@@ -121,7 +121,7 @@ planmod=$(get "$base/app/js/screens/plan.js") || fail "the plan module did not a
 echo "$planmod" | grep -q 'plan-goals' || fail "the plan module does not carry its screen"
 loanmod=$(get "$base/app/js/screens/loan.js") || fail "the loan module did not answer"
 echo "$loanmod" | grep -q 'loan-view' || fail "the loan module does not carry its screen"
-for module in home activity payment reconcile more plan-chart budget-funding; do
+for module in home activity payment reconcile more plan-chart budget-funding budget-policy plan-history plan-inverse plan-comparison plan-scenarios plan-evidence plan-stress budget-cash-routing user-preferences reminder; do
   get "$base/app/js/screens/$module.js" > /dev/null || fail "missing $module module"
 done
 get "$base/app/js/icons.js" > /dev/null || fail "missing loan icons"
@@ -135,6 +135,11 @@ code=$(status "$base/app/api/loans" 401 POST)
 
 code=$(status "$base/app/api/budget" 401 POST)
 [ "$code" = "401" ] || fail "an unsigned budget POST answered $code, want 401"
+
+for route in plans plan/comparisons plan/timeline plan/stress payment-actuals plan-actuals scenarios settings/reminders; do
+  code=$(status "$base/app/api/$route" 401 GET)
+  [ "$code" = "401" ] || fail "an unsigned $route GET answered $code, want 401"
+done
 
 # What Telegram shows in the chat is not what the container serves; it is what
 # the container last told Telegram. The global menu button carries the version

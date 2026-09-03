@@ -1,25 +1,26 @@
 "use strict";
 import { T, addStrings } from "../i18n.js";
+import { createCashRouting } from "./budget-cash-routing.js";
 
 addStrings({
-  "bf.mode": "Գումարի հասանելիությունը", "bf.legacy": "Բյուջեն հասանելի է աշխատավարձի օրը",
+  "bf.mode": "Գումարի հասանելիությունը", "bf.legacy": "Գումարի աղբյուրը դեռ նշված չէ",
   "bf.separate": "Առանձին նշել ֆինանսավորումը", "bf.monthly": "Հաստատված ամսական ֆինանսավորում",
   "bf.spent": "Այս ամիս արդեն ծախսված", "bf.events": "Լրացուցիչ մուտքեր",
   "bf.date": "Մուտքի ամսաթիվ", "bf.amount": "Գումար", "bf.expected": "Սպասվող, դեռ չհաստատված",
   "bf.add": "Ավելացնել մուտք", "bf.remove": "Հեռացնել մուտքը",
   "bf.hint": "Ֆինանսավորումը հասանելի գումարն է։ Բյուջեն սահմանում է՝ որքան կարելի է ծախսել։ Սպասվող մուտքերը ենթադրություններ են։",
   "bf.money": "Նշեք ոչ բացասական գումար՝ արժույթի թույլատրած ճշտությամբ և անվտանգ սահմաններում։ Տասնորդական բաժանիչը կետ կամ ստորակետ է։",
-  "bf.dateError": "Ընտրեք այսօրվա կամ ապագա ամսաթիվ (UTC)։",
+  "bf.dateError": "Ընտրեք այսօրվա կամ ապագա ամսաթիվ՝ ձեր ժամային գոտով։",
   "bf.limit": "Կարելի է նշել առավելագույնը 36 մուտք։",
 }, {
-  "bf.mode": "Funding availability", "bf.legacy": "Budget available on payday",
+  "bf.mode": "Funding availability", "bf.legacy": "Funding not declared",
   "bf.separate": "Set funding separately", "bf.monthly": "Confirmed monthly funding",
   "bf.spent": "Spent this month", "bf.events": "Additional receipts",
   "bf.date": "Receipt date", "bf.amount": "Amount", "bf.expected": "Expected, not yet confirmed",
   "bf.add": "Add receipt", "bf.remove": "Remove receipt",
   "bf.hint": "Funding is available cash. Budget is permission to spend. Expected receipts are assumptions.",
   "bf.money": "Enter a non-negative amount within safe limits and the currency’s precision. Use a dot or comma for decimals.",
-  "bf.dateError": "Choose today or a future date (UTC).", "bf.limit": "You can specify at most 36 receipts.",
+  "bf.dateError": "Choose today or a future date in your account timezone.", "bf.limit": "You can specify at most 36 receipts.",
 });
 
 const MAX_MINOR = 9007199254740991n;
@@ -67,7 +68,9 @@ export const fundingHTML = `
 
 export function createFunding(root, changed, exponent) {
   const $ = (id) => root.querySelector("#" + id);
-  let nextID = 0, cashThrough="";
+  let nextID = 0, cashThrough="", spentPeriodStart="";
+  let context={today:"",loans:[],locked:false};
+  const routingRows=new WeakMap();
   const sync = () => { $("funding-separate").hidden = $("funding-mode").value !== "separate"; };
   function row(event) {
     const el = document.createElement("div"); el.className = "card stack";
@@ -77,10 +80,15 @@ export function createFunding(root, changed, exponent) {
       <label class="row" for="${id}-expected"><input type="checkbox" id="${id}-expected" class="funding-expected" style="width:24px;flex-shrink:0">${T("bf.expected")}</label>
       <p class="error" id="${id}-error"></p><button type="button" class="alink quiet">${T("bf.remove")}</button>`;
     const date = el.querySelector(".funding-date"), amount = el.querySelector(".funding-amount");
-    date.min = new Date().toISOString().slice(0, 10);
+    date.min = context.today;
     date.setAttribute("aria-describedby", id + "-error"); amount.setAttribute("aria-describedby", id + "-error");
     if (event) { date.value = event.on; amount.value = minorText(event.minor, exponent()); el.querySelector(".funding-expected").checked = event.expected; }
     el.querySelector("button").onclick = () => { el.remove(); changed(); };
+    routingRows.set(el, {
+      id: event?.id || crypto.randomUUID(),
+      controller: createCashRouting(el, id, event, context, changed,
+        (raw, options) => minorAmount(raw, exponent(), options), n => minorText(n, exponent())),
+    });
     return el;
   }
   $("funding-mode").addEventListener("change", sync);
@@ -89,9 +97,13 @@ export function createFunding(root, changed, exponent) {
     const el = row(); $("funding-events").append(el); changed(); el.querySelector("input").focus();
   };
   return {
-    load(funding) {
+    load(funding, options = {}) {
+      context={today:options.today||"",loans:options.loans||[],locked:!!options.locked};
+      spentPeriodStart=funding?.spent_period_start||"";
+      $("funding-mode").disabled=context.locked;
+      $("funding-spent").readOnly=context.locked;
       cashThrough=funding?.cash_through||"";
-      $("funding-mode").value = funding == null ? "legacy" : "separate";
+      $("funding-mode").value = "separate";
       $("funding-monthly").value = funding ? minorText(funding.monthly_minor, exponent()) : "";
       $("funding-spent").value = funding ? minorText(funding.spent_minor, exponent()) : "";
       $("funding-events").replaceChildren(...(funding?.events || []).map(row)); sync();
@@ -99,7 +111,7 @@ export function createFunding(root, changed, exponent) {
     read() {
       if ($("funding-mode").value === "legacy") return { value: null, ok: true };
       let ok = true;
-      const value = { monthly_minor: 0, spent_minor: 0, events: [], cash_through:cashThrough };
+      const value = { monthly_minor: 0, spent_minor: 0, events: [], cash_through:cashThrough, ...(spentPeriodStart?{spent_period_start:spentPeriodStart}:{}) };
       for (const [id, key] of [["funding-monthly", "monthly_minor"], ["funding-spent", "spent_minor"]]) {
         let error = "";
         try { value[key] = minorAmount($(id).value, exponent()); } catch (e) { error = e.message; ok = false; }
@@ -111,14 +123,20 @@ export function createFunding(root, changed, exponent) {
       for (const el of rows) {
         const date = el.querySelector(".funding-date"), amount = el.querySelector(".funding-amount");
         let error = "", minor;
-        const badDate = !validDate(date.value) || date.value < new Date().toISOString().slice(0, 10);
+        const badDate = !validDate(date.value) || !validDate(context.today) || date.value < context.today;
         if (badDate) error = T("bf.dateError");
         let badAmount = false;
         try { minor = minorAmount(amount.value, exponent(), { positive: true }); } catch (e) { error ||= e.message; badAmount = true; }
+        const event={on:date.value,minor,expected:el.querySelector(".funding-expected").checked};
+        const routing=routingRows.get(el);
+        if (!error) {
+          try { Object.assign(event, {id:routing.id}, routing.controller.read(event)); }
+          catch(e) {error=e.message;}
+        }
         date.setAttribute("aria-invalid", String(badDate)); amount.setAttribute("aria-invalid", String(badAmount));
         el.querySelector(".error").textContent = error;
         if (error) ok = false;
-        else value.events.push({ on: date.value, minor, expected: el.querySelector(".funding-expected").checked });
+        else value.events.push(event);
       }
       return { value, ok };
     },

@@ -6,7 +6,8 @@
 import {iconPicker} from "../icons.js";
 import { haptic, toast, fmtMoney, fmtDate, fmtMonth, moneyNum, num, monthsBetween, group } from "../core.js";
 import { T, sub } from "../i18n.js";
-import { api, invalidate } from "../api.js";
+import { invalidate } from "../api.js";
+import {loanMutation,loanWriteError,showLoanRetry} from "../loan-mutations.js";
 import { register, go, currentScreen } from "../nav.js";
 
 const HTML = `
@@ -104,6 +105,7 @@ const HTML = `
       <div><span data-i18n="sum.free">Ազատ պարտքից</span><b id="s-free">—</b></div>
     </div>
     <p class="hint" id="sum-note" style="margin:-4px 2px 0;text-align:center" data-i18n="sum.note" hidden></p>
+    <button type="button" id="add-retry" hidden></button>
     <button class="cta" type="submit" id="add-save" data-i18n="add.save">Պահպանել վարկը</button>
   </form>
 `;
@@ -241,20 +243,17 @@ async function saveLoan(e) {
     // The name is optional on the form: an unnamed loan is filed under its
     // amount, which stays distinct across typical portfolios.
     const title = $("title").value.trim() || T("loan.defname") + " " + fmtMoney(v.p, $("currency").value);
-    const res = await api("api/loans", {
-      method: "POST",
-      body: JSON.stringify({
+    const res = await loanMutation("api/loans", "POST", {
         title, icon:$("add-icon").value,
         description: $("description").value.trim(),
         principal_major: v.p, balance_major: v.rem || 0, currency: $("currency").value, rate_percent: v.r,
         prepay_effect: $("prepay").value,
         method: method(), start_date: $("start").value,
         maturity_date: $("maturity").value, payment_day: v.d,
-      }),
-    });
+      });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || String(res.status));
+      throw new Error(res.status===409?"loan_conflict":res.status>=500?String(res.status):body.error || String(res.status));
     }
     haptic.ok();
     $("f").reset();
@@ -267,7 +266,8 @@ async function saveLoan(e) {
     go("loans");
   } catch (err) {
     haptic.bad();
-    $("e-title").textContent = err.message === "too_many_loans" ? T("err.too_many") : T("err.save");
+    recoverCreate();
+    $("e-title").textContent = err.message === "too_many_loans" ? T("err.too_many") : loanWriteError(err);
   } finally {
     busy = false;
     $("add-save").disabled = false;
@@ -294,5 +294,7 @@ register({
     for (const el of document.querySelectorAll('input[name="method"]')) el.addEventListener("change", haptic.pick);
     $("f").addEventListener("submit", saveLoan);
   },
-  onShow() { estimate(); },
+  onShow() { estimate(); recoverCreate(); },
 });
+
+function recoverCreate(){showLoanRetry($("add-retry"),"api/loans",async()=>{invalidate("api/");$("f").reset();submitted=false;resetDates();toast(T("saved"));go("loans");});}

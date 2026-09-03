@@ -7,18 +7,22 @@ import { fundingHTML, createFunding, majorAmount, validMonth, validDate, minorTe
 
 addStrings({
   "budget.editing": "Խմբագրել բյուջեն", "budget.save": "Պահպանել բյուջեն",
+  "be.policyActive": "Բյուջեն ունի հաստատված կանոններ։ Սահմանաչափը փոխեք Բյուջեի կանոններ բաժնում։ Գումարի և ծախսերի նոր քաղվածքը ներկայացրեք համադրման միջոցով։",
   "be.budget": "Բյուջե", "be.funding": "Ֆինանսավորում", "be.months": "Ամիսներ",
   "be.permission": "Ամսական ծախսի սահմանաչափ",
   "be.permissionHint": "Վարկերի համար ամսական թույլատրելի ծախսը։ Հասանելի գումարը նշեք Ֆինանսավորում բաժնում։",
+  "be.retry": "Կրկնել պահպանումը", "be.uncertain": "Պահպանման արդյունքը հայտնի չէ։ Կրկնեք նույն հարցումը՝ նախքան փոփոխելը։",
   "be.reload": "Վերբեռնել՝ չպահպանված փոփոխությունները հեռացնելով",
   "be.conflict": "Բյուջեն այլ տեղ փոփոխվել է։ Ձեր մուտքագրածը պահպանվել է այս ձևում։ Վերբեռնեք վերջին տարբերակը՝ փոփոխությունները նորից կատարելու համար։",
   "be.load": "Չհաջողվեց բեռնել բյուջեի անվտանգ, արդիական տարբերակը։ Վերբեռնեք՝ շարունակելու համար։",
   "be.rejected": "Տվյալները չեն ընդունվել։ Ստուգեք գումարները, ամսաթվերը և սահմանները։",
 }, {
   "budget.editing": "Edit budget", "budget.save": "Save budget",
+  "be.policyActive": "Approved rules govern this budget. Change permission in Budget rules. Update cash and spending statements through reconciliation.",
   "be.budget": "Budget", "be.funding": "Funding", "be.months": "Months",
   "be.permission": "Monthly spending limit",
   "be.permissionHint": "How much may be spent on loans each month. Set available cash in Funding.",
+  "be.retry": "Retry save", "be.uncertain": "The save outcome is unknown. Retry the same request before editing.",
   "be.reload": "Reload and discard unsaved changes",
   "be.conflict": "The budget changed elsewhere. Your entries are still here. Reload the latest version before making your changes again.",
   "be.load": "Could not load a safe, current budget. Reload before continuing.",
@@ -28,7 +32,9 @@ addStrings({
 const HTML = `
   <form id="budget-form" novalidate class="stack">
     <p id="budget-status" class="error" role="alert"></p>
+    <button type="button" class="alink" data-go="budget-policy" data-i18n="bp.title"></button>
     <button type="button" id="budget-reload" class="alink" data-i18n="be.reload" hidden></button>
+    <button type="button" id="budget-retry" class="cta" data-i18n="be.retry" hidden></button>
     <fieldset id="budget-fields" class="stack" style="border:0;padding:0;margin:0;min-width:0" disabled>
     <div class="chart-controls" role="tablist" aria-label="Budget">
       <button type="button" id="budget-tab-budget" role="tab" aria-controls="budget-panel-budget" aria-selected="true" aria-pressed="true" data-section="budget" data-i18n="be.budget"></button>
@@ -98,10 +104,11 @@ const HTML = `
 `;
 
 const $ = (id) => document.getElementById(id);
-let required = null, funding;
+let required = null, funding, policyMode = false;
 let busy = false, loading = false, loaded = false, dirty = false, conflict = false;
+let pending = null;
 let version = null, revision = 0, requestID = 0, rowID = 0;
-let loadedCurrency = "AMD", loadedExponent = 2;
+let loadedCurrency = "AMD", loadedExponent = 2, loadedAsOf = null;
 const currencies = new Set(["AMD", "USD", "EUR", "RUB"]);
 const exponent = () => $("budget-currency").value === loadedCurrency ? loadedExponent : 2;
 
@@ -116,12 +123,14 @@ function showSection(section, focus = false) {
   }
 }
 function controls() {
-  $("budget-fields").disabled = busy || loading || !loaded;
-  $("budget-save").disabled = busy || loading || !loaded || conflict;
-  $("budget-reload").disabled = busy || loading;
+  $("budget-fields").disabled = busy || loading || !!pending || !loaded;
+  $("budget-save").disabled = busy || loading || !!pending || !loaded || conflict;
+  $("budget-reload").disabled = busy || loading || !!pending;
+  $("budget-retry").hidden = !pending;
+  $("budget-retry").disabled = busy || loading;
   $("budget-form").setAttribute("aria-busy", String(busy || loading));
 }
-function changed() { dirty = true; revision++; validate(); }
+function changed() { if(pending||busy)return; dirty = true; revision++; validate(); }
 function errorAt(id, message) {
   $("e-" + id).textContent = message;
   $(id).setAttribute("aria-invalid", String(!!message));
@@ -163,6 +172,7 @@ function readOverrides() {
 // Validate the full response before changing any field; never partially load a document.
 function checkDocument(b) {
   if (!b || typeof b !== "object" || Array.isArray(b)) throw new Error("budget");
+  if(!validDate(b.today))throw new Error("statement date");
   const existing = b.monthly_major != null;
   const v = b.version ?? (existing ? null : 0);
   if (!Number.isSafeInteger(v) || v < 0) throw new Error("version");
@@ -173,6 +183,7 @@ function checkDocument(b) {
     majorAmount(String(value), exp);
   };
   if (existing) checkMajor(b.monthly_major);
+  if (b.base_monthly_major != null) checkMajor(b.base_monthly_major);
   for (const key of ["opening_major", "reserve_major", "required_major"]) if (b[key] != null) checkMajor(b[key]);
   if (b.pay_day != null && (!Number.isInteger(b.pay_day) || b.pay_day < 0 || b.pay_day > 31)) throw new Error("payday");
   if (b.overrides != null && (typeof b.overrides !== "object" || Array.isArray(b.overrides))) throw new Error("months");
@@ -192,6 +203,7 @@ function checkDocument(b) {
   return { version: v, currency, exponent: exp };
 }
 async function load(discard = false) {
+  if (pending) {controls();return;}
   if (busy || loading || (dirty && !discard) || (conflict && !discard)) return;
   const id = ++requestID, startRevision = revision;
   loading = true; controls();
@@ -200,21 +212,37 @@ async function load(discard = false) {
     const res = await api("api/budget", { cache: "no-store" });
     if (!res.ok) throw new Error("load");
     const b = await res.json(), meta = checkDocument(b);
+    policyMode = false;
+    let today = b.today, targets = [];
+    if (b.monthly_major != null) {
+      const [policies, loans] = await Promise.all([
+        api("api/budget/policies", { cache: "no-store" }), api("api/loans", { cache: "no-store" }),
+      ]);
+      if (!policies.ok || !loans.ok) throw new Error("funding context");
+      const policyDocument = await policies.json();
+      targets = (await loans.json()).loans;
+      if (!Array.isArray(targets)) throw new Error("loans");
+      policyMode = (policyDocument.policies || []).length > 0;
+      today = policyDocument.today;
+    }
     if (id !== requestID || currentScreen() !== "budget-edit") return;
     if (revision !== startRevision) {
       $("budget-status").textContent = T("be.load"); $("budget-reload").hidden = false;
       return;
     }
-    loadedCurrency = meta.currency; loadedExponent = meta.exponent;
+    loadedCurrency = meta.currency; loadedExponent = meta.exponent; loadedAsOf = b.today;
     $("budget-currency").value = meta.currency;
-    $("monthly").value = b.monthly_major == null ? "" : String(b.monthly_major);
+    $("monthly").value = b.monthly_major == null ? "" : String(b.base_monthly_major ?? b.monthly_major);
     $("payday").value = b.pay_day > 0 ? String(b.pay_day) : "";
     $("opening").value = String(b.opening_major ?? 0); $("reserve").value = String(b.reserve_major ?? 0);
     $("override-list").replaceChildren(...Object.entries(b.overrides || {}).sort().map(([month, amount]) => overrideRow(month, amount)));
-    funding.load(b.funding);
+    funding.load(b.funding, { today, loans: targets.filter(l => l.currency === meta.currency && !l.optional_excluded && l.balance_major > 0), locked: policyMode });
+    for (const id of ["monthly", "opening", "reserve"]) $(id).readOnly = policyMode;
+    $("budget-currency").disabled = policyMode;
+    $("budget-panel-months").querySelectorAll("input,button").forEach(el => { el.disabled = policyMode; });
     required = b.required_major != null ? { major: b.required_major, currency: b.currency } : null;
     version = meta.version; loaded = true; dirty = false; conflict = false;
-    $("budget-status").textContent = ""; $("budget-reload").hidden = true;
+    $("budget-status").textContent = policyMode ? T("be.policyActive") : ""; $("budget-reload").hidden = true;
     validate();
   } catch {
     if (id === requestID) {
@@ -252,36 +280,50 @@ function validate() {
     note.style.color = diff < 0 ? "var(--danger)" : "";
   }
   const overrides = readOverrides(), f = funding.read();
-  $("override-add").disabled = $("override-list").children.length >= 36;
+  $("override-add").disabled = policyMode || $("override-list").children.length >= 36;
   return { ok: ok && overrides.ok && f.ok, body: {
     monthly_major: values.monthly, currency: cur, pay_day: pd,
     opening_major: values.opening, reserve_major: values.reserve,
-    overrides: overrides.value, funding: f.value, expected_version: version,
+    overrides: overrides.value, funding: f.value, expected_version: version, as_of: loadedAsOf,
   } };
 }
 async function save(e) {
   e.preventDefault();
   if (busy || loading || !loaded || conflict) return;
-  const result = validate();
-  if (!result.ok) {
-    haptic.bad();
-    const invalid = [...$("budget-form").querySelectorAll('[aria-invalid="true"]')].find(el => !el.closest("#funding-separate")?.hidden);
-    if (invalid) { showSection(invalid.closest('[role="tabpanel"]').id.replace("budget-panel-", "")); invalid.focus(); }
-    return;
+  if (!pending) {
+    const result = validate();
+    if (!result.ok) {
+      haptic.bad();
+      const invalid = [...$("budget-form").querySelectorAll('[aria-invalid="true"]')].find(el => !el.closest("#funding-separate")?.hidden);
+      if (invalid) { showSection(invalid.closest('[role="tabpanel"]').id.replace("budget-panel-", "")); invalid.focus(); }
+      return;
+    }
+    const body = policyMode ? {
+      currency: result.body.currency, expected_version: version, pay_day: result.body.pay_day,
+      monthly_minor: result.body.funding.monthly_minor, events: result.body.funding.events,
+    } : result.body;
+    // Freeze the endpoint, aggregate version, values and key together. A retry
+    // must not consult changed form fields or select a different save route.
+    pending = {path: policyMode ? "api/budget/funding" : "api/budget",
+      body: JSON.stringify({...body, idempotency_key: crypto.randomUUID()})};
   }
   busy = true; controls(); $("budget-status").textContent = "";
   try {
-    const res = await api("api/budget", { method: "POST", body: JSON.stringify(result.body) });
-    if (res.status === 409) {
-      conflict = true; $("budget-status").textContent = T("be.conflict"); $("budget-reload").hidden = false; haptic.bad(); return;
-    }
+    const res = await api(pending.path, {method:"POST", body:pending.body});
     if (!res.ok) {
-      $("budget-status").textContent = T(res.status === 422 ? "be.rejected" : "err.save"); haptic.bad(); return;
+      if (res.status >= 400 && res.status < 500) {
+        pending = null; dirty = true;
+        conflict = res.status === 409;
+        $("budget-status").textContent = T(conflict ? "be.conflict" : "be.rejected");
+        $("budget-reload").hidden = false;
+        haptic.bad(); return;
+      }
+      throw new Error("uncertain save");
     }
-    dirty = false; loaded = false; version = null;
+    pending = null; dirty = false; loaded = false; version = null;
     invalidate("api/"); haptic.ok(); toast(T("saved"));
     if (currentScreen() === "budget-edit") go("budget");
-  } catch { haptic.bad(); $("budget-status").textContent = T("err.save"); }
+  } catch { haptic.bad(); $("budget-status").textContent = T("be.uncertain"); }
   finally { busy = false; controls(); }
 }
 register({
@@ -308,7 +350,8 @@ register({
       const row = overrideRow(); $("override-list").append(row); changed(); row.querySelector("input").focus();
     };
     $("budget-reload").onclick = () => load(true);
+    $("budget-retry").onclick = save;
     form.addEventListener("submit", save);
   },
-  onShow() { load(); },
+  onShow(_el, params) { if (params?.section === "funding") showSection("funding"); return load(); },
 });

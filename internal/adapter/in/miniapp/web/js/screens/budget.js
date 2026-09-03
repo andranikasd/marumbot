@@ -3,11 +3,13 @@
 // payday, cash on hand, the untouched reserve, the stated months. Editing
 // is a sub-screen reached from the app bar.
 "use strict";
-import { haptic, fmtMoney, fmtMonth } from "../core.js";
-import { T, sub } from "../i18n.js";
+import "./budget-policy.js";
+import { haptic, fmtMoney, fmtMonth, fmtFull } from "../core.js";
+import { T, sub, addStrings } from "../i18n.js";
 import { getJSON } from "../api.js";
 import { register, go, setAction } from "../nav.js";
 
+addStrings({'budget.cashdate':'Գումարի ամսաթիվը','budget.cashdate.unknown':'Ամսաթիվը նշված չէ'},{'budget.cashdate':'Cash as of','budget.cashdate.unknown':'Date not supplied'});
 const HTML = `
   <div id="budget-view" class="stack" hidden>
     <div class="hero">
@@ -20,6 +22,7 @@ const HTML = `
       </div>
     </div>
     <div class="card kv" id="bo-facts"></div>
+    <button class="cta ghost" type="button" data-go="budget-policy" data-i18n="bp.title"></button>
     <p class="lede" data-i18n="budget.note">Պլանը հավելյալը ծախսում է միայն պարտադիր վճարումները ծածկելուց հետո։</p>
     <button class="cta ghost" type="button" data-go="plan" data-i18n="budget.plan">Տեսնել պլանը</button>
   </div>
@@ -68,7 +71,9 @@ function render(b) {
   const facts = $("bo-facts"); facts.textContent = "";
   facts.append(row(T("budget.payday"), b.pay_day > 0 ? sub("budget.payday.day", { d: b.pay_day }) : T("budget.unset"), b.pay_day > 0 ? "" : "mute"));
   const opening = b.opening_major || 0, reserve = b.reserve_major || 0;
-  facts.append(row(T("budget.opening"), opening > 0 ? fmtMoney(opening, cur) : T("budget.unset"), opening > 0 ? "num" : "mute"));
+  const declared = !!b.opening_as_of || opening > 0;
+  facts.append(row(T("budget.opening"), declared ? fmtMoney(opening, cur) : T("budget.unset"), declared ? "num" : "mute"));
+  if(declared) facts.append(row(T("budget.cashdate"), b.opening_as_of ? fmtFull(b.opening_as_of) : T("budget.cashdate.unknown"), "mute"));
   if (reserve > 0) facts.append(row(T("budget.reserve"), fmtMoney(reserve, cur), "num"));
   if (opening > 0) facts.append(row(T("budget.usable.label"), fmtMoney(Math.max(0, opening - reserve), cur), "num ok"));
   const months = Object.entries(b.overrides || {}).sort();

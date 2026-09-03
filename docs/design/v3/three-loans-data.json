@@ -32,7 +32,7 @@
   "as_of": "2026-01-15",
   "budget": 25000000,
   "eligibility": "fixed non-negative rates, one day-count basis, no fees or thresholds, required instalments always met, surplus credited to principal on payment: by exchange, money moved from a lower to a higher daily rate cannot increase interest, and paying earlier cannot increase it",
-  "engine": "plan/2",
+  "engine": "plan/5",
   "fees": 0,
   "interest": 71370010,
   "minimum_interest": 312703040,
@@ -1216,5 +1216,5 @@
   "payoff": "2028-02-01",
   "policies": 96,
   "source": "Synthetic portfolio from internal/app/advice_render_test.go fixedReport; not bank-verified",
-  "strength": "proven_optimal"
+  "strength": "exhaustive_static_order"
 }

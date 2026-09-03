@@ -41,15 +41,57 @@ type Position struct {
 
 // CashEvent is money that becomes available on a date.
 type CashEvent struct {
-	On     date.Date
-	Amount money.Amount
+	// ID is required for routed events; FromOpening reclassifies confirmed
+	// retained money already included in OpeningCash, without a second receipt.
+	ID          string
+	Routing     *CashRouting
+	FromOpening bool
+	On          date.Date
+	Amount      money.Amount
 	// Expected cash is a scenario assumption, never base-plan funding.
 	Expected bool
 }
 
-// SpendingPlan is an explicit calendar-month permission independent of cash.
-// A nil Spending on CashPlan preserves the legacy funded-budget interpretation.
+// SpendingChange replaces spending permission on an exact business date.
+type SpendingChange struct {
+	On           date.Date
+	Limit        money.Amount
+	CarryRule    string
+	CarryMinimum money.Amount
+	CarryUntil   date.Date
+}
+
+// BudgetReleaseSource retains verified source facts for immutable scenario replay.
+// The amounts are stated instalments, never derived release totals.
+type BudgetReleaseSource struct {
+	PolicyVersion int64
+	SourceID      string
+	PriorSourceID string
+	On            date.Date
+	Before        *money.Amount
+	After         *money.Amount
+}
+
+// SpendingPlan is monthly permission independent of cash. A nil Spending on
+// CashPlan preserves the legacy funded-budget interpretation.
 type SpendingPlan struct {
+	// ReleaseSources identifies the verified statement pairs used to reduce limits.
+	// ConfirmedReleaseOnly preserves approved permission through projected closures.
+	ConfirmedReleaseOnly bool
+	ReleaseSources       []string
+	ReleaseFacts         []BudgetReleaseSource
+
+	// CycleDay is 0/1 for calendar months, otherwise a clamped monthly anchor.
+	CycleDay int
+	// Changes are sorted, dated replacement permissions, not cash receipts.
+	Changes []SpendingChange
+	// RuleError makes legacy CashPlan callers refuse invalid policy inputs.
+	RuleError string
+	// CarryRule governs optional cash; spending permission still expires.
+	CarryRule    string
+	CarryMinimum money.Amount
+	CarryUntil   date.Date
+
 	Monthly   money.Amount
 	Overrides map[string]money.Amount
 	// Spent is debt spending already made in the valuation month. Anchored
@@ -122,6 +164,9 @@ func (in Input) Validate() error {
 		return fmt.Errorf("plan: pay day %d out of range", in.Cash.PayDay)
 	}
 	cur := in.Cash.Monthly.Currency()
+	if err := in.validateCashRouting(); err != nil {
+		return err
+	}
 	if err := in.Cash.validateFunding(in.ValuationDate); err != nil {
 		return err
 	}

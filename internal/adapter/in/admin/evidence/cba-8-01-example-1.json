@@ -1,0 +1,17 @@
+{
+  "source": "CBA Regulation 8/01, Example 1",
+  "url": "https://www.arlis.am/hy/acts/140917",
+  "note": "Published by the Central Bank of Armenia as a worked example of the mandated APR calculation. The regulator's own schedule, which makes it the closest thing to an authoritative Armenian fixture that exists in public.",
+  "principal_amd": 500000,
+  "nominal_rate_percent": 10,
+  "day_count": "ACT/365",
+  "payments": 12,
+  "day_offsets": [31, 62, 90, 121, 151, 182, 212, 243, 274, 304, 335, 365],
+  "published": {
+    "level_payment": 43955.44,
+    "total_interest": 27465.31,
+    "apr_percent": 10.47,
+    "interest_first_three": [4246.58, 3909.32, 3223.80]
+  },
+  "convention": "Full-precision accrual, rounded to two decimals for display only. The exact dated annuity is 43955.442574; the published figure is that value rounded. The final payment absorbs a residual of 0.0323."
+}

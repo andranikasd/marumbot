@@ -61,7 +61,7 @@ SELECT NOT EXISTS(SELECT 1 FROM loan_events e WHERE e.loan_id=$1
 -- The borrower states actual remaining cash and total period spending.
 -- No payment amount is subtracted again. Explicit funding must already exist.
 UPDATE budgets SET opening_cash_minor=$4, opening_as_of=$3::date,
- funding=jsonb_set(jsonb_set(funding,'{spent_minor}',to_jsonb($5::bigint)),'{cash_through}',to_jsonb($3::text)),updated_at=now()
+ funding=jsonb_set(jsonb_set(jsonb_set(funding,'{spent_minor}',to_jsonb($5::bigint)),'{cash_through}',to_jsonb($3::text)),'{spent_period_start}',to_jsonb($7::text)),updated_at=now()
 WHERE user_id=$1 AND currency=$2 AND version=$6 AND funding IS NOT NULL
 RETURNING version;
 
@@ -89,6 +89,33 @@ SELECT id::text,observed_event_seq FROM snapshot;
 -- name: PeriodReportedSpending
 SELECT coalesce(sum(e.amount_minor),0)::bigint FROM loan_events e JOIN loans l ON l.id=e.loan_id
 WHERE l.user_id=$1 AND l.currency=$2 AND e.kind IN ('payment_reported','prepayment_reported')
-AND coalesce(e.fact_payload->>'transaction_date',e.value_date::text)>=to_char($3::date,'YYYY-MM-01')
+AND coalesce(e.fact_payload->>'transaction_date',e.value_date::text)>=$4::text
 AND coalesce(e.fact_payload->>'transaction_date',e.value_date::text)<=$3::text
 AND NOT EXISTS(SELECT 1 FROM loan_events v WHERE v.voids_event_id=e.id);
+
+-- name: PaymentAllocations
+SELECT e.id::text, e.fact_payload->'allocation'
+FROM loan_events e JOIN loans l ON l.id=e.loan_id
+WHERE l.user_id=$1 AND e.id::text=ANY($2::text[])
+AND e.kind IN ('payment_reported','prepayment_reported')
+AND e.fact_payload->'allocation' IS NOT NULL;
+
+-- name: MonthlyPaymentActuals
+-- Source transfers by transaction month, including pending posting. Never infer
+-- missing splits or mix currencies. Voids/corrections apply across all months.
+WITH facts AS (
+ SELECT l.currency,e.amount_minor,e.value_date,
+ CASE WHEN e.value_date IS NOT NULL THEN nullif(e.fact_payload->'allocation','null'::jsonb) END AS allocation
+ FROM loan_events e JOIN loans l ON l.id=e.loan_id
+ WHERE l.user_id=$1 AND e.kind IN ('payment_reported','prepayment_reported')
+ AND coalesce(e.fact_payload->>'transaction_date',e.value_date::text)>=to_char($2::date,'YYYY-MM-DD')
+ AND coalesce(e.fact_payload->>'transaction_date',e.value_date::text)<to_char($2::date+interval '1 month','YYYY-MM-DD')
+ AND NOT EXISTS(SELECT 1 FROM loan_events v WHERE v.voids_event_id=e.id)
+)
+SELECT currency,count(*),count(allocation),count(*)-count(allocation),
+ count(*) FILTER(WHERE value_date IS NULL),sum(amount_minor)::text,
+ sum((allocation->>'principal_minor')::bigint)::text,
+ sum((allocation->>'interest_minor')::bigint)::text,
+ sum((allocation->>'fees_minor')::bigint)::text,
+ coalesce(sum(amount_minor) FILTER(WHERE allocation IS NULL),0)::text
+FROM facts GROUP BY currency ORDER BY currency;

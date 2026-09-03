@@ -123,11 +123,11 @@ RETURNING id;
 -- and everything else keyed to the account.
 WITH tombstone AS (
     INSERT INTO deletion_tombstones (subject_hmac)
-    SELECT encode(sha256(id::text::bytea), 'hex') FROM users WHERE id = $1
+    SELECT encode(sha256(id::text::bytea), 'hex') FROM users WHERE id = $1 AND deletion_requested_at IS NOT NULL
     ON CONFLICT DO NOTHING
     RETURNING subject_hmac
 )
-DELETE FROM users WHERE id = $1 RETURNING id;
+DELETE FROM users WHERE id = $1 AND deletion_requested_at IS NOT NULL RETURNING id;
 
 -- name: ArchiveLoan
 -- Hides a loan without destroying its ledger. A loan whose events are gone

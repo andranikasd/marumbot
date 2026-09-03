@@ -67,6 +67,7 @@ func reviseWorker(t *testing.T, f *reviseFakes) *Worker {
 
 func baseEdit(ln UserLoan) LoanEdit {
 	return LoanEdit{
+		Key: "test-revision-key-0001", ExpectedVersion: 1,
 		Name:         ln.Name,
 		Description:  ln.Description,
 		NominalRate:  ln.Contract.NominalRate,
@@ -166,4 +167,71 @@ func TestBackdatedSnapshotCannotUseNewTerms(t *testing.T) {
 	if len(f.revised) != 0 || len(f.recorded) != 0 {
 		t.Fatal("partial mutation before refusal")
 	}
+}
+
+// A locally current statement must not be rejected during the hours when UTC
+// is still on the previous date.
+func TestReviseLoanUsesAccountBusinessDate(t *testing.T) {
+	f := &reviseFakes{paidFakes: paidFakes{loan: paidLoan(t)}}
+	w := reviseWorker(t, f)
+	w.Clock = &fixedClock{at: time.Date(2026, 6, 14, 22, 0, 0, 0, time.UTC)}
+	w.Users = reminderUsersFake{prefs: UserPreferences{Timezone: "Asia/Yerevan"}}
+	e := baseEdit(f.loan)
+	e.BalanceAsOf, _ = date.Parse("2026-06-15")
+	balance := f.loan.Balance.Minor()
+	e.BalanceMinor = &balance
+	if err := w.ReviseLoan(context.Background(), "loan-a", "user-1", e); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.recorded) != 1 {
+		t.Fatal("current local-date statement was not recorded")
+	}
+	e.BalanceAsOf, _ = date.Parse("2026-06-16")
+	if err := w.ReviseLoan(context.Background(), "loan-a", "user-1", e); err == nil {
+		t.Fatal("future local-date statement accepted")
+	}
+}
+
+// Existing revision assertions also run through the command transaction boundary.
+func (f *reviseFakes) BeginLoanCommand(context.Context) (LoanCommandTransaction, error) {
+	return &revisionCommandFake{reviseFakes: f}, nil
+}
+
+type revisionCommandFake struct{ *reviseFakes }
+
+func (f *revisionCommandFake) LockUser(context.Context, string) error { return nil }
+
+func (f *revisionCommandFake) LockLoan(context.Context, string, string) (int64, error) { return 1, nil }
+
+func (f *revisionCommandFake) Version(context.Context, string, string) (int64, error) { return 1, nil }
+
+func (f *revisionCommandFake) Receipt(context.Context, string, string) (LoanCommandReceipt, string, error) {
+	return LoanCommandReceipt{}, "", ErrNotFound
+}
+
+func (f *revisionCommandFake) RecordReceipt(context.Context, string, string, string, LoanCommandReceipt) error {
+	return nil
+}
+
+func (f *revisionCommandFake) CreateLoan(context.Context, LoanDraft) (string, error) {
+	return "", errors.New("unexpected create")
+}
+func (f *revisionCommandFake) Commit(context.Context) error   { return nil }
+func (f *revisionCommandFake) Rollback(context.Context) error { return nil }
+
+func TestReviseLoanRejectsMissingCommandIdentity(t *testing.T) {
+	f := &reviseFakes{paidFakes: paidFakes{loan: paidLoan(t)}}
+	w := reviseWorker(t, f)
+	e := baseEdit(f.loan)
+	e.Key = ""
+	if err := w.ReviseLoan(context.Background(), "loan-a", "user-1", e); !errors.Is(err, ErrPaymentInvalid) {
+		t.Fatalf("missing key: %v", err)
+	}
+	if f.renamed != 0 || len(f.revised) != 0 || len(f.recorded) != 0 {
+		t.Fatal("invalid command wrote facts")
+	}
+}
+
+func (f *reviseFakes) LoanCommandCurrency(context.Context, string, string) (money.Currency, error) {
+	return f.loan.Contract.Currency, nil
 }

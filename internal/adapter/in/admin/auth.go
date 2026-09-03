@@ -63,7 +63,7 @@ func verifyPassword(encoded, password string) bool {
 		return false
 	}
 	rounds, err := strconv.Atoi(parts[1])
-	if err != nil || rounds < 1000 {
+	if err != nil || rounds < 1000 || rounds > 1000000 {
 		return false
 	}
 	salt, err := base64.RawStdEncoding.DecodeString(parts[2])
@@ -71,7 +71,7 @@ func verifyPassword(encoded, password string) bool {
 		return false
 	}
 	want, err := base64.RawStdEncoding.DecodeString(parts[3])
-	if err != nil {
+	if err != nil || len(want) != keyLen || len(salt) < 16 {
 		return false
 	}
 	got, err := pbkdf2.Key(sha256.New, password, salt, rounds, len(want))
@@ -98,21 +98,6 @@ func issue(key []byte, now time.Time) string {
 	m := hmac.New(sha256.New, key)
 	m.Write([]byte(payload))
 	return payload + "." + base64.RawURLEncoding.EncodeToString(m.Sum(nil))
-}
-
-func valid(key []byte, token string, now time.Time) bool {
-	payload, sig, ok := strings.Cut(token, ".")
-	if !ok {
-		return false
-	}
-	m := hmac.New(sha256.New, key)
-	m.Write([]byte(payload))
-	want := base64.RawURLEncoding.EncodeToString(m.Sum(nil))
-	if subtle.ConstantTimeCompare([]byte(sig), []byte(want)) != 1 {
-		return false
-	}
-	exp, err := strconv.ParseInt(payload, 10, 64)
-	return err == nil && now.Unix() < exp
 }
 
 // throttle slows down repeated failures from one address. It is deliberately

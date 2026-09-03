@@ -38,20 +38,22 @@ export function setLanguage(value){
 export const fmtMoney = (n, cur) => new Intl.NumberFormat(lang === "en" ? "en-US" : "hy-AM",
   { style: "currency", currency: cur }).format(n);
 const parseISO = (iso) => { const d = new Date(iso + "T00:00:00"); return Number.isNaN(d.getTime()) ? null : d; };
+// Some embedded browsers ship without Armenian Intl date data.
+const armenianMonths=["հունվար","փետրվար","մարտ","ապրիլ","մայիս","հունիս","հուլիս","օգոստոս","սեպտեմբեր","հոկտեմբեր","նոյեմբեր","դեկտեմբեր"];
 // fmtDate is day + short month, for dates inside the running year.
 export const fmtDate = (iso) => {
   const d = parseISO(iso);
-  return d ? new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d) : iso;
+  return d ? lang==="hy"?`${d.getDate()} ${armenianMonths[d.getMonth()]}`:new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d) : iso;
 };
 // fmtMonth is month + year: a payoff or milestone sits years out.
 export const fmtMonth = (iso) => {
   const d = parseISO(iso);
-  return d ? new Intl.DateTimeFormat(locale, { month: "short", year: "numeric" }).format(d) : iso;
+  return d ? lang==="hy"?`${armenianMonths[d.getMonth()]} ${d.getFullYear()}`:new Intl.DateTimeFormat(locale, { month: "short", year: "numeric" }).format(d) : iso;
 };
 // fmtFull keeps the year: a balance stated long ago, a contract date.
 export const fmtFull = (iso) => {
   const d = parseISO(iso);
-  return d ? new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(d) : iso;
+  return d ? lang==="hy"?`${d.getDate()} ${armenianMonths[d.getMonth()]} ${d.getFullYear()}`:new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(d) : iso;
 };
 // monthsBetween counts whole months from one ISO date to another, for a
 // derived term caption. Approximate on purpose: a caption, not a contract.

@@ -51,7 +51,7 @@ func TestSearchCapAfterPermutationFallback(t *testing.T) {
 	for _, o := range []struct {
 		name string
 		idx  []int
-	}{{"avalanche", []int{3, 2, 1, 0}}, {"snowball", []int{0, 1, 2, 3}}} {
+	}{{"highest_rate", []int{3, 2, 1, 0}}, {"snowball", []int{0, 1, 2, 3}}} {
 		for e := 0; e < 16; e++ {
 			for tm := 0; tm < 16; tm++ {
 				for _, b := range batches {
@@ -199,7 +199,7 @@ func TestSearchProofExcludesNewSpendingDomain(t *testing.T) {
 			if mode != "legacy" && rep.Certificate.Eligibility != "" {
 				t.Fatal("excluded proof retained eligibility")
 			}
-			if rep.Certificate.EngineVersion != "plan/3" {
+			if rep.Certificate.EngineVersion != "plan/5" {
 				t.Fatalf("wrong engine version: %s", rep.Certificate.EngineVersion)
 			}
 		})

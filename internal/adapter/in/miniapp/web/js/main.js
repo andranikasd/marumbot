@@ -4,6 +4,10 @@
 "use strict";
 import "./screens/home.js";
 import "./screens/plan.js";
+import "./screens/plan-history.js";
+import "./screens/plan-inverse.js";
+import "./screens/plan-comparison.js";
+import "./screens/plan-scenarios.js";
 import "./screens/loans.js";
 import "./screens/activity.js";
 import "./screens/payment.js";
@@ -13,6 +17,7 @@ import "./screens/loan.js";
 import "./screens/add.js";
 import "./screens/budget.js";
 import "./screens/budget-edit.js";
+import "./screens/budget-policy.js";
 import { buildTabs, go, refreshLanguage } from "./nav.js";
 import { api, prefetch, watchOffline } from "./api.js";
 

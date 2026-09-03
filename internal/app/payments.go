@@ -18,19 +18,28 @@ var (
 	ErrPaymentDuplicate      = errors.New("possible_duplicate_payment")
 )
 
+// PaymentAllocation is a complete bank-reported split, never an estimate.
+// Pointers distinguish an explicitly reported zero from an omitted component.
+type PaymentAllocation struct {
+	PrincipalMinor *int64 `json:"principal_minor"`
+	InterestMinor  *int64 `json:"interest_minor"`
+	FeesMinor      *int64 `json:"fees_minor"`
+}
+
 // PaymentCommand records what happened, never an instruction to send money.
 // An absent value date means bank posting is unknown. Trust is always user_entered.
 type PaymentCommand struct {
-	LoanID          string `json:"loan_id"`
-	Key             string `json:"idempotency_key"`
-	ExpectedVersion int64  `json:"expected_version"`
-	AmountMinor     int64  `json:"amount_minor"`
-	TransactionDate string `json:"transaction_date"`
-	ValueDate       string `json:"value_date"`
-	Extra           bool   `json:"extra"`
-	Replaces        string `json:"replaces,omitempty"`
-	VoidOnly        bool   `json:"void_only,omitempty"`
-	AllowDuplicate  bool   `json:"allow_duplicate,omitempty"`
+	Allocation      *PaymentAllocation `json:"allocation,omitempty"`
+	LoanID          string             `json:"loan_id"`
+	Key             string             `json:"idempotency_key"`
+	ExpectedVersion int64              `json:"expected_version"`
+	AmountMinor     int64              `json:"amount_minor"`
+	TransactionDate string             `json:"transaction_date"`
+	ValueDate       string             `json:"value_date"`
+	Extra           bool               `json:"extra"`
+	Replaces        string             `json:"replaces,omitempty"`
+	VoidOnly        bool               `json:"void_only,omitempty"`
+	AllowDuplicate  bool               `json:"allow_duplicate,omitempty"`
 }
 
 type PaymentReceipt struct {
@@ -49,6 +58,7 @@ type (
 	PaymentEntry struct {
 		Kind, ValueDate, TransactionDate, Voids, Hash string
 		AmountMinor                                   int64
+		Allocation                                    *PaymentAllocation
 	}
 )
 
@@ -133,7 +143,7 @@ func (p PaymentService) record(ctx context.Context, tx PaymentTransaction, userI
 			return empty, ErrPaymentDuplicate
 		}
 	}
-	entry := PaymentEntry{Kind: "payment_reported", AmountMinor: c.AmountMinor, TransactionDate: c.TransactionDate, ValueDate: c.ValueDate, Hash: hash}
+	entry := PaymentEntry{Kind: "payment_reported", AmountMinor: c.AmountMinor, TransactionDate: c.TransactionDate, ValueDate: c.ValueDate, Hash: hash, Allocation: c.Allocation}
 	if c.Extra {
 		entry.Kind = "prepayment_reported"
 	}
@@ -167,13 +177,29 @@ func (c PaymentCommand) validate(today date.Date) error {
 		return invalid("transaction date must not be in the future")
 	}
 	if c.VoidOnly {
-		if c.Replaces == "" || c.AmountMinor != 0 {
+		if c.Replaces == "" || c.AmountMinor != 0 || c.Allocation != nil {
 			return invalid("void must name a payment and carry no amount")
 		}
 		return nil
 	}
 	if c.AmountMinor <= 0 || c.AmountMinor > 9007199254740991 {
 		return invalid("positive exact amount required")
+	}
+	if c.Allocation != nil {
+		a := c.Allocation
+		if c.ValueDate == "" || a.PrincipalMinor == nil || a.InterestMinor == nil || a.FeesMinor == nil {
+			return invalid("allocation requires value date and all components")
+		}
+		remaining := c.AmountMinor
+		for _, component := range []int64{*a.PrincipalMinor, *a.InterestMinor, *a.FeesMinor} {
+			if component < 0 || component > remaining {
+				return invalid("allocation must be nonnegative and sum to payment")
+			}
+			remaining -= component
+		}
+		if remaining != 0 {
+			return invalid("allocation must sum to payment")
+		}
 	}
 	if c.ValueDate != "" {
 		value, err := date.Parse(c.ValueDate)

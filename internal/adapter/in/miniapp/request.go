@@ -235,6 +235,8 @@ func (r LoanEditRequest) Validate(cur money.Currency) (app.LoanEdit, error) {
 
 // BudgetRequest is what the budget form posts.
 type BudgetRequest struct {
+	AsOf            string             `json:"as_of"`
+	Key             string             `json:"idempotency_key"`
 	Funding         *app.BudgetFunding `json:"funding"`
 	ExpectedVersion *int64             `json:"expected_version"`
 	MonthlyMajor    float64            `json:"monthly_major"`
@@ -339,6 +341,12 @@ func (r BudgetRequest) ValidateFunding(today date.Date) error {
 		return nil
 	}
 	f := r.Funding
+	if f.SpentPeriodStart != "" {
+		d, err := date.Parse(f.SpentPeriodStart)
+		if err != nil || d.After(today) {
+			return fmt.Errorf("%w: spending period start", ErrInvalid)
+		}
+	}
 	if f.CashThrough != "" {
 		d, err := date.Parse(f.CashThrough)
 		if err != nil || d.After(today) {
@@ -348,11 +356,8 @@ func (r BudgetRequest) ValidateFunding(today date.Date) error {
 	if r.PayDay < 1 || r.PayDay > 31 || f.MonthlyMinor < 0 || f.SpentMinor < 0 || f.MonthlyMinor > math.MaxInt64/1000 || f.SpentMinor > math.MaxInt64/1000 || len(f.Events) > maxOverrideMonths {
 		return fmt.Errorf("%w: funding", ErrInvalid)
 	}
-	for _, event := range f.Events {
-		on, err := date.Parse(event.On)
-		if err != nil || on.Before(today) || event.Minor <= 0 || event.Minor > math.MaxInt64/1000 {
-			return fmt.Errorf("%w: cash event", ErrInvalid)
-		}
+	if err := app.ValidateBudgetCashEvents(f.Events, r.Currency, today); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	return nil
 }

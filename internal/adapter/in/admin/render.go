@@ -27,16 +27,18 @@ const (
 // beyond choosing what to show, and so money is formatted in exactly one place.
 func funcs() template.FuncMap {
 	return template.FuncMap{
-		"date":      formatDate,
-		"stamp":     formatStamp,
-		"minor":     formatMinorPtr,
-		"minorv":    formatMinor,
-		"drift":     formatDrift,
-		"pct":       formatPercent,
-		"short":     shortID,
-		"hasPrefix": strings.HasPrefix,
-		"ago":       relativeTime,
-		"add":       func(a, b int) int { return a + b },
+		"roleSelected": selectedRole,
+		"roleLabel":    roleLabel,
+		"date":         formatDate,
+		"stamp":        formatStamp,
+		"minor":        formatMinorPtr,
+		"minorv":       formatMinor,
+		"drift":        formatDrift,
+		"pct":          formatPercent,
+		"short":        shortID,
+		"hasPrefix":    strings.HasPrefix,
+		"ago":          relativeTime,
+		"add":          func(a, b int) int { return a + b },
 		// Chart helpers. Bars are pure CSS, so the height is computed here as
 		// a percentage of the tallest bar in the series.
 		"sum": func(ds []app.DayCount) int64 {
@@ -117,7 +119,7 @@ func funcs() template.FuncMap {
 			switch s {
 			case "reduce_principal":
 				return tagOK
-			case "unknown":
+			case unknownValue:
 				return tagStop
 			}
 			return tagWarn

@@ -1,7 +1,9 @@
 // Fresh financial reads share concurrent requests. Offline fallback stays explicitly marked.
 "use strict";
 import { tg } from "./core.js";
-import { T } from "./i18n.js";
+import { T, addStrings } from "./i18n.js";
+
+addStrings({'offline.stale':'Նախկինում բեռնված որոշ տվյալներ թարմացման կարիք ունեն։'}, {'offline.stale':'Some previously loaded figures need refreshing.'});
 
 export const api = (path, init = {}) => fetch(path, {
   ...init,
@@ -16,6 +18,14 @@ const cache = new Map(); // path -> { body, at }
 const TTL = 30_000;
 const inFlight=new Map();
 let generation=0;
+const stalePaths=new Set();
+const displayedPaths=new Set();
+let disconnected=false;
+function updateOffline(){
+ const label=document.getElementById('offline-text');
+ if(label)label.textContent=T(disconnected?'offline':'offline.stale');
+ offline(disconnected||stalePaths.size>0);
+}
 function fresh(path){
  if(inFlight.has(path))return inFlight.get(path);
  const stamp=generation;
@@ -27,15 +37,24 @@ function fresh(path){
 // Return current data, or a labeled recent offline fallback.
 export async function getJSON(path, onData) {
   const hit = cache.get(path);
+  const stamp=generation;
   // Financial values are rendered only after a fresh response.
   try {
     const body = await fresh(path);
-    offline(false);
+    if(stamp!==generation)throw new Error("inputs changed during request");
+    displayedPaths.add(path);
+    stalePaths.delete(path);
+    disconnected=false;
+    updateOffline();
     if (onData) onData(body, { stale: false });
     return body;
   } catch (err) {
-    if (err instanceof TypeError) offline(true); // the network, not the server
+    if(stamp!==generation)throw err;
+    if(displayedPaths.has(path)||hit)stalePaths.add(path);
+    if(err instanceof TypeError)disconnected=true;
+    updateOffline();
     if (err instanceof TypeError && hit && Date.now() - hit.at < TTL) {
+      displayedPaths.add(path);
       if (onData) onData(hit.body, { stale:true });
       return hit.body;
     }
@@ -44,7 +63,8 @@ export async function getJSON(path, onData) {
 }
 
 // The offline banner: one line above every screen, shown when a request
-// could not leave the phone and hidden the moment one succeeds. The cached
+// could not leave the phone. Only a fresh read of each affected path clears
+// its stale state; connectivity and unrelated requests cannot certify it. The cached
 // figures stay on screen underneath; a retry re-runs the current screen.
 let offlineNow = false;
 function offline(on) {
@@ -59,17 +79,20 @@ export function watchOffline() {
   document.getElementById("offline-text").textContent = T("offline");
   const retry = document.getElementById("offline-retry");
   retry.textContent = T("offline.retry");
-  retry.addEventListener("click", () => { offline(false); document.dispatchEvent(new Event("marum:retry")); });
-  window.addEventListener("online", () => offline(false));
-  window.addEventListener("offline", () => offline(true));
+  retry.addEventListener("click", () => { document.dispatchEvent(new Event("marum:retry")); });
+  window.addEventListener("online", () => {disconnected=false;updateOffline();});
+  window.addEventListener("offline", () => {disconnected=true;for(const path of displayedPaths)stalePaths.add(path);updateOffline();});
+  updateOffline();
 }
 
 export function invalidate(prefix) {
  generation++;
  for(const k of inFlight.keys())if(k.startsWith(prefix))inFlight.delete(k);
   for (const k of cache.keys()) if (k.startsWith(prefix)) cache.delete(k);
+  for(const path of displayedPaths)if(path.startsWith(prefix))stalePaths.add(path);
+  updateOffline();
 }
 
 export function prefetch(paths) {
-  for (const p of paths) getJSON(p).catch(() => { /* warmed later by the screen */ });
+  for (const p of paths) fresh(p).catch(() => { /* warmed later by the screen */ });
 }

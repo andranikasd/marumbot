@@ -167,3 +167,11 @@ func TestBudgetFundingValidationAndConflict(t *testing.T) {
 		t.Fatalf("conflict not preserved: %d", result.Code)
 	}
 }
+
+func TestBudgetRetryKeyRequiresExplicitStatementDate(t *testing.T) {
+	store := &budgetTestConfigurator{}
+	result := postBudget(t, budgetTestServer(store), `{"idempotency_key":"a-stable-retry-key","monthly_major":100,"currency":"AMD","pay_day":1,"expected_version":0}`)
+	if result.Code != http.StatusUnprocessableEntity || store.calls != 0 {
+		t.Fatal("retryable statement accepted without a stable date")
+	}
+}

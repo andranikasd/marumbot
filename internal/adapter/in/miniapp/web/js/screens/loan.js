@@ -11,7 +11,8 @@
 import {iconPicker} from "../icons.js";
 import { haptic, toast, fmtMoney, fmtFull, fmtMonth, moneyNum, num, confirmDialog, group } from "../core.js";
 import { T, sub, addStrings } from "../i18n.js";
-import { api, getJSON, invalidate } from "../api.js";
+import { getJSON, invalidate } from "../api.js";
+import {loanMutation,loanWriteError,showLoanRetry} from "../loan-mutations.js";
 import { register, go, setAction, setTitle } from "../nav.js";
 
 addStrings({
@@ -39,6 +40,7 @@ addStrings({
 });
 
 const HTML = `
+<button type="button" id="loan-retry" hidden></button>
   <div id="loan-view" class="stack" hidden>
     <div class="hero">
       <div class="k"><span data-i18n="loan.balance">Մնացորդ</span><span class="pill" id="ln-state"></span></div>
@@ -181,15 +183,15 @@ async function patch(body, okKey) {
   if (busy) return false;
   busy = true;
   try {
-    const res = await api("api/loans/" + encodeURIComponent(loan.id), { method: "PATCH", body: JSON.stringify(body) });
-    if (!res.ok) throw new Error(String(res.status));
+    const res = await loanMutation("api/loans/" + encodeURIComponent(loan.id), "PATCH", body, loan.mutation_version);
+    if (!res.ok) throw new Error(res.status===409?"loan_conflict":String(res.status));
     haptic.ok();
     invalidate("api/");
     toast(T(okKey));
     return true;
-  } catch {
+  } catch (err) {
     haptic.bad();
-    toast(T("err.save"));
+    toast(loanWriteError(err)); recoverLoan();
     return false;
   } finally {
     busy = false;
@@ -244,11 +246,11 @@ async function remove() {
   haptic.tap();
   if (!(await confirmDialog(T("manage.confirm")))) return;
   try {
-    const res = await api("api/loans/" + encodeURIComponent(loan.id), { method: "DELETE" });
-    if (!res.ok) throw new Error(String(res.status));
+    const res = await loanMutation("api/loans/" + encodeURIComponent(loan.id), "DELETE", undefined, loan.mutation_version);
+    if (!res.ok) throw new Error(res.status===409?"loan_conflict":String(res.status));
     haptic.ok(); invalidate("api/"); go("loans");
-  } catch {
-    haptic.bad(); toast(T("err.remove"));
+  } catch (err) {
+    haptic.bad(); toast(loanWriteError(err)); recoverLoan();
   }
 }
 
@@ -284,6 +286,8 @@ register({
     $("ln-remove").addEventListener("click", remove);
   },
   async onShow(_, params) {
+    retryLoanID=params?.id;
+    recoverLoan();
     loan = null;
     $("loan-view").hidden = true;
     mode("view");
@@ -291,3 +295,6 @@ register({
     if (loan) mode("view");
   },
 });
+
+let retryLoanID;
+function recoverLoan(){if(retryLoanID)showLoanRetry($("loan-retry"),"api/loans/"+encodeURIComponent(retryLoanID),async()=>{invalidate("api/");toast(T("saved"));go("loans");});}

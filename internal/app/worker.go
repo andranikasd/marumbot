@@ -60,14 +60,18 @@ type Clock interface{ Now() time.Time }
 
 // Worker drains the command inbox.
 type Worker struct {
-	Inbox     InboxStore
-	Users     UserStore
-	Loans     LoanReader
-	Editor    LoanEditor
-	Budgets   BudgetStore
-	Convos    ConversationStore
-	Reminders ReminderStore
-	Plans     PlanStore
+	ProfileFlags AdminFlagReader
+	Environment  string
+	Inbox        InboxStore
+	Users        UserStore
+	Loans        LoanReader
+	Editor       LoanEditor
+	Budgets      BudgetStore
+	Convos       ConversationStore
+	Reminders    ReminderStore
+	Plans        PlanStore
+	History      PlanHistoryStore
+	proposals    planProposals
 	// plans caches the pure search by a fingerprint of its inputs; see
 	// plancache.go. Zero value ready.
 	plans searchCache
@@ -647,7 +651,7 @@ func (w *Worker) addMarkup(l i18n.Locale) any {
 		return w.mainMenu(l)
 	}
 	return map[string]any{keyInline: [][]map[string]any{{
-		webAppButton(i18n.T(l, "add.button"), w.miniURL("")),
+		webAppButton(i18n.T(l, "add.button"), w.miniURL("add")),
 	}}}
 }
 

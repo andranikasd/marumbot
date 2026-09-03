@@ -9,6 +9,7 @@
 </div>
 {{end}}
 {{define "content"}}
+{{if .Can.history}}<p><a href="/users/{{.V.User.ID}}/history">Calculation history and replay</a></p>{{end}}
 <p class="subtitle">
   <span class="mono" title="{{.V.User.ID}}">{{.V.User.ID}}</span> ·
   <span class="tag {{access .V.User.AccessState}}">{{.V.User.AccessState}}</span> ·

@@ -51,6 +51,8 @@ type LoanWriter interface {
 // balance and a rate, which made every number the engine can produce
 // unreachable from the bot.
 type UserLoan struct {
+	MutationVersion int64
+
 	UnreconciledPayments bool
 	Icon                 string
 	OptionalExcluded     bool
@@ -89,6 +91,10 @@ type LoanReader interface {
 // BudgetFunding is an explicitly declared source of funds. Amounts are minor
 // units; omission preserves the pre-v2 funded-budget interpretation.
 type BudgetFunding struct {
+	// SpentPeriodStart identifies an explicitly stated user-cycle spending total.
+	// Empty retains calendar-month semantics for existing reconciliation callers.
+	SpentPeriodStart string `json:"spent_period_start,omitempty"`
+
 	CashThrough  string            `json:"cash_through,omitempty"`
 	MonthlyMinor int64             `json:"monthly_minor"`
 	SpentMinor   int64             `json:"spent_minor"`
@@ -97,13 +103,19 @@ type BudgetFunding struct {
 
 // BudgetCashEvent records a dated source declaration, not a payment.
 type BudgetCashEvent struct {
-	On       string `json:"on"`
-	Minor    int64  `json:"minor"`
-	Expected bool   `json:"expected"`
+	ID          string             `json:"id,omitempty"`
+	Routing     *BudgetCashRouting `json:"routing,omitempty"`
+	FromOpening bool               `json:"from_opening,omitempty"`
+	On          string             `json:"on"`
+	Minor       int64              `json:"minor"`
+	Expected    bool               `json:"expected"`
 }
 
 // Budget is how much a borrower can put towards loans each month.
 type Budget struct {
+	Policies []BudgetPolicy
+	Releases []BudgetReleaseFact
+
 	Version  int64
 	Funding  *BudgetFunding
 	Currency string
@@ -128,6 +140,14 @@ type Budget struct {
 // valuation date. Opening cash counts only within the month it was stated
 // and never from the future: a January figure says nothing about March.
 func (b Budget) CashPlan(valuation date.Date) plan.CashPlan {
+	if len(b.Policies) > 0 {
+		cp, _, err := b.CashPlans(valuation)
+		if err != nil {
+			cp.Spending = &plan.SpendingPlan{Monthly: b.Monthly, RuleError: "invalid budget policy"}
+		}
+		return cp
+	}
+
 	cp := plan.CashPlan{Monthly: b.Monthly, PayDay: b.PayDay}
 	if b.Opening.Sign() > 0 && !b.OpeningAsOf.IsZero() &&
 		plan.MonthKey(b.OpeningAsOf) == plan.MonthKey(valuation) &&
@@ -163,8 +183,8 @@ func (b Budget) CashPlan(valuation date.Date) plan.CashPlan {
 		}
 		for _, e := range b.Funding.Events {
 			on, err := date.Parse(e.On)
-			if err == nil && !on.Before(valuation) && (cp.CashThrough.IsZero() || on.After(cp.CashThrough)) {
-				cp.Lumps = append(cp.Lumps, plan.CashEvent{On: on, Amount: money.FromMinor(e.Minor, b.Monthly.Currency()), Expected: e.Expected})
+			if err == nil && (e.Routing != nil || (!on.Before(valuation) && (cp.CashThrough.IsZero() || on.After(cp.CashThrough)))) {
+				cp.Lumps = append(cp.Lumps, e.cashEvent(b.Monthly.Currency()))
 			}
 		}
 	}
@@ -181,6 +201,7 @@ type BudgetStore interface {
 // BudgetConfiguration is the complete budget form after boundary validation.
 // Keeping it whole lets persistence commit one user action atomically.
 type BudgetConfiguration struct {
+	Key             string
 	Funding         *BudgetFunding
 	ExpectedVersion *int64
 	UserID          string

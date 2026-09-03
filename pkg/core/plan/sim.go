@@ -59,20 +59,24 @@ type MonthLoan struct {
 
 // MonthState is one cycle of a run, for timelines and comparators.
 type MonthState struct {
-	Month    int
-	On       date.Date    // the income date that opened the cycle
-	Required money.Amount // contractual instalments paid this cycle
-	Extra    money.Amount // optional payments, fees excluded
-	Fees     money.Amount
-	Interest money.Amount // settled this cycle
-	Owed     money.Amount // balances at the end of the cycle
-	Cash     money.Amount // carried into the next cycle
-	Cleared  string       // a loan that reached zero this cycle, by name
-	Loans    []MonthLoan  // per loan, in input order
+	// HouseholdCash is transferred out of the debt pool under no_carry.
+	HouseholdCash money.Amount
+	Month         int
+	On            date.Date    // the income date that opened the cycle
+	Required      money.Amount // contractual instalments paid this cycle
+	Extra         money.Amount // optional payments, fees excluded
+	Fees          money.Amount
+	Interest      money.Amount // settled this cycle
+	Owed          money.Amount // balances at the end of the cycle
+	Cash          money.Amount // physical cash carried, including restricted routed buckets
+	Cleared       string       // a loan that reached zero this cycle, by name
+	Loans         []MonthLoan  // per loan, in input order
 }
 
 // Result is what one policy produces over a whole run.
 type Result struct {
+	// HouseholdCash is retained outside the debt plan, never spent or erased.
+	HouseholdCash money.Amount
 	Policy        Policy
 	PayoffDate    date.Date
 	Months        int
@@ -114,6 +118,7 @@ const (
 	evPeriod eventKind = iota
 	evLump
 	evIncome
+	evRoute
 	evDue
 )
 
@@ -220,28 +225,56 @@ func Run(in Input, pol Policy) (Result, error) {
 }
 
 type sim struct {
-	in     Input
-	pol    Policy
-	cache  cache
-	cur    money.Currency
-	loans  []*loanState
-	cash   money.Amount
-	budget money.Amount
-	res    Result
+	incomeDelayDays int
+	nominalIncome   date.Date
+	cashBuckets     []cashBucket
+	hasRouting      bool
+	actionSink      *[]Action
+	in              Input
+	pol             Policy
+	cache           cache
+	cur             money.Currency
+	loans           []*loanState
+	cash            money.Amount
+	budget          money.Amount
+	res             Result
 	// cycle bookkeeping
-	cycle       int
-	cycleIncome date.Date // the income date that opened the current cycle
-	nextIncome  date.Date // zero when there is no pay day: income lands on the first due of each month
-	incomeYM    int       // year*12+month of the last income, for the no-pay-day rule
-	month       MonthState
-	lumps       []CashEvent
-	inflow      money.Amount // every credit to the pool, for the identity
-	nextPeriod  date.Date
-	periodLeft  money.Amount
-	err         error
+	cycle        int
+	cycleIncome  date.Date // the income date that opened the current cycle
+	nextIncome   date.Date // zero when there is no pay day: income lands on the first due of each month
+	incomeYM     int       // year*12+month of the last income, for the no-pay-day rule
+	month        MonthState
+	lumps        []CashEvent
+	inflow       money.Amount // every credit to the pool, for the identity
+	nextPeriod   date.Date
+	periodLeft   money.Amount
+	periodStart  date.Date
+	periodSpent  money.Amount
+	carryRule    string
+	carryMinimum money.Amount
+	carryUntil   date.Date
+	err          error
+}
+
+// PaymentTimeline replays one policy and captures every dated action. Search
+// leaves this collector disabled so thousands of candidates do not retain it.
+func PaymentTimeline(in Input, pol Policy) (Result, []Action, error) {
+	actions := []Action{}
+	result, err := runWithActions(in, pol, cache{}, &actions)
+	return result, actions, err
 }
 
 func run(in Input, pol Policy, c cache) (Result, error) {
+	return runWithActions(in, pol, c, nil)
+}
+
+func runWithActions(in Input, pol Policy, c cache, sink *[]Action) (Result, error) {
+	return runConfigured(in, pol, c, sink, 0)
+}
+
+// runConfigured changes only the stress replay's receipt clock. Production
+// searches always pass zero; no source field or spending date is rewritten.
+func runConfigured(in Input, pol Policy, c cache, sink *[]Action, incomeDelayDays int) (Result, error) {
 	if err := in.Validate(); err != nil {
 		return Result{}, err
 	}
@@ -251,7 +284,7 @@ func run(in Input, pol Policy, c cache) (Result, error) {
 	}
 	cur := in.Cash.Monthly.Currency()
 	zero := money.Zero(cur)
-	s := &sim{in: in, pol: pol, cache: c, cur: cur, cash: in.Cash.OpeningCash, budget: in.Cash.Monthly, inflow: zero}
+	s := &sim{incomeDelayDays: incomeDelayDays, actionSink: sink, in: in, pol: pol, cache: c, cur: cur, cash: in.Cash.OpeningCash, budget: in.Cash.Monthly, inflow: zero}
 	if in.Cash.Spending != nil {
 		s.budget = in.Cash.Spending.Monthly
 	}
@@ -259,7 +292,7 @@ func run(in Input, pol Policy, c cache) (Result, error) {
 		s.cash = zero
 	}
 	s.res = Result{
-		Policy: pol, TotalInterest: zero, TotalFees: zero, TotalPaid: zero, NextMonthOwed: zero,
+		Policy: pol, HouseholdCash: zero, TotalInterest: zero, TotalFees: zero, TotalPaid: zero, NextMonthOwed: zero,
 		FirstFreed: zero, PeakRequired: zero, FinalRequired: zero,
 	}
 	for i, p := range in.Loans {
@@ -283,6 +316,14 @@ func run(in Input, pol Policy, c cache) (Result, error) {
 		s.loans = append(s.loans, ls)
 	}
 	for _, event := range in.Cash.Lumps {
+		if event.Routing != nil {
+			s.hasRouting = true
+		}
+		if event.FromOpening {
+			s.cash = s.sub(s.cash, event.Amount)
+			s.addRouted(event)
+			continue
+		}
 		if !event.Expected {
 			s.lumps = append(s.lumps, event)
 		}
@@ -308,6 +349,11 @@ func run(in Input, pol Policy, c cache) (Result, error) {
 			s.lump(idx)
 		case evIncome:
 			s.income(on)
+		case evRoute:
+			if s.cycle == 0 {
+				s.openCycle(on)
+			}
+			s.allocate(on)
 		case evDue:
 			s.due(s.loans[idx], on)
 		}
@@ -360,14 +406,19 @@ func (s *sim) firstIncome() date.Date {
 	if d.Before(s.in.ValuationDate) || (!s.in.Cash.CashThrough.IsZero() && !d.After(s.in.Cash.CashThrough)) {
 		d = date.OnDayOfMonth(date.AddMonths(s.in.ValuationDate, 1), s.in.Cash.PayDay)
 	}
-	return d
+	s.nominalIncome = d
+	return date.AddDays(d, s.incomeDelayDays)
 }
 
 func (s *sim) incomeAfter(d date.Date) date.Date {
 	if s.in.Cash.PayDay == 0 {
 		return date.Date{}
 	}
-	return date.OnDayOfMonth(date.AddMonths(d, 1), s.in.Cash.PayDay)
+	if s.incomeDelayDays != 0 {
+		d = s.nominalIncome
+	}
+	s.nominalIncome = date.OnDayOfMonth(date.AddMonths(d, 1), s.in.Cash.PayDay)
+	return date.AddDays(s.nominalIncome, s.incomeDelayDays)
 }
 
 // nextEvent picks the earliest pending event; same-day order is lump, income,
@@ -389,6 +440,11 @@ func (s *sim) nextEvent() (eventKind, date.Date, int) {
 	}
 	if !s.nextIncome.IsZero() {
 		consider(evIncome, s.nextIncome, -1)
+	}
+	for _, b := range s.cashBuckets {
+		if !b.wake.IsZero() {
+			consider(evRoute, b.wake, -1)
+		}
 	}
 	for i, l := range s.lumps {
 		consider(evLump, l.On, i)
@@ -443,7 +499,7 @@ func (s *sim) closeCycle() {
 			owed = s.add(owed, ls.balance)
 		}
 	}
-	s.month.Owed, s.month.Cash = owed, s.cash
+	s.month.Owed, s.month.Cash = owed, s.add(s.cash, s.restrictedCash())
 	for _, ls := range s.loans {
 		if ls.cyclePaid.Sign() <= 0 && ls.closed && !ls.cycleCleared {
 			continue // long since paid off; not a row in this month
@@ -467,6 +523,10 @@ func (s *sim) closeCycle() {
 }
 
 func (s *sim) lump(i int) {
+	if s.hasRouting {
+		s.receiveRoutedDate(s.lumps[i].On)
+		return
+	}
 	l := s.lumps[i]
 	s.lumps = append(s.lumps[:i], s.lumps[i+1:]...)
 	if s.cycle == 0 {
@@ -501,6 +561,9 @@ func (s *sim) income(on date.Date) {
 // whatever relief has since freed -- so it bypasses the relief-adjusted
 // budget for exactly that month.
 func (s *sim) credit(on date.Date) money.Amount {
+	if s.incomeDelayDays != 0 {
+		on = s.nominalIncome
+	}
 	if v, ok := s.in.Cash.MonthlyOverrides[MonthKey(on)]; ok {
 		return v
 	}
@@ -534,6 +597,7 @@ func (s *sim) reserved() money.Amount {
 // receipt by a lender that credits it is paid now; otherwise its share is
 // held for its due date. Whatever no loan can absorb stays in the pool.
 func (s *sim) allocate(on date.Date) {
+	s.routeCash(on, nil)
 	if s.pol.RequiredOnly {
 		return
 	}
@@ -552,6 +616,9 @@ func (s *sim) allocate(on date.Date) {
 			return
 		}
 		if q.Outflow.Sign() <= 0 {
+			continue
+		}
+		if s.in.Cash.Spending != nil && s.carryRule == BatchUntil && q.Principal.Cmp(s.carryMinimum) < 0 && !q.Closes {
 			continue
 		}
 		if s.pol.MinPrepay.Sign() > 0 && q.Principal.Cmp(s.pol.MinPrepay) < 0 && !q.Closes {
@@ -651,7 +718,7 @@ func (s *sim) accrueTo(ls *loanState, on date.Date) error {
 func (s *sim) prepay(ls *loanState, on date.Date, q Quote, early bool) {
 	c := ls.pos.Contract
 	if s.in.Cash.Spending != nil {
-		s.periodLeft = s.sub(s.periodLeft, q.Outflow)
+		s.spendPermission(q.Outflow)
 	}
 	s.cash = s.sub(s.cash, q.Outflow)
 	ls.cyclePaid = s.add(ls.cyclePaid, q.Outflow)
@@ -689,6 +756,7 @@ func (s *sim) prepay(ls *loanState, on date.Date, q Quote, early bool) {
 
 // due settles a loan's instalment on its date, then any money held for it.
 func (s *sim) due(ls *loanState, on date.Date) {
+	defer s.routeCash(on, ls)
 	if s.in.Cash.PayDay == 0 && ym(on) != s.incomeYM {
 		s.income(on)
 		if s.err != nil {
@@ -727,7 +795,7 @@ func (s *sim) due(ls *loanState, on date.Date) {
 		return
 	}
 	if s.in.Cash.Spending != nil {
-		s.periodLeft = s.sub(s.periodLeft, required)
+		s.spendPermission(required)
 	}
 	s.cash = s.sub(s.cash, required)
 	ls.cyclePaid = s.add(ls.cyclePaid, required)
@@ -801,7 +869,7 @@ func (s *sim) close(ls *loanState, on date.Date) {
 	if s.res.FirstClear == "" {
 		s.res.FirstClear, s.res.FirstClearOn, s.res.FirstClearAt, s.res.FirstFreed = ls.pos.Name, on, s.cycle, freed
 	}
-	if s.pol.Rollover == KeepFreed {
+	if s.pol.Rollover == KeepFreed && (s.in.Cash.Spending == nil || !s.in.Cash.Spending.ConfirmedReleaseOnly) {
 		b := s.sub(s.budget, freed)
 		if b.Sign() < 0 {
 			b = money.Zero(s.cur)
@@ -818,6 +886,9 @@ func (s *sim) close(ls *loanState, on date.Date) {
 
 // action records a payment while the first cycle is open.
 func (s *sim) action(ls *loanState, on date.Date, kind ActionKind, amount, fee, saves money.Amount) {
+	if s.actionSink != nil {
+		*s.actionSink = append(*s.actionSink, Action{On: on, LoanID: ls.pos.ID, Loan: ls.pos.Name, Kind: kind, Amount: amount, Fee: fee, Saves: saves})
+	}
 	if s.cycle > 1 {
 		return
 	}
@@ -827,7 +898,7 @@ func (s *sim) action(ls *loanState, on date.Date, kind ActionKind, amount, fee, 
 }
 
 // conserve checks the cash identity over the whole run:
-// opening + income + lumps = required + extra + fees + closing.
+// opening + income + lumps = required + extra + fees + closing + household.
 func (s *sim) conserve() error {
 	in := s.in.Cash.OpeningCash
 	if in.Currency().Code == "" {
@@ -854,12 +925,18 @@ func (s *sim) conserve() error {
 	if err != nil {
 		return err
 	}
-	debits, err := s.res.TotalPaid.Add(s.cash)
+	if err := s.checkRestrictedCash(); err != nil {
+		return err
+	}
+	debits, err := s.res.TotalPaid.Add(s.add(s.cash, s.restrictedCash()))
 	if err != nil {
 		return err
 	}
+	if debits, err = debits.Add(s.res.HouseholdCash); err != nil {
+		return err
+	}
 	if credits.Cmp(debits) != 0 {
-		return fmt.Errorf("%w: opening %s + inflow %s != paid %s + closing %s", ErrInvariant, in, s.inflow, s.res.TotalPaid, s.cash)
+		return fmt.Errorf("%w: debt and household cash identity", ErrInvariant)
 	}
 	return nil
 }

@@ -390,3 +390,16 @@ footer { color: var(--muted); font-size: 12.5px; padding: 18px 26px; }
   .grid2 { grid-template-columns: 1fr 1fr; }
   .hero { background: none; color: #000; border-color: #999; }
 }
+
+/* Management records reuse the operational token sheet and form rhythm. */
+.management-facts { display:grid; grid-template-columns:minmax(100px,160px) minmax(0,1fr); gap:8px 18px; margin:0 0 20px; }
+.management-facts dt { color:var(--muted); }
+.management-facts dd { margin:0; min-width:0; }
+.management-links { display:flex; flex-wrap:wrap; gap:16px; }
+.management-links p { flex-basis:100%; }
+.break-word { overflow-wrap:anywhere; }
+.preserve-lines { white-space:pre-wrap; overflow-wrap:anywhere; }
+.history-record + .history-record { border-top:1px solid var(--line); margin-top:24px; padding-top:20px; }
+label.check { display:flex; align-items:baseline; gap:8px; }
+form.stack fieldset { border:1px solid var(--line); border-radius:9px; padding:12px; }
+@media(max-width:640px) { .management-facts { grid-template-columns:1fr; gap:4px; } .management-facts dd { margin-bottom:12px; } .grid2 { grid-template-columns:1fr; } }

@@ -135,12 +135,12 @@ func TestPlanSheetChartSeriesMatchEngine(t *testing.T) {
 	c := sh.Certificate
 	if c.Policies != rep.Certificate.Policies || c.FeasiblePolicies != rep.Certificate.FeasiblePolicies ||
 		c.Strength != rep.Certificate.Strength || c.Truncation != rep.Certificate.Truncation ||
-		c.LowerBoundMinor == nil || *c.LowerBoundMinor != rep.Certificate.LowerBound.Minor() ||
-		c.GapMinor == nil || *c.GapMinor != rep.Certificate.Gap.Minor() {
+		c.LowerBoundMinor != nil || rep.Certificate.LowerBound != nil ||
+		c.GapMinor != nil || rep.Certificate.Gap != nil {
 		t.Fatalf("incorrect typed certificate: %+v", c)
 	}
-	// Inspect the wire representation using raw JSON, so numbers cannot
-	// silently become the empty objects emitted by money.Amount.
+	// Fees have no solved admissible lower bound: preserve unknown as null,
+	// not zero or the winning plan's interest. Other certificate amounts remain numbers.
 	b, err := json.Marshal(sh)
 	if err != nil {
 		t.Fatal(err)
@@ -153,10 +153,15 @@ func TestPlanSheetChartSeriesMatchEngine(t *testing.T) {
 	if err := json.Unmarshal(b, &wire); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"policies", "feasible_policies", "best_cost_minor", "lower_bound_minor", "gap_minor"} {
+	for _, key := range []string{"policies", "feasible_policies", "best_cost_minor"} {
 		var n int64
 		if len(wire.Certificate[key]) == 0 || json.Unmarshal(wire.Certificate[key], &n) != nil {
 			t.Fatalf("certificate %s is not a number: %s", key, wire.Certificate[key])
+		}
+	}
+	for _, key := range []string{"lower_bound_minor", "gap_minor"} {
+		if string(wire.Certificate[key]) != "null" {
+			t.Fatalf("unknown certificate %s must be null, got %s", key, wire.Certificate[key])
 		}
 	}
 	if !reflect.DeepEqual(wire.Months, sh.Months) || !reflect.DeepEqual(wire.Minimum, sh.MinimumMonths) {

@@ -14,6 +14,7 @@ import (
 // ReconciliationCommand contains new source statements, never inferred allocation.
 // Cash and spending are whole-account figures AFTER all payments, not deltas.
 type ReconciliationCommand struct {
+	SpentPeriodStart string `json:"spent_period_start,omitempty"`
 	LoanID           string `json:"loan_id"`
 	Key              string `json:"idempotency_key"`
 	ExpectedVersion  int64  `json:"expected_version"`
@@ -28,6 +29,7 @@ type ReconciliationCommand struct {
 }
 
 type ReconciliationState struct {
+	PeriodStart      string
 	Posted, Contract bool
 	ReportedMinor    int64
 }
@@ -90,6 +92,12 @@ func (p PaymentService) Reconcile(ctx context.Context, userID string, c Reconcil
 	if !state.Posted || !state.Contract {
 		return empty, ErrPaymentReconciliation
 	}
+	if state.PeriodStart != "" {
+		calendar := date.OnDayOfMonth(today, 1).String()
+		if (c.SpentPeriodStart != "" && c.SpentPeriodStart != state.PeriodStart) || (c.SpentPeriodStart == "" && state.PeriodStart != calendar) {
+			return empty, ErrPaymentInvalid
+		}
+	}
 	if c.SpentMinor < state.ReportedMinor {
 		return empty, ErrPaymentInvalid
 	}
@@ -110,6 +118,12 @@ func (c ReconciliationCommand) validate(today date.Date) error {
 	asOf, err := date.Parse(c.AsOf)
 	if err != nil || asOf.After(today) {
 		return invalid()
+	}
+	if c.SpentPeriodStart != "" {
+		start, err := date.Parse(c.SpentPeriodStart)
+		if err != nil || start.After(asOf) {
+			return invalid()
+		}
 	}
 	for _, n := range []int64{c.PrincipalMinor, c.NextPaymentMinor, c.CashMinor, c.SpentMinor} {
 		if n < 0 || n > 9007199254740991 {

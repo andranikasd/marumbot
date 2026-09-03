@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
@@ -26,6 +25,8 @@ var ErrSnapshotContractDate = errors.New("balance date precedes the current cont
 // is deliberately absent: the ledger behind a loan is in one currency, and
 // "changing" it would re-denominate history. That loan is archive-and-refile.
 type LoanEdit struct {
+	Key              string
+	ExpectedVersion  int64
 	BalanceAsOf      date.Date
 	Icon             *string
 	OptionalExcluded *bool
@@ -65,14 +66,48 @@ type LoanRevision struct {
 // form does not carry -- day count, rounding, the fee side of the prepayment
 // policy -- ride over from the current version untouched.
 func (w *Worker) ReviseLoan(ctx context.Context, loanID, userID string, e LoanEdit) error {
-	if w.Editor == nil || w.Contracts == nil {
-		return fmt.Errorf("loan revision is not wired")
+	if len(e.Key) < 16 || e.ExpectedVersion < 1 {
+		return ErrPaymentInvalid
 	}
-	ln, err := w.Editor.LoanForUser(ctx, loanID, userID)
+	store, ok := w.Contracts.(LoanCommandStore)
+	if !ok {
+		return fmt.Errorf("loan commands are not wired")
+	}
+	// This read only decides whether to refresh reminders. All financial
+	// comparisons and writes run against the locked transaction's loan.
+	var termsChanged bool
+	if w.Editor != nil {
+		if before, err := w.Editor.LoanForUser(ctx, loanID, userID); err == nil {
+			c := before.Contract
+			termsChanged = c.NominalRate != e.NominalRate || c.Type != e.Type || c.StartDate != e.StartDate || c.MaturityDate != e.MaturityDate || c.PaymentDay != e.PaymentDay || c.Prepayment.Effect != e.PrepayEffect
+		}
+	}
+	_, err := (LoanCommands{Store: store, Clock: w.Clock, Users: w.Users}).Revise(ctx, userID, loanID, e.Key, e.ExpectedVersion, e)
 	if err != nil {
 		return err
 	}
+	if termsChanged {
+		return w.loanRevisionReminders(ctx, loanID, userID)
+	}
+	return nil
+}
 
+func (w *Worker) loanRevisionReminders(ctx context.Context, loanID, userID string) error {
+	if w.Reminders != nil {
+		if err := w.Reminders.CancelRemindersForLoan(ctx, loanID); err != nil {
+			w.Log.WarnContext(ctx, "cancelling stale reminders failed", "error", err)
+		}
+		if err := w.Reminders.EnsureDefaultReminders(ctx, loanID); err != nil {
+			w.Log.WarnContext(ctx, "restoring reminder rules failed", "error", err)
+		}
+		if err := w.ScheduleForUser(ctx, userID); err != nil {
+			w.Log.WarnContext(ctx, "rescheduling reminders failed", "error", err)
+		}
+	}
+	return nil
+}
+
+func prepareLoanRevision(ln UserLoan, e LoanEdit, today date.Date) (LoanRevision, error) {
 	next := ln.Contract
 	next.NominalRate = e.NominalRate
 	next.Type = e.Type
@@ -81,11 +116,10 @@ func (w *Worker) ReviseLoan(ctx context.Context, loanID, userID string, e LoanEd
 	next.PaymentDay = e.PaymentDay
 	next.Prepayment.Effect = e.PrepayEffect
 
-	today := date.From(w.Clock.Now(), time.UTC)
 	balanceAsOf := today
 	if !e.BalanceAsOf.IsZero() {
 		if e.BalanceAsOf.After(today) || e.BalanceAsOf.Before(ln.Contract.StartDate) {
-			return fmt.Errorf("invalid balance date")
+			return LoanRevision{}, fmt.Errorf("invalid balance date")
 		}
 		balanceAsOf = e.BalanceAsOf
 	}
@@ -96,12 +130,12 @@ func (w *Worker) ReviseLoan(ctx context.Context, loanID, userID string, e LoanEd
 		next.PaymentDay != ln.Contract.PaymentDay ||
 		next.Prepayment.Effect != ln.Contract.Prepayment.Effect
 	if e.BalanceMinor != nil && (balanceAsOf.Before(ln.Contract.EffectiveFrom) || (termsChanged && balanceAsOf.Before(today))) {
-		return ErrSnapshotContractDate
+		return LoanRevision{}, ErrSnapshotContractDate
 	}
 	if e.Icon != nil {
 		icon, err := LoanIcon(*e.Icon)
 		if err != nil {
-			return err
+			return LoanRevision{}, err
 		}
 		e.Icon = &icon
 	}
@@ -114,26 +148,5 @@ func (w *Worker) ReviseLoan(ctx context.Context, loanID, userID string, e LoanEd
 	if termsChanged {
 		revision.Contract = &next
 	}
-	if revision.Icon != nil || revision.OptionalExcluded != nil || revision.Rename || revision.Contract != nil || revision.BalanceMinor != nil {
-		if err := w.Contracts.ApplyLoanRevision(ctx, loanID, userID, revision); err != nil {
-			return fmt.Errorf("applying loan revision: %w", err)
-		}
-	}
-
-	// A changed payment day or maturity moves every occurrence, and a stale
-	// reminder about a date that no longer exists is worse than none. Cancel
-	// and regenerate from the revised schedule; failures are logged, because
-	// the edit itself has already happened.
-	if termsChanged && w.Reminders != nil {
-		if err := w.Reminders.CancelRemindersForLoan(ctx, loanID); err != nil {
-			w.Log.WarnContext(ctx, "cancelling stale reminders failed", "error", err)
-		}
-		if err := w.Reminders.EnsureDefaultReminders(ctx, loanID); err != nil {
-			w.Log.WarnContext(ctx, "restoring reminder rules failed", "error", err)
-		}
-		if err := w.ScheduleForUser(ctx, userID); err != nil {
-			w.Log.WarnContext(ctx, "rescheduling reminders failed", "error", err)
-		}
-	}
-	return nil
+	return revision, nil
 }

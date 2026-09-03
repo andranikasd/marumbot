@@ -66,9 +66,13 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 			i18n.T(l, "budget.too_low", bare(budget.Monthly), bare(required)), w.budgetMarkup(l))
 	}
 
+	asOf, err := (PaymentService{Clock: w.Clock, Users: w.Users}).BusinessDate(ctx, userID)
+	if err != nil {
+		return err
+	}
 	in := plan.Input{
-		ValuationDate: date.From(w.Clock.Now(), time.UTC),
-		Cash:          budget.CashPlan(date.From(w.Clock.Now(), time.UTC)),
+		ValuationDate: asOf,
+		Cash:          budget.CashPlan(asOf),
 		Loans:         positions,
 	}
 	u, err := plan.Explore(in)
@@ -113,7 +117,7 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 	b.WriteString(footer + "\n")
 
 	approvedNow := false
-	if w.Plans != nil {
+	if w.Plans != nil && w.History == nil {
 		if ap, err := w.Plans.ApprovedPlan(ctx, userID); err == nil && ap != nil &&
 			ap.Goal == goal.Kind.String() && ap.CapMinor == goal.Cap.Minor() {
 			approvedNow = true
@@ -140,9 +144,13 @@ func (w *Worker) explainPlan(ctx context.Context, userID string, chat int64, l i
 	if err != nil || !budget.Set || budget.Currency != cur.Code {
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "advice.set_budget"), w.budgetMarkup(l))
 	}
+	asOf, err := (PaymentService{Clock: w.Clock, Users: w.Users}).BusinessDate(ctx, userID)
+	if err != nil {
+		return err
+	}
 	in := plan.Input{
-		ValuationDate: date.From(w.Clock.Now(), time.UTC),
-		Cash:          budget.CashPlan(date.From(w.Clock.Now(), time.UTC)),
+		ValuationDate: asOf,
+		Cash:          budget.CashPlan(asOf),
 		Loans:         positions,
 	}
 	u, err := plan.Explore(in)
@@ -506,6 +514,15 @@ func (w *Worker) positions(ctx context.Context, loans []UserLoan) ([]plan.Positi
 		started  bool
 	)
 	for _, ln := range loans {
+		if w.ProfileFlags != nil && ln.Contract.AllocationPolicy.Key != "" {
+			flag, err := w.ProfileFlags.AdminProfileFlag(ctx, w.Environment, ln.Contract.AllocationPolicy.Key)
+			if err != nil && !errors.Is(err, ErrNotFound) {
+				return nil, owed, required, cur, err
+			}
+			if err == nil && !flag.PlanningEnabled {
+				return nil, owed, required, cur, &plan.UnsupportedError{Feature: "lender profile temporarily disabled"}
+			}
+		}
 		if ln.UnreconciledPayments {
 			return nil, owed, required, cur, ErrPaymentReconciliation
 		}

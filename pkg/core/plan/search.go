@@ -14,7 +14,7 @@ import (
 
 // EngineVersion is printed in every certificate so a stored report can be
 // traced to the arithmetic that produced it.
-const EngineVersion = "plan/3"
+const EngineVersion = "plan/5"
 
 // Strength is how much a result may claim.
 type Strength string
@@ -46,6 +46,10 @@ type Certificate struct {
 	// report's named baselines, minimum and budget ladder runs.
 	Policies         int
 	FeasiblePolicies int
+	// DynamicStates and DynamicExpansions are only populated by SearchDynamic;
+	// dynamic state/branch work is not reported as simulated static policies.
+	DynamicStates     int
+	DynamicExpansions int
 	// Axis sizes describe the candidate set after vector/order fallback;
 	// the attempt cap may stop before every axis entry is visited.
 	Orders          int
@@ -53,7 +57,7 @@ type Certificate struct {
 	TimingVectors   int
 	Truncation      string
 	BestCost        money.Amount
-	LowerBound      *money.Amount // interest with no fees, when fees exist
+	LowerBound      *money.Amount // nil unless an admissible bound was established
 	Gap             *money.Amount
 	Quantum         int64
 	CandidateDates  []date.Date // distinct dates on which optional payments were considered
@@ -81,15 +85,17 @@ type Rung struct {
 
 // Report is the answer to "how should I pay".
 type Report struct {
-	Goal        Goal
-	Best        Result
-	Ranked      []Result
-	Avalanche   Result // highest rate first, on due, budget kept
-	Snowball    Result // smallest balance first, on due, budget kept
-	Minimum     Result // only what the contracts require
-	Ladder      []Rung
-	Ties        []string
-	Certificate Certificate
+	Goal                 Goal
+	Best                 Result
+	Ranked               []Result
+	Avalanche            Result // verified fee-free marginal-rate baseline, on due
+	HighestRate          Result // nominal-rate baseline, including fee-bearing domains
+	AvalancheUnsupported string // nonempty when Avalanche is unavailable
+	Snowball             Result // smallest balance first, on due, budget kept
+	Minimum              Result // only what the contracts require
+	Ladder               []Rung
+	Ties                 []string
+	Certificate          Certificate
 	// TimingSaving is the cost of the best policy paid on due dates minus
 	// its cost as ranked; what the payday is worth.
 	TimingSaving money.Amount
@@ -122,6 +128,7 @@ type Universe struct {
 	cache     cache
 	feeBearer bool
 	attempted int
+	runs      map[string]cachedPolicyRun
 }
 
 func (u *Universe) truncate(reason string) {
@@ -160,7 +167,7 @@ func (u *Universe) explore(r Rollover) error {
 					attempted++
 					u.attempted++
 					pol := Policy{Name: o.name, Order: o.idx, Timing: t, Effect: e, Rollover: r, MinPrepay: b}
-					res, err := run(u.Input, pol, u.cache)
+					res, err := u.simulate(pol)
 					if err != nil {
 						if isInfeasible(err) {
 							continue // this policy cannot be followed; others may
@@ -182,7 +189,14 @@ func Explore(in Input) (*Universe, error) {
 	if err != nil {
 		return nil, err
 	}
+	return exploreNormalized(norm, assumed, false)
+}
+
+func exploreNormalized(norm Input, assumed map[string]int, memoize bool) (*Universe, error) {
 	u := &Universe{Input: norm, assumed: assumed, cache: cache{}}
+	if memoize {
+		u.runs = map[string]cachedPolicyRun{}
+	}
 	n := len(norm.Loans)
 	for _, l := range norm.Loans {
 		if len(l.Contract.Prepayment.Charges) > 0 || l.Contract.Prepayment.FeeBP > 0 {
@@ -294,16 +308,21 @@ func (u *Universe) Rank(goal Goal) (Report, error) {
 	}
 	sort.SliceStable(ranked, func(i, j int) bool { return better(goal, baseline, ranked[i], ranked[j]) })
 	rep := Report{Goal: goal, Best: ranked[0], Ranked: ranked, Ties: nil}
+	rep.AvalancheUnsupported = avalancheDomain(in)
 
 	base := rep.Best.Policy
 	for _, o := range u.orders {
 		for _, name := range o.also {
 			pol := Policy{Name: name, Order: o.idx, Timing: uniform(len(in.Loans), OnDue), Effect: base.Effect, Rollover: RollFreed}
 			switch name {
-			case nameAvalanche:
-				if rep.Avalanche, err = run(in, pol, u.cache); err != nil && !isInfeasible(err) {
+			case nameAvalanche, string(StrategyHighestRate):
+				if rep.HighestRate, err = run(in, pol, u.cache); err != nil && !isInfeasible(err) {
 					return Report{}, err
 				}
+				if name == nameAvalanche {
+					rep.Avalanche = rep.HighestRate
+				}
+
 			case nameSnowball:
 				if rep.Snowball, err = run(in, pol, u.cache); err != nil && !isInfeasible(err) {
 					return Report{}, err
@@ -383,69 +402,27 @@ func (u *Universe) certificate(goal Goal, rep Report) Certificate {
 	default:
 		c.Strength = ExhaustiveStaticOrder
 	}
-	if u.feeBearer {
-		lb := rep.Best.TotalInterest
-		c.LowerBound = &lb
-		if gap, err := rep.Best.Cost().Sub(lb); err == nil {
-			c.Gap = &gap
-		}
-	}
+	// Winner interest is not an admissible lower bound across other policies.
+	// Leave both bound and gap unknown until a relaxation has been solved.
 	if rule, ok := u.provable(goal, rep); ok {
 		c.Strength, c.Eligibility = ProvenOptimal, rule
 	}
 	return c
 }
 
-// provable checks the exchange-argument preconditions under which the
-// avalanche paid on receipt is optimal for least interest, and only claims
-// a proof when the ranked winner is that policy.
+// provable only claims a global least-cost proof when a feasible policy has
+// reached the nonnegative zero-cost floor. Continuous exchange arguments do
+// not establish optimality under per-event discrete rounding, even for one loan.
 func (u *Universe) provable(goal Goal, rep Report) (string, bool) {
-	in := u.Input
-	if goal.Kind != LeastInterest || u.feeBearer || u.trunc != "" || in.Cash.Spending != nil {
+	if goal.Kind != LeastInterest || u.feeBearer || u.trunc != "" || u.Input.Cash.Spending != nil || rep.Best.Cost().Sign() != 0 {
 		return "", false
 	}
-	// Every precondition the proof's own sentence states is checked here;
-	// claiming "one day-count basis" while never verifying it would be the
-	// certificate lying about itself. Mixed rounding policies are excluded
-	// too: the exchange argument compares daily accruals, and two loans
-	// quantising to different units can disagree by up to a unit per row.
-	live := 0
-	var dc *money.DayCount
-	var rp *money.Policy
-	for _, l := range in.Loans {
-		// The exchange argument does not yet cover spending permissions
-		// or loans that are excluded from optional allocation.
-		if l.OptionalExcluded {
-			return "", false
-		}
-		if l.Balance.Sign() > 0 {
-			live++
-			if dc == nil {
-				d, p := l.Contract.DayCount, l.Contract.Rounding
-				dc, rp = &d, &p
-			} else if l.Contract.DayCount != *dc || l.Contract.Rounding != *rp {
-				return "", false
-			}
-		}
-		if l.Contract.Prepayment.MinAmount.Sign() > 0 || l.Contract.NominalRate < 0 {
+	for _, l := range u.Input.Loans {
+		if l.Contract.NominalRate < 0 || l.OptionalExcluded {
 			return "", false
 		}
 	}
-	if live == 1 {
-		return "one loan: every order is the same order; earliest payment dominates under daily accrual on a declining balance", true
-	}
-	best := rep.Best.Policy
-	if best.Name != nameAvalanche {
-		return "", false
-	}
-	for i, l := range in.Loans {
-		if l.Excess == allocation.ExcessReducePrincipal && best.Timing[i] != OnReceipt && in.Cash.PayDay > 0 {
-			return "", false
-		}
-	}
-	return "fixed non-negative rates, one day-count basis, no fees or thresholds, required instalments always met, " +
-		"surplus credited to principal on payment: by exchange, money moved from a lower to a higher daily rate " +
-		"cannot increase interest, and paying earlier cannot increase it", true
+	return "feasible zero interest and fees reaches the nonnegative cost floor; payoff/tie-break optimality is not claimed", true
 }
 
 // better is the written comparator for each goal.
@@ -777,7 +754,7 @@ func ties(in Input, rep Report) []string {
 	if live > 1 {
 		os := namedOrders(in.Loans)
 		if fmt.Sprint(os[0].idx) == fmt.Sprint(os[1].idx) {
-			out = append(out, "the highest rate is also the smallest balance: avalanche and snowball are the same order")
+			out = append(out, "the highest rate is also the smallest balance: highest rate and snowball are the same order")
 		}
 	}
 	switch {
@@ -930,7 +907,10 @@ func namedOrders(loans []Position) []order {
 		if ra != rb {
 			return ra > rb
 		}
-		return loans[av[a]].Balance.Cmp(loans[av[b]].Balance) < 0
+		if c := loans[av[a]].Balance.Cmp(loans[av[b]].Balance); c != 0 {
+			return c < 0
+		}
+		return loans[av[a]].ID < loans[av[b]].ID
 	})
 	sn := identity(len(loans))
 	sort.SliceStable(sn, func(a, b int) bool {
@@ -938,9 +918,16 @@ func namedOrders(loans []Position) []order {
 		if c != 0 {
 			return c < 0
 		}
-		return loans[sn[a]].Contract.NominalRate > loans[sn[b]].Contract.NominalRate
+		if r1, r2 := loans[sn[a]].Contract.NominalRate, loans[sn[b]].Contract.NominalRate; r1 != r2 {
+			return r1 > r2
+		}
+		return loans[sn[a]].ID < loans[sn[b]].ID
 	})
-	return []order{{name: nameAvalanche, idx: av}, {name: nameSnowball, idx: sn}}
+	name := nameAvalanche
+	if avalancheDomain(Input{Loans: loans}) != "" {
+		name = string(StrategyHighestRate)
+	}
+	return []order{{name: name, idx: av}, {name: nameSnowball, idx: sn}}
 }
 
 func permutations(n int) []order {

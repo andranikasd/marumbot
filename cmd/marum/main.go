@@ -6,7 +6,10 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -112,7 +115,8 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	}
 	defer store.Close()
 
-	adminSvc := app.NewAdmin(store).WithModeration(store).WithEngine(store)
+	clock := sysclock.New()
+	adminSvc := app.NewAdmin(store).WithModeration(store).WithEngine(store).WithSecurity(store, clock.Now).WithHistory(store)
 
 	// Identifiers are sealed before they reach the database, so the key is built
 	// here and the store never sees it. A bad key is fatal: running without one
@@ -123,8 +127,8 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	}
 
 	bot := telegramclient.New(cfg.BotToken)
-	clock := sysclock.New()
 	worker := &app.Worker{
+		ProfileFlags: store, Environment: cfg.Env,
 		Inbox: store, Users: store, Loans: store, Editor: store, Budgets: store, Convos: store,
 		Chats:           postgres.ChatLookup{Store: store, Cipher: cipher},
 		Send:            bot,
@@ -137,6 +141,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		DefaultCurrency: money.MustLookup(cfg.DefaultCurrency),
 		Reminders:       store,
 		Plans:           store,
+		History:         store,
 		Shadow:          store,
 		Balances:        store,
 		Contracts:       store,
@@ -146,7 +151,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	mini := &miniapp.Server{
 		BotToken: cfg.BotToken, Loans: store, Users: store, Budgets: store,
 		Editor: store, Reader: store, Required: worker, Filed: worker, Planner: worker,
-		Reviser: worker, BudgetConfig: store,
+		Reviser: worker, BudgetConfig: app.BudgetCommands{Store: store, Clock: clock, Users: store},
 		Payments: &app.PaymentService{Store: store, Clock: clock, Users: store}, PaymentReader: store,
 		Version: cfg.Version,
 		Cipher:  cipher, Clock: clock, Log: log,
@@ -161,7 +166,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	public := &http.Server{
 		Addr: cfg.Addr,
 		Handler: otelhttp.NewHandler(
-			publicRoutes(adminSvc, hook, worker, mini, store, cfg.ServiceToken, cfg.Version, log),
+			publicRoutes(&app.Operations{Store: store}, hook, worker, mini, store, cfg.ServiceToken, cfg.Version, log),
 			"marum", otelhttp.WithFilter(notHealthCheck)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -170,8 +175,14 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	// The admin interface stays down unless a password hash is configured. A
 	// misconfigured deployment gets no admin interface rather than an open one.
 	if cfg.AdminEnabled() {
+		identityKey, err := base64.StdEncoding.DecodeString(cfg.IdentityKey)
+		if err != nil {
+			return fmt.Errorf("decoding policy signing root: %w", err)
+		}
+		signerKey := hmac.New(sha256.New, identityKey)
+		_, _ = signerKey.Write([]byte("marum/admin-policy-signing/v1"))
 		srv, err := admin.New(adminSvc, admin.Config{
-			User: cfg.AdminUser, PasswordHash: cfg.AdminPassHash,
+			User: cfg.AdminUser, PasswordHash: cfg.AdminPassHash, PolicySigningKey: signerKey.Sum(nil),
 			Version: cfg.Version, Env: cfg.Env, Now: clock.Now,
 		}, log)
 		if err != nil {
@@ -248,7 +259,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 	return nil
 }
 
-func publicRoutes(a *app.Admin, hook *telegram.Webhook, w *app.Worker,
+func publicRoutes(a *app.Operations, hook *telegram.Webhook, w *app.Worker,
 	mini *miniapp.Server, users app.UserLister, serviceToken, version string, log *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -295,7 +306,7 @@ func publicRoutes(a *app.Admin, hook *telegram.Webhook, w *app.Worker,
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
 		h := a.Health(r.Context())
 		body := map[string]any{"database": h.DatabaseOK, "migration_version": h.MigrationVersion, "version": version}
-		if o, err := a.Overview(r.Context()); err == nil {
+		if o, err := a.Status(r.Context()); err == nil {
 			body["oldest_pending_command_s"] = o.OldestCommandAgeS
 			body["oldest_pending_delivery_s"] = o.OldestDeliveryAgeS
 			body["commands_pending"] = o.CommandsPending

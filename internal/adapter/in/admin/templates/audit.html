@@ -1,0 +1,4 @@
+{{define "content"}}
+<p class="lead">The latest 200 immutable audit events. An authorized attempt records permission to proceed; it does not by itself confirm completion.</p>
+<div class="panel"><h2 class="hd">Access and security events</h2><div class="scroll"><table><thead><tr><th>Time</th><th>Operator</th><th>Action</th><th>Target</th><th>Purpose</th><th>Outcome</th></tr></thead><tbody>{{range .Audit}}<tr><td class="nowrap">{{stamp .At}}</td><td>{{if .ActorID}}{{.ActorID}}{{else}}Unauthenticated{{end}}</td><td>{{.Action}}</td><td class="break-word">{{.Target}}</td><td>{{.Purpose}}</td><td>{{.Outcome}}</td></tr>{{else}}<tr><td colspan="6">No audit events returned.</td></tr>{{end}}</tbody></table></div></div>
+{{end}}{{template "layout" .}}
