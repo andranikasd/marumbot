@@ -213,3 +213,34 @@ verified chart labels, unbroken amounts, cleaner loan cards and Armenian/English
 switching with persistence on reopening. A physical Telegram/iOS check remains.
 Live readiness still reports `2.0.0`, schema 11. These corrections do not close
 the payment reconciliation or broader full-v3 release gates above.
+
+## Reconciliation implementation — 3 September
+
+User authorized completion of the software gates and development deployment;
+the final Telegram/iPhone check will be performed by the user afterwards.
+
+The reconciliation command now records a user-reported current balance, next
+unpaid contractual due date/amount, and explicit after-payment cash and total
+period spending. It atomically appends a snapshot and event coverage with a
+budget revision. It requires known posting, checks both aggregate versions,
+rejects understated reported spending, and preserves retries across day changes.
+Correcting a covered payment requires a new statement. No reported amount is
+silently subtracted from principal or cash, and trust remains user-entered.
+
+The planner respects the bank-reported first unpaid date and supplied annuity
+instalment, and does not credit receipts already included in stated cash.
+A declining schedule that contradicts the supplied instalment refuses rather
+than dropping the debt from a portfolio. Contractual day changes require a
+contract revision; this command does not invent a replacement schedule.
+
+Evidence: PostgreSQL lifecycle and race tests; independent zero-interest
+already-paid-instalment and payday double-counting regressions; authenticated
+handler/application tests; lost-response/two-loan form retry test; synthetic
+browser traversal of both reconciliation steps and save. Migration 13 preserves
+source statements on rollback. Smoke now checks schema 13 and the new module.
+
+Still open: actual allocation/variance reporting, broader budget/scenario/
+planning requirements and admin integration. Admin capability rules and budget
+growth normalization are being implemented separately and are not connected
+product features merely because their isolated tests pass. No new dev deployment
+has been performed at this checkpoint.

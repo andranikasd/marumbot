@@ -8,6 +8,9 @@ import (
 )
 
 func (c CashPlan) validateFunding(valuation date.Date) error {
+	if c.CashThrough.After(valuation) {
+		return fmt.Errorf("plan: cash statement is in the future")
+	}
 	cur := c.Monthly.Currency()
 	check := func(a money.Amount) error {
 		if a.Currency().Code == "" && a.Sign() == 0 {

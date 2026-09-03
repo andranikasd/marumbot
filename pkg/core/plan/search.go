@@ -711,7 +711,7 @@ func BudgetFor(in Input, pol Policy, by date.Date) (money.Amount, error) {
 func inverseDomain(in Input, pol Policy) error {
 	refuse := func(reason string) error { return &NonMonotoneError{Reason: reason} }
 	cash := in.Cash
-	if cash.Spending != nil || len(cash.MonthlyOverrides) != 0 || len(cash.Lumps) != 0 ||
+	if !cash.CashThrough.IsZero() || cash.Spending != nil || len(cash.MonthlyOverrides) != 0 || len(cash.Lumps) != 0 ||
 		cash.OpeningCash.Sign() != 0 || cash.ReserveFloor.Sign() != 0 {
 		return refuse("funding or spending varies independently of the budget")
 	}

@@ -69,6 +69,9 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
  AND e.kind IN ('payment_reported','prepayment_reported')
  AND NOT EXISTS (SELECT 1 FROM loan_events v WHERE v.voids_event_id = e.id)
  AND NOT EXISTS (SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id = e.id))
+ OR EXISTS (SELECT 1 FROM loan_events v WHERE v.loan_id=l.id AND v.kind='entry_voided'
+ AND EXISTS(SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id=v.voids_event_id)
+ AND v.recorded_seq>coalesce(s.observed_event_seq,0)), CASE WHEN s.contract_version_id=c.id THEN s.next_due_date::text END, CASE WHEN s.contract_version_id=c.id THEN s.next_installment_minor END
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
@@ -188,6 +191,9 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
  AND e.kind IN ('payment_reported','prepayment_reported')
  AND NOT EXISTS (SELECT 1 FROM loan_events v WHERE v.voids_event_id = e.id)
  AND NOT EXISTS (SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id = e.id))
+ OR EXISTS (SELECT 1 FROM loan_events v WHERE v.loan_id=l.id AND v.kind='entry_voided'
+ AND EXISTS(SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id=v.voids_event_id)
+ AND v.recorded_seq>coalesce(s.observed_event_seq,0)), CASE WHEN s.contract_version_id=c.id THEN s.next_due_date::text END, CASE WHEN s.contract_version_id=c.id THEN s.next_installment_minor END
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
@@ -414,7 +420,7 @@ WITH facts AS (
  COALESCE(e.fact_payload->>'transaction_date', e.value_date::text, ''),
  0, COALESCE(e.fact_payload->>'trust', 'user_entered'), e.kind, COALESCE(e.amount_minor, 0),
  COALESCE(e.fact_payload->>'transaction_date', e.value_date::text, ''), COALESCE(e.value_date::text, ''),
- CASE WHEN e.kind = 'entry_voided' THEN 'voided' WHEN e.value_date IS NULL THEN 'pending_bank_posting' ELSE 'needs_reconciliation' END,
+ CASE WHEN e.kind = 'entry_voided' THEN 'voided' WHEN e.value_date IS NULL THEN 'pending_bank_posting' WHEN EXISTS(SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id=e.id) THEN 'reconciled' ELSE 'needs_reconciliation' END,
  COALESCE(e.voids_event_id::text, ''), EXISTS (SELECT 1 FROM loan_events v WHERE v.voids_event_id = e.id),
  l.next_event_seq - 1, e.recorded_at
  FROM loan_events e JOIN loans l ON l.id = e.loan_id WHERE l.user_id = $1

@@ -35,7 +35,7 @@ else:
     elif url.endswith("/healthz"):
         print('{"status":"ok","version":"2.0.0"}')
     elif url.endswith("/readyz"):
-        print('{"database":true,"migration_version":12}')
+        print('{"database":true,"migration_version":13}')
     elif url.endswith("/status"):
         print('{"oldest_pending_command_s":0}')
     elif url.endswith("/app/version"):

@@ -339,6 +339,12 @@ func (r BudgetRequest) ValidateFunding(today date.Date) error {
 		return nil
 	}
 	f := r.Funding
+	if f.CashThrough != "" {
+		d, err := date.Parse(f.CashThrough)
+		if err != nil || d.After(today) {
+			return fmt.Errorf("%w: cash statement date", ErrInvalid)
+		}
+	}
 	if r.PayDay < 1 || r.PayDay > 31 || f.MonthlyMinor < 0 || f.SpentMinor < 0 || f.MonthlyMinor > math.MaxInt64/1000 || f.SpentMinor > math.MaxInt64/1000 || len(f.Events) > maxOverrideMonths {
 		return fmt.Errorf("%w: funding", ErrInvalid)
 	}

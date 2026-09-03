@@ -42,3 +42,53 @@ RETURNING id::text, recorded_seq;
 -- name: PaymentContext
 SELECT id::text, name, currency, next_event_seq - 1 FROM loans
 WHERE id = $1 AND user_id = $2 AND archived_at IS NULL;
+
+-- name: ReconciliationReceipt
+SELECT id::text, observed_event_seq, reconciliation_hash FROM loan_snapshots
+WHERE loan_id=$1 AND idempotency_key=$2;
+
+-- name: ReconciliationEligibility
+SELECT NOT EXISTS(SELECT 1 FROM loan_events e WHERE e.loan_id=$1
+ AND e.kind IN ('payment_reported','prepayment_reported')
+ AND NOT EXISTS(SELECT 1 FROM loan_events v WHERE v.voids_event_id=e.id)
+ AND (e.value_date IS NULL OR e.value_date>$2::date)),
+ EXISTS(SELECT 1 FROM loan_contract_versions c WHERE c.loan_id=$1
+ AND c.id=(SELECT id FROM loan_contract_versions WHERE loan_id=$1 AND effective_from<=$2::date ORDER BY effective_from DESC,version DESC LIMIT 1)
+ AND c.effective_from<=$2::date AND ($3::date IS NULL OR (c.maturity_date>=$3::date
+ AND extract(day from $3::date)=least(c.payment_day,extract(day from date_trunc('month',$3::date)+interval '1 month - 1 day')))));
+
+-- name: ReconciliationBudget
+-- The borrower states actual remaining cash and total period spending.
+-- No payment amount is subtracted again. Explicit funding must already exist.
+UPDATE budgets SET opening_cash_minor=$4, opening_as_of=$3::date,
+ funding=jsonb_set(jsonb_set(funding,'{spent_minor}',to_jsonb($5::bigint)),'{cash_through}',to_jsonb($3::text)),updated_at=now()
+WHERE user_id=$1 AND currency=$2 AND version=$6 AND funding IS NOT NULL
+RETURNING version;
+
+-- name: ReconcilePaymentSnapshot
+WITH sequence AS (
+ UPDATE loans SET next_event_seq=next_event_seq+1 WHERE id=$1 RETURNING next_event_seq-1 AS seq
+), contract AS (
+ SELECT id FROM loan_contract_versions WHERE loan_id=$1 AND effective_from<=$3::date
+ ORDER BY effective_from DESC,version DESC LIMIT 1
+), snapshot AS (
+ INSERT INTO loan_snapshots(id,loan_id,contract_version_id,as_of,trust,principal_minor,
+ next_due_date,next_installment_minor,source_note,idempotency_key,observed_event_seq,reconciliation_hash)
+ SELECT $2::uuid,$1::uuid,contract.id,$3::date,'user_entered',$4,$5::date,$6,
+ 'Borrower confirms posted payments are included; cash and spending restated',$7,sequence.seq,$8
+ FROM sequence,contract RETURNING id,observed_event_seq
+), coverage AS (
+ INSERT INTO snapshot_event_coverage(snapshot_id,event_id)
+ SELECT snapshot.id,e.id FROM snapshot,loan_events e WHERE e.loan_id=$1
+ AND e.kind IN ('payment_reported','prepayment_reported') AND e.value_date<=$3::date
+ AND NOT EXISTS(SELECT 1 FROM loan_events v WHERE v.voids_event_id=e.id)
+ ON CONFLICT(event_id) DO NOTHING
+)
+SELECT id::text,observed_event_seq FROM snapshot;
+
+-- name: PeriodReportedSpending
+SELECT coalesce(sum(e.amount_minor),0)::bigint FROM loan_events e JOIN loans l ON l.id=e.loan_id
+WHERE l.user_id=$1 AND l.currency=$2 AND e.kind IN ('payment_reported','prepayment_reported')
+AND coalesce(e.fact_payload->>'transaction_date',e.value_date::text)>=to_char($3::date,'YYYY-MM-01')
+AND coalesce(e.fact_payload->>'transaction_date',e.value_date::text)<=$3::text
+AND NOT EXISTS(SELECT 1 FROM loan_events v WHERE v.voids_event_id=e.id);

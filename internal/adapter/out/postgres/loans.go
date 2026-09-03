@@ -119,10 +119,12 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 			first           *int64
 			contractVersion int
 			effectiveFrom   string
+			nextDue         *string
+			nextPayment     *int64
 		)
 		if err := rows.Scan(&l.ID, &l.Name, &l.Description, &code,
 			&rate, &repayment, &dayCount, &start, &maturity, &day,
-			&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom, &l.UnreconciledPayments); err != nil {
+			&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom, &l.UnreconciledPayments, &nextDue, &nextPayment); err != nil {
 			return nil, err
 		}
 		if l.Excess, err = allocation.ParseExcessRule(excess); err != nil {
@@ -183,6 +185,17 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 			l.OriginalPrincipal = money.FromMinor(*first, cur)
 		} else {
 			l.OriginalPrincipal = money.Zero(cur)
+		}
+		if nextDue != nil {
+			d, err := date.Parse(*nextDue)
+			if err != nil {
+				return nil, err
+			}
+			l.Contract.NotBeforeDue = d
+		}
+		if nextPayment != nil && *nextPayment > 0 {
+			l.Contract.HasScheduled = true
+			l.Contract.ScheduledPayment = money.FromMinor(*nextPayment, cur)
 		}
 		if principal != nil {
 			l.Balance = money.FromMinor(*principal, cur)
@@ -426,11 +439,13 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 		first           *int64
 		contractVersion int
 		effectiveFrom   string
+		nextDue         *string
+		nextPayment     *int64
 	)
 	err := s.pool.QueryRow(ctx, q("GetLoanForUser"), loanID, userID).Scan(
 		&l.ID, &l.Name, &l.Description, &code,
 		&rate, &repayment, &dayCount, &start, &maturity, &day,
-		&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom, &l.UnreconciledPayments)
+		&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom, &l.UnreconciledPayments, &nextDue, &nextPayment)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return app.UserLoan{}, app.ErrNotFound
 	}
@@ -483,6 +498,17 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 		MaturityDate: maturityDate, PaymentDay: int(day),
 		Rounding:   money.Policy{Mode: parsedMode, Unit: int64(unit)},
 		Prepayment: prepayment,
+	}
+	if nextDue != nil {
+		d, err := date.Parse(*nextDue)
+		if err != nil {
+			return app.UserLoan{}, err
+		}
+		l.Contract.NotBeforeDue = d
+	}
+	if nextPayment != nil && *nextPayment > 0 {
+		l.Contract.HasScheduled = true
+		l.Contract.ScheduledPayment = money.FromMinor(*nextPayment, cur)
 	}
 	if principal != nil {
 		l.Balance = money.FromMinor(*principal, cur)

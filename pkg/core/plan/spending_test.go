@@ -131,3 +131,14 @@ func TestOptionalQuantumNeverRoundsPermissionUp(t *testing.T) {
 		}
 	}
 }
+
+func TestReconciledCashDoesNotReceivePaydayTwice(t *testing.T) {
+	in, p := fundedFixture(500, 500)
+	in.Cash.OpeningCash = amt(50)
+	in.Cash.CashThrough = in.ValuationDate
+	_, err := plan.Run(in, p)
+	var short *plan.InfeasibleError
+	if !errors.As(err, &short) || short.Shortfall.Minor() != amt(50).Minor() {
+		t.Fatalf("already included payday was credited again: %v", err)
+	}
+}

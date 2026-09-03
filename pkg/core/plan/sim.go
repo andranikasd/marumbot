@@ -291,6 +291,9 @@ func run(in Input, pol Policy, c cache) (Result, error) {
 		s.nextPeriod = in.ValuationDate
 	}
 	s.nextIncome = s.firstIncome()
+	if in.Cash.PayDay == 0 && !in.Cash.CashThrough.IsZero() {
+		s.incomeYM = ym(in.Cash.CashThrough)
+	}
 
 	horizon := date.AddMonths(in.ValuationDate, in.horizon())
 	for !s.allClosed() {
@@ -354,7 +357,7 @@ func (s *sim) firstIncome() date.Date {
 		return date.Date{}
 	}
 	d := date.OnDayOfMonth(s.in.ValuationDate, s.in.Cash.PayDay)
-	if d.Before(s.in.ValuationDate) {
+	if d.Before(s.in.ValuationDate) || (!s.in.Cash.CashThrough.IsZero() && !d.After(s.in.Cash.CashThrough)) {
 		d = date.OnDayOfMonth(date.AddMonths(s.in.ValuationDate, 1), s.in.Cash.PayDay)
 	}
 	return d

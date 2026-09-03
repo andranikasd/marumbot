@@ -59,6 +59,8 @@ type SpendingPlan struct {
 
 // CashPlan is what the borrower has to spend and when.
 type CashPlan struct {
+	// CashThrough is the last date whose receipts are already included in OpeningCash.
+	CashThrough date.Date
 	// Spending opts into independently declared funding and spending. Monthly
 	// then means confirmed recurring funding, not permission to spend it.
 	Spending *SpendingPlan

@@ -522,9 +522,11 @@ func (w *Worker) positions(ctx context.Context, loans []UserLoan) ([]plan.Positi
 			continue
 		}
 		s, err := ln.Schedule()
-		if err != nil || len(s.Rows) == 0 {
-			w.Log.WarnContext(ctx, "cannot project a loan", "error", err)
-			continue
+		if err != nil {
+			return nil, owed, required, cur, err
+		}
+		if len(s.Rows) == 0 {
+			return nil, owed, required, cur, ErrPaymentReconciliation
 		}
 		if owed, err = owed.Add(ln.Balance); err != nil {
 			return nil, owed, required, cur, err

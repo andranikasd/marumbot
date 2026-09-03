@@ -81,6 +81,8 @@ jobs:
         with: { node-version: "22" }
       - name: Mini App transport regressions
         run: node internal/adapter/in/miniapp/transport_ui_test.mjs
+      - name: Reconciliation retry lifecycle
+        run: node internal/adapter/in/miniapp/reconciliation_ui_test.mjs
       - name: Payment retry lifecycle
         run: node internal/adapter/in/miniapp/payment_ui_test.mjs
       - name: Smoke rollout regressions

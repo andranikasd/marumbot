@@ -88,6 +88,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/settings", s.settings())
 	mux.Handle("GET /api/loans/{id}/payments", s.paymentContext())
 	mux.Handle("POST /api/loans/{id}/payments", s.recordPayment())
+	mux.Handle("POST /api/loans/{id}/reconcile", s.reconcilePayment())
 	mux.Handle("GET /api/loans", s.listLoans())
 	mux.Handle("PATCH /api/loans/{id}", s.updateLoan())
 	mux.Handle("DELETE /api/loans/{id}", s.deleteLoan())
@@ -209,7 +210,11 @@ func (s *Server) getBudget() http.Handler {
 			out["pay_day"] = b.PayDay
 			out["version"] = b.Version
 			if b.Funding != nil {
-				today := date.From(s.Clock.Now(), time.UTC)
+				today, err := (app.PaymentService{Clock: s.Clock, Users: s.Users}).BusinessDate(ctx, userID)
+				if err != nil {
+					http.Error(w, "unavailable", http.StatusServiceUnavailable)
+					return
+				}
 				funding := *b.Funding
 				if plan.MonthKey(b.OpeningAsOf) != plan.MonthKey(today) || b.OpeningAsOf.After(today) {
 					funding.SpentMinor = 0
@@ -355,14 +360,19 @@ func (s *Server) setBudget() http.Handler {
 			http.Error(w, `{"error":"unavailable"}`, http.StatusServiceUnavailable)
 			return
 		}
-		if err := in.ValidateFunding(date.From(s.Clock.Now(), time.UTC)); err != nil {
+		today, err := (app.PaymentService{Clock: s.Clock, Users: s.Users}).BusinessDate(ctx, userID)
+		if err != nil {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		if err := in.ValidateFunding(today); err != nil {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
 			return
 		}
 		configuration := app.BudgetConfiguration{
 			Funding: in.Funding, ExpectedVersion: in.ExpectedVersion,
 			UserID: userID, Currency: cur, MonthlyMinor: minor, PayDay: payDay,
-			OpeningAsOf: date.From(s.Clock.Now(), time.UTC), Overrides: overrides,
+			OpeningAsOf: today, Overrides: overrides,
 			ReserveMinor: reserve,
 		}
 		if opening != nil {

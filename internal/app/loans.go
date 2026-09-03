@@ -89,6 +89,7 @@ type LoanReader interface {
 // BudgetFunding is an explicitly declared source of funds. Amounts are minor
 // units; omission preserves the pre-v2 funded-budget interpretation.
 type BudgetFunding struct {
+	CashThrough  string            `json:"cash_through,omitempty"`
 	MonthlyMinor int64             `json:"monthly_minor"`
 	SpentMinor   int64             `json:"spent_minor"`
 	Events       []BudgetCashEvent `json:"events"`
@@ -155,11 +156,14 @@ func (b Budget) CashPlan(valuation date.Date) plan.CashPlan {
 		cp.OpeningCash = money.Zero(b.Monthly.Currency())
 		if !b.OpeningAsOf.IsZero() && plan.MonthKey(b.OpeningAsOf) == plan.MonthKey(valuation) && !b.OpeningAsOf.After(valuation) {
 			cp.OpeningCash = b.Opening
+			if through, err := date.Parse(b.Funding.CashThrough); err == nil {
+				cp.CashThrough = through
+			}
 			cp.Spending.Spent = money.FromMinor(b.Funding.SpentMinor, b.Monthly.Currency())
 		}
 		for _, e := range b.Funding.Events {
 			on, err := date.Parse(e.On)
-			if err == nil && !on.Before(valuation) {
+			if err == nil && !on.Before(valuation) && (cp.CashThrough.IsZero() || on.After(cp.CashThrough)) {
 				cp.Lumps = append(cp.Lumps, plan.CashEvent{On: on, Amount: money.FromMinor(e.Minor, b.Monthly.Currency()), Expected: e.Expected})
 			}
 		}

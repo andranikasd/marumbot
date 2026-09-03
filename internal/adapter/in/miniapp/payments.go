@@ -20,6 +20,8 @@ func paymentHTTPError(w http.ResponseWriter, err error) {
 		code, message = http.StatusNotFound, "not_found"
 	case errors.Is(err, app.ErrConflict):
 		code, message = http.StatusConflict, "version_conflict"
+	case errors.Is(err, app.ErrPaymentReconciliation):
+		code, message = http.StatusUnprocessableEntity, "payment_reconciliation_required"
 	case errors.Is(err, app.ErrPaymentDuplicate):
 		code, message = http.StatusConflict, "possible_duplicate_payment"
 	}
@@ -89,6 +91,41 @@ func (s *Server) recordPayment() http.Handler {
 			}
 		}
 		receipt, err := s.Payments.Record(ctx, userID, c)
+		if err != nil {
+			paymentHTTPError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, receipt)
+	})
+}
+
+func (s *Server) reconcilePayment() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, userID, ok := s.authed(w, r)
+		if !ok {
+			return
+		}
+		if s.Payments == nil {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		var c app.ReconciliationCommand
+		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequest))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&c); err != nil {
+			paymentHTTPError(w, app.ErrPaymentInvalid)
+			return
+		}
+		if err := dec.Decode(new(any)); err != io.EOF {
+			paymentHTTPError(w, app.ErrPaymentInvalid)
+			return
+		}
+		c.LoanID = r.PathValue("id")
+		if _, err := uuid.Parse(c.LoanID); err != nil {
+			paymentHTTPError(w, app.ErrNotFound)
+			return
+		}
+		receipt, err := s.Payments.Reconcile(ctx, userID, c)
 		if err != nil {
 			paymentHTTPError(w, err)
 			return

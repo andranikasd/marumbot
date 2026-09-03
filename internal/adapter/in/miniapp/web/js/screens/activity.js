@@ -5,6 +5,7 @@ import {addStrings,T} from '../i18n.js';
 import {fmtMoney,fmtFull,esc,confirmDialog} from '../core.js';
 import {icon} from '../icons.js';
 addStrings({'tab.activity':'Պատմություն','activity.balance':'Մնացորդի գրառում','activity.empty':'Գրառումներ դեռ չկան','activity.latest':'Գրառումներ','activity.more':'Ավելի հին գրառումներ','activity.all':'Բոլորը','activity.payments':'Վճարումներ'},{'tab.activity':'Activity','activity.balance':'Balance statement','activity.empty':'No records yet','activity.latest':'Records','activity.more':'Older records','activity.all':'All','activity.payments':'Payments'});
+addStrings({'payment.status.reconciled':'Համադրված','activity.reconcile':'Համադրել'},{'payment.status.reconciled':'Reconciled','activity.reconcile':'Reconcile'});
 let facts=[],busy=false,nextCursor="";
 function render(){
  const filter=document.getElementById('activity-filter').value;
@@ -12,7 +13,7 @@ function render(){
  const payment=f.kind==='payment_reported'||f.kind==='prepayment_reported';
  const label=f.kind==='balance_snapshot'?T('activity.balance'):T('payment.kind.'+f.kind);
  const amount=f.kind==='balance_snapshot'?f.principal_minor:f.amount_minor;
- return `<article class="card stack"><button class="alink" data-go="loan" data-arg="${esc(f.loan_id)}">${esc(f.loan)}</button><span>${esc(label)} · ${esc(fmtFull(f.as_of))}</span>${f.kind==='entry_voided'?'':`<strong>${esc(fmtMoney(amount/10**f.currency_exponent,f.currency))}</strong>`}${payment?`<span class="pill">${esc(T('payment.status.'+(f.voided?'voided':f.status)))}</span><span class="hint">${esc(T('payment.reported'))}</span>`:''}${payment&&!f.voided?`<div class="pair"><button class="alink" data-correct="${esc(f.id)}">${esc(T('payment.correct'))}</button><button class="alink red" data-void="${esc(f.id)}">${esc(T('payment.void'))}</button></div>`:''}</article>`;
+ return `<article class="card stack"><button class="alink" data-go="loan" data-arg="${esc(f.loan_id)}">${esc(f.loan)}</button><span>${esc(label)} · ${esc(fmtFull(f.as_of))}</span>${f.kind==='entry_voided'?'':`<strong>${esc(fmtMoney(amount/10**f.currency_exponent,f.currency))}</strong>`}${payment?`<span class="pill">${esc(T('payment.status.'+(f.voided?'voided':f.status)))}</span><span class="hint">${esc(T('payment.reported'))}</span>`:''}${payment&&!f.voided?`<div class="pair"><button class="alink" data-correct="${esc(f.id)}">${esc(T('payment.correct'))}</button><button class="alink red" data-void="${esc(f.id)}">${esc(T('payment.void'))}</button></div>`:''}${payment&&!f.voided&&f.value_date&&f.status!=='reconciled'?`<button class="alink" data-go="reconcile" data-arg="${esc(f.loan_id)}">${esc(T('activity.reconcile'))}</button>`:''}</article>`;
  }).join('')||esc(T('activity.empty'));
 }
 async function load(more=false){ const d=await getJSON('api/activity'+(more?'?after='+encodeURIComponent(nextCursor):''));facts=more?[...facts,...(d.facts||[])]:d.facts||[];nextCursor=d.next_cursor||'';document.getElementById('activity-more').hidden=!nextCursor;render(); }

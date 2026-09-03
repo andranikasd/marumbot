@@ -67,7 +67,7 @@ export const fundingHTML = `
 
 export function createFunding(root, changed, exponent) {
   const $ = (id) => root.querySelector("#" + id);
-  let nextID = 0;
+  let nextID = 0, cashThrough="";
   const sync = () => { $("funding-separate").hidden = $("funding-mode").value !== "separate"; };
   function row(event) {
     const el = document.createElement("div"); el.className = "card stack";
@@ -90,6 +90,7 @@ export function createFunding(root, changed, exponent) {
   };
   return {
     load(funding) {
+      cashThrough=funding?.cash_through||"";
       $("funding-mode").value = funding == null ? "legacy" : "separate";
       $("funding-monthly").value = funding ? minorText(funding.monthly_minor, exponent()) : "";
       $("funding-spent").value = funding ? minorText(funding.spent_minor, exponent()) : "";
@@ -98,7 +99,7 @@ export function createFunding(root, changed, exponent) {
     read() {
       if ($("funding-mode").value === "legacy") return { value: null, ok: true };
       let ok = true;
-      const value = { monthly_minor: 0, spent_minor: 0, events: [] };
+      const value = { monthly_minor: 0, spent_minor: 0, events: [], cash_through:cashThrough };
       for (const [id, key] of [["funding-monthly", "monthly_minor"], ["funding-spent", "spent_minor"]]) {
         let error = "";
         try { value[key] = minorAmount($(id).value, exponent()); } catch (e) { error = e.message; ok = false; }
