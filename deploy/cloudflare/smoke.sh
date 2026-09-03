@@ -42,9 +42,12 @@ get() {
 # status retries until it sees the expected code, for the same reason.
 status() {
   local url="$1" want="$2" method="${3:-GET}" attempt code
+  local -a body_args=()
+  # Fetch-based proxies reject GET/HEAD bodies. Only mutation probes send JSON.
+  case "$method" in GET|HEAD) ;; *) body_args=(-H 'Content-Type: application/json' -d '{}') ;; esac
   for attempt in 1 2 3 4 5; do
     code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X "$method" \
-      "$url" -H 'Content-Type: application/json' -d '{}' 2>/dev/null)
+      "$url" "${body_args[@]}" 2>/dev/null)
     [ "$code" = "$want" ] && { printf '%s' "$code"; return 0; }
     sleep 4
   done

@@ -1,7 +1,7 @@
 # Development acceptance evidence
 
 Branch: `feature/v1.1.0-complete-ui-redesign`.
-Target: development `2.0.1`, a new immutable asset version after `2.0.0`.
+Target: development `2.0.2`, a new immutable asset version after `2.0.0`.
 This document describes software evidence. Deployment status and run links belong
 in `release-checklist.md`; this file does not claim a deployment happened.
 

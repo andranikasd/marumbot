@@ -31,7 +31,9 @@ else:
         print(json.dumps({"ok": True, "result": {"type": "web_app", "web_app": {
             "url": "https://example.test/app/?v=" + version}}}, separators=(",", ":")))
     elif "/api/" in url:
-        print("401")
+        method = sys.argv[sys.argv.index("-X")+1] if "-X" in sys.argv else "GET"
+        # Fetch-based edge proxies cannot construct GET/HEAD requests with bodies.
+        print("500" if method in ("GET", "HEAD") and "-d" in sys.argv else "401")
     elif url.endswith("/healthz"):
         print('{"status":"ok","version":"2.0.0"}')
     elif url.endswith("/readyz"):
@@ -68,7 +70,12 @@ class SmokeRolloutTest(unittest.TestCase):
                 ["bash", str(SCRIPT), "https://example.test", "2.0.0"],
                 env=env, capture_output=True, text=True, timeout=30,
             )
-            return result, int((root / "menus").read_text())
+            return result, int((root / "menus").read_text()) if (root / "menus").exists() else 0
+
+    def test_unsigned_get_probes_have_no_body(self):
+        result, _ = self.run_smoke(1)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("smoke passed", result.stdout)
 
     def test_same_version_container_does_not_shorten_menu_rollout(self):
         result, polls = self.run_smoke(15)

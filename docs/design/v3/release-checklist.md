@@ -2,12 +2,16 @@
 
 ## Current status
 
-Target: **2.0.1 — development only** on
+Target: **2.0.2 — development only** on
 `feature/v1.1.0-complete-ui-redesign`.
 
-The currently verified live build is still **2.0.0**, commit
-`219cac1a89dd00a829a28cd683c8447d89f4a36e`, schema 11.
-The expanded implementation below is awaiting final gates and deployment.
+The first expanded rollout (`2.0.1`, commit `7c5062d`) reached schema 22,
+then failed a malformed smoke probe: GET requests incorrectly carried a JSON
+body, which the edge Fetch proxy rejected. The rollback step ran; do not infer
+complete container rollback from the Worker rollback alone. A normal unsigned
+GET returned 401. The probe has a reproducing regression and is corrected.
+The fresh `2.0.2` rollout remains pending. The last fully verified deployment
+before this attempt was `2.0.0`, commit `219cac1a89dd00a829a28cd683c8447d89f4a36e`.
 Changed assets must use a new version; existing `2.0.0` URLs remain immutable.
 No production deployment, merge to main, Git tag or GitHub Release is requested.
 
@@ -49,7 +53,7 @@ advanced engine domain described in the exploratory specification.
 - [x] Preservation-only rollback/reapplication of the latest migration.
 - [ ] Commit and push the verified implementation on the requested branch.
 - [ ] CI passes for that exact commit, including both architecture reports.
-- [ ] Deploy that branch with manual **CD · dev**, version `2.0.1`.
+- [ ] Deploy that branch with manual **CD · dev**, version `2.0.2`.
 - [ ] Verify live version, schema, assets, unsigned-call rejection and bot menu.
 
 ## User-owned field check
