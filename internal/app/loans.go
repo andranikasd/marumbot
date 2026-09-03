@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/andranikasd/marumbot/pkg/core/allocation"
+	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
@@ -50,12 +51,13 @@ type LoanWriter interface {
 // balance and a rate, which made every number the engine can produce
 // unreachable from the bot.
 type UserLoan struct {
-	Icon             string
-	OptionalExcluded bool
-	ID               string
-	Name             string
-	Description      string
-	Contract         model.Contract
+	UnreconciledPayments bool
+	Icon                 string
+	OptionalExcluded     bool
+	ID                   string
+	Name                 string
+	Description          string
+	Contract             model.Contract
 	// Balance is the latest anchor: what was owed on AsOf, by whoever said so.
 	Balance money.Amount
 	// OriginalPrincipal is the earliest recorded balance: what the loan
@@ -270,4 +272,12 @@ func LoanIcon(value string) (string, error) {
 	default:
 		return "", errors.New("app: unknown loan icon")
 	}
+}
+
+// Schedule refuses projections that would ignore an unreconciled payment fact.
+func (l UserLoan) Schedule() (amortisation.Schedule, error) {
+	if l.UnreconciledPayments {
+		return amortisation.Schedule{}, ErrPaymentReconciliation
+	}
+	return amortisation.Build(l.Contract, l.Balance, l.AsOf)
 }

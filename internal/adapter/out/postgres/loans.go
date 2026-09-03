@@ -122,7 +122,7 @@ func (s *Store) LoansForUser(ctx context.Context, userID string, limit int32) ([
 		)
 		if err := rows.Scan(&l.ID, &l.Name, &l.Description, &code,
 			&rate, &repayment, &dayCount, &start, &maturity, &day,
-			&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom); err != nil {
+			&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom, &l.UnreconciledPayments); err != nil {
 			return nil, err
 		}
 		if l.Excess, err = allocation.ParseExcessRule(excess); err != nil {
@@ -430,7 +430,7 @@ func (s *Store) LoanForUser(ctx context.Context, loanID, userID string) (app.Use
 	err := s.pool.QueryRow(ctx, q("GetLoanForUser"), loanID, userID).Scan(
 		&l.ID, &l.Name, &l.Description, &code,
 		&rate, &repayment, &dayCount, &start, &maturity, &day,
-		&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom)
+		&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom, &l.UnreconciledPayments)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return app.UserLoan{}, app.ErrNotFound
 	}

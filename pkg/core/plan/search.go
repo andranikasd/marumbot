@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -611,47 +612,147 @@ func ladder(in Input, pol Policy, c cache) ([]Rung, error) {
 	return out, nil
 }
 
-// BudgetFor finds the smallest monthly budget, in settlement units, that
-// pays everything off by `by` under the policy. Bisection is valid because
-// feasibility is monotone in the budget when unused cash may be carried.
+// NonMonotoneError refuses an inverse search whose monotonicity is unproven.
+type NonMonotoneError struct {
+	Reason string
+}
+
+func (e *NonMonotoneError) Error() string {
+	return "plan: inverse budget monotonicity not established: " + e.Reason
+}
+
+// BudgetFor finds the smallest monthly settlement quantum meeting by for a
+// single zero-interest, fee-free annuity paid on its due dates. With aligned
+// principal and instalments, no payment is rounded and the post-due balance is
+// max(0, balance-budget) whenever the required payment can be met. Increasing
+// budget cannot increase that balance or turn a met obligation into a shortfall.
+// Positive interest is excluded: allocation-dependent accrual splits invalidate
+// the unrounded exchange argument, even with descending rates and shared units.
+// This proof covers only the current immediate-credit model, which has no
+// notice periods, allowed payment windows or delayed-credit fields.
 func BudgetFor(in Input, pol Policy, by date.Date) (money.Amount, error) {
 	norm, _, err := Normalize(in)
 	if err != nil {
 		return money.Amount{}, err
 	}
+	if by.IsZero() || by.Before(norm.ValuationDate) {
+		return money.Amount{}, fmt.Errorf("plan: invalid inverse target date")
+	}
+	if err := inverseDomain(norm, pol); err != nil {
+		return money.Amount{}, err
+	}
 	c := cache{}
 	cur := norm.Cash.Monthly.Currency()
-	lo, err := requiredNow(norm, c)
+	hi, err := requiredNow(norm, c)
 	if err != nil {
 		return money.Amount{}, err
 	}
-	hi := money.Zero(cur)
 	for _, l := range norm.Loans {
 		if hi, err = hi.Add(l.Balance); err != nil {
 			return money.Amount{}, err
 		}
 	}
-	hi = money.FromMinor(hi.Minor()*2, cur)
 	unit := money.DefaultPolicy(cur).Unit
-	clears := func(b money.Amount) bool {
+	clears := func(b money.Amount) (bool, error) {
 		trial := norm
 		trial.Cash.Monthly = b
-		r, err := run(trial, pol, c)
-		return err == nil && !r.PayoffDate.After(by)
+		r, runErr := run(trial, pol, c)
+		return runErr == nil && !r.PayoffDate.After(by), runErr
 	}
-	if !clears(hi) {
-		return money.Amount{}, fmt.Errorf("plan: no budget clears the loans by %s", by)
+	h := hi.Minor() / unit
+	if hi.Minor()%unit != 0 {
+		h++
 	}
-	l, h := lo.Minor()/unit, hi.Minor()/unit+1
+	if h > (1<<63-1)/unit {
+		return money.Amount{}, fmt.Errorf("plan: inverse budget bound overflow")
+	}
+	if ok, runErr := clears(money.FromMinor(h*unit, cur)); runErr != nil {
+		return money.Amount{}, runErr
+	} else if !ok {
+		return money.Amount{}, fmt.Errorf("plan: inverse budget bound misses target")
+	}
+	miss := func(ok bool, runErr error) (bool, error) {
+		if runErr != nil && !isInfeasible(runErr) && !errors.Is(runErr, ErrHorizon) {
+			return false, runErr
+		}
+		return !ok, nil
+	}
+	l := int64(0)
 	for l < h {
 		mid := l + (h-l)/2
-		if clears(money.FromMinor(mid*unit, cur)) {
-			h = mid
-		} else {
+		failed, runErr := miss(clears(money.FromMinor(mid*unit, cur)))
+		if runErr != nil {
+			return money.Amount{}, runErr
+		}
+		if failed {
 			l = mid + 1
+		} else {
+			h = mid
 		}
 	}
-	return money.FromMinor(h*unit, cur), nil
+	budget := money.FromMinor(h*unit, cur)
+	if ok, runErr := clears(budget); runErr != nil {
+		return money.Amount{}, runErr
+	} else if !ok {
+		return money.Amount{}, &NonMonotoneError{Reason: "result budget misses target"}
+	}
+	if h > 0 {
+		failed, runErr := miss(clears(money.FromMinor((h-1)*unit, cur)))
+		if runErr != nil {
+			return money.Amount{}, runErr
+		}
+		if !failed {
+			return money.Amount{}, &NonMonotoneError{Reason: "one quantum less also succeeds"}
+		}
+	}
+	return budget, nil
+}
+
+func inverseDomain(in Input, pol Policy) error {
+	refuse := func(reason string) error { return &NonMonotoneError{Reason: reason} }
+	cash := in.Cash
+	if cash.Spending != nil || len(cash.MonthlyOverrides) != 0 || len(cash.Lumps) != 0 ||
+		cash.OpeningCash.Sign() != 0 || cash.ReserveFloor.Sign() != 0 {
+		return refuse("funding or spending varies independently of the budget")
+	}
+	if pol.Rollover != RollFreed || pol.RequiredOnly || pol.MinPrepay.Sign() != 0 {
+		return refuse("rollover, required-only policy or batching")
+	}
+	n := len(in.Loans)
+	if len(pol.Order) != n || len(pol.Timing) != n || len(pol.Effect) != n {
+		return refuse("policy dimensions")
+	}
+	if n != 1 {
+		return refuse("multiple-loan allocation is unproven")
+	}
+	if pol.Order[0] != 0 {
+		return refuse("priority must be a permutation")
+	}
+	p := in.Loans[0]
+	ct := p.Contract
+	if ct.NominalRate != 0 {
+		return refuse("rounded interest is outside the proven domain")
+	}
+	if ct.Prepayment.FeeBP != 0 || len(ct.Prepayment.Charges) != 0 || ct.Prepayment.MinAmount.Sign() != 0 {
+		return refuse("prepayment fees or thresholds")
+	}
+	effect := ct.Prepayment.Effect
+	if effect == model.PrepayBorrowerChooses {
+		effect = pol.Effect[0]
+	}
+	if ct.Type != model.Annuity || (effect != model.PrepayShortenTerm && effect != model.PrepayBorrowerChooses) ||
+		p.OptionalExcluded || p.Excess != allocation.ExcessReducePrincipal {
+		return refuse("requires fixed instalments and unrestricted principal reduction")
+	}
+	rounding := money.DefaultPolicy(cash.Monthly.Currency())
+	if ct.Rounding != rounding || p.Balance.Sign() < 0 || p.Balance.Minor()%rounding.Unit != 0 ||
+		!ct.HasScheduled || ct.ScheduledPayment.Sign() <= 0 || ct.ScheduledPayment.Minor()%rounding.Unit != 0 {
+		return refuse("requires quantum-aligned principal and supplied instalment")
+	}
+	if pol.Timing[0] != OnDue || cash.PayDay != 0 || !p.From.Equal(in.ValuationDate) {
+		return refuse("requires funding and payment on the due calendar without anchor advancement")
+	}
+	return nil
 }
 
 // ties names the reasons candidates coincide.

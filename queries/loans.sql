@@ -64,7 +64,11 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        s.principal_minor, s.as_of::text, s.trust,
        coalesce(p.excess_rule, 'unknown'),
        c.prepayment_policy::text,
-       f.principal_minor AS first_principal_minor, l.icon, l.optional_excluded, c.version, c.effective_from::text
+       f.principal_minor AS first_principal_minor, l.icon, l.optional_excluded, c.version, c.effective_from::text,
+ EXISTS (SELECT 1 FROM loan_events e WHERE e.loan_id = l.id
+ AND e.kind IN ('payment_reported','prepayment_reported')
+ AND NOT EXISTS (SELECT 1 FROM loan_events v WHERE v.voids_event_id = e.id)
+ AND NOT EXISTS (SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id = e.id))
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
@@ -179,7 +183,11 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        s.principal_minor, s.as_of::text, s.trust,
        coalesce(p.excess_rule, 'unknown'),
        c.prepayment_policy::text,
-       f.principal_minor AS first_principal_minor, l.icon, l.optional_excluded, c.version, c.effective_from::text
+       f.principal_minor AS first_principal_minor, l.icon, l.optional_excluded, c.version, c.effective_from::text,
+ EXISTS (SELECT 1 FROM loan_events e WHERE e.loan_id = l.id
+ AND e.kind IN ('payment_reported','prepayment_reported')
+ AND NOT EXISTS (SELECT 1 FROM loan_events v WHERE v.voids_event_id = e.id)
+ AND NOT EXISTS (SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id = e.id))
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
@@ -394,9 +402,25 @@ SELECT goal, cap_minor, policy, engine, payoff_date::text, months, interest_mino
 DELETE FROM approved_plans WHERE user_id = $1 RETURNING user_id;
 
 -- name: BorrowerActivity
--- Source facts only; a projection never appears as a recorded payment.
-SELECT sn.id::text, l.id::text, l.name, l.currency, sn.as_of::text,
-       sn.principal_minor, sn.trust
-FROM loan_snapshots sn JOIN loans l ON l.id = sn.loan_id
-WHERE l.user_id = $1
-ORDER BY sn.captured_at DESC, sn.id DESC LIMIT 100;
+-- Source facts only. Value dates remain unknown until the borrower reports posting.
+WITH facts AS (
+ SELECT sn.id, l.id AS loan_id, l.name, l.currency, sn.as_of::text AS as_of,
+ sn.principal_minor, sn.trust, 'balance_snapshot'::text AS kind, 0::bigint AS amount_minor,
+ ''::text AS transaction_date, ''::text AS value_date, 'user_entered'::text AS status,
+ ''::text AS voids, false AS voided, l.next_event_seq - 1 AS version, sn.captured_at AS recorded_at
+ FROM loan_snapshots sn JOIN loans l ON l.id = sn.loan_id WHERE l.user_id = $1
+ UNION ALL
+ SELECT e.id, l.id, l.name, l.currency,
+ COALESCE(e.fact_payload->>'transaction_date', e.value_date::text, ''),
+ 0, COALESCE(e.fact_payload->>'trust', 'user_entered'), e.kind, COALESCE(e.amount_minor, 0),
+ COALESCE(e.fact_payload->>'transaction_date', e.value_date::text, ''), COALESCE(e.value_date::text, ''),
+ CASE WHEN e.kind = 'entry_voided' THEN 'voided' WHEN e.value_date IS NULL THEN 'pending_bank_posting' ELSE 'needs_reconciliation' END,
+ COALESCE(e.voids_event_id::text, ''), EXISTS (SELECT 1 FROM loan_events v WHERE v.voids_event_id = e.id),
+ l.next_event_seq - 1, e.recorded_at
+ FROM loan_events e JOIN loans l ON l.id = e.loan_id WHERE l.user_id = $1
+)
+SELECT id::text, loan_id::text, name, currency, as_of, principal_minor, trust, kind,
+ amount_minor, transaction_date, value_date, status, voids, voided, version
+FROM facts WHERE $2::text = '' OR (recorded_at,id) <
+ (SELECT recorded_at,id FROM facts WHERE id::text = $2)
+ORDER BY recorded_at DESC, id DESC LIMIT 100;

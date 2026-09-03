@@ -388,7 +388,7 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 		if ln.Description != "" {
 			b.WriteString("<i>" + html.EscapeString(ln.Description) + "</i>\n")
 		}
-		if s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf); err == nil && len(s.Rows) > 0 {
+		if s, err := ln.Schedule(); err == nil && len(s.Rows) > 0 {
 			b.WriteString(i18n.T(l, "loan.line", bare(ln.Balance), percent(ln.Contract.NominalRate), shortDate(l, s.Rows[0].Due, today)) + "\n")
 		} else {
 			// Say the schedule is unavailable rather than omitting the line: a
@@ -428,7 +428,7 @@ func (w *Worker) nextInstalment(loans []UserLoan) (date.Date, money.Amount, bool
 		if ln.Balance.Sign() <= 0 {
 			continue
 		}
-		s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
+		s, err := ln.Schedule()
 		if err != nil || len(s.Rows) == 0 {
 			continue
 		}
@@ -548,7 +548,7 @@ func (w *Worker) showWorking(ctx context.Context, userID string, chat int64, l i
 	if err != nil {
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "error.generic"), w.mainMenu(l))
 	}
-	s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
+	s, err := ln.Schedule()
 	if err != nil || len(s.Rows) == 0 {
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "loan.no_schedule"), w.mainMenu(l))
 	}

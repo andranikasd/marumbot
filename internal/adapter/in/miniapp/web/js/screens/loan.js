@@ -48,6 +48,7 @@ const HTML = `
     </div>
     <div class="card kv" id="ln-facts"></div>
     <details class="card"><summary data-i18n="loan.contract">Պայմանագիր</summary><div class="kv" id="ln-contract"></div></details>
+    <button class="cta" type="button" id="ln-record" data-i18n="payment.record">Quick Record</button>
     <button class="cta" type="button" id="ln-update" data-i18n="loan.update">Թարմացնել մնացորդը</button>
     <button class="alink red" type="button" id="ln-remove" data-i18n="loan.remove">Հեռացնել վարկը</button>
   </div>
@@ -130,7 +131,7 @@ function mode(which) {
 function render() {
   const cur = loan.currency;
   $("ln-balance").textContent = fmtMoney(loan.balance_major, cur);
-  $("ln-state").textContent = T(loan.balance_major===0?"loan.zero":"loan.active");
+  $("ln-state").textContent = T(loan.needs_reconciliation?"payment.review":loan.balance_major===0?"loan.zero":"loan.active");
   const bits = [];
   if (loan.balance_as_of) bits.push(sub(loan.confirmed ? "loan.confirmed" : "loan.stated", { d: fmtFull(loan.balance_as_of) }));
   let share = 0;
@@ -274,6 +275,7 @@ register({
   html: HTML,
   onMount() {
     group($("ln-newbal"));
+    $("ln-record").addEventListener("click", () => go("payment",{id:loan.id}));
     $("ln-update").addEventListener("click", () => { haptic.tap(); $("ln-newbal").value = ""; $("ln-asof").value = new Date().toLocaleDateString("en-CA"); $("e-newbal").textContent = ""; mode("balance"); $("ln-newbal").focus({ preventScroll: true }); });
     $("ln-bal-cancel").addEventListener("click", () => { haptic.tap(); mode("view"); });
     $("ln-edit-cancel").addEventListener("click", () => { haptic.tap(); mode("view"); });

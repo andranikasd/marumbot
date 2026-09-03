@@ -26,6 +26,9 @@ import (
 // identically forever, and retrying it only delays the queue behind it.
 var ErrRetryable = errors.New("telegram: retryable")
 
+// ErrPrivateChat prevents old group bindings from receiving financial messages.
+var ErrPrivateChat = errors.New("telegram: private chat required")
+
 // Client sends messages.
 type Client struct {
 	token string
@@ -54,6 +57,9 @@ func (c *Client) WithBase(u string) *Client { c.base = u; return c }
 // Telegram accepting a message and Marum recording that it did is unclosable.
 // Message text is therefore written so that arriving twice reads correctly.
 func (c *Client) SendMessage(ctx context.Context, chatID int64, text string, markup any) error {
+	if chatID <= 0 {
+		return ErrPrivateChat
+	}
 	ctx, span := obs.ComponentSender.CallService(ctx, "telegram", "sendMessage")
 	defer span.End()
 
@@ -238,6 +244,9 @@ func (c *Client) SetChatMenuButton(ctx context.Context, text, url string) error 
 // language. The global button is per-bot and cannot be localised, which is why
 // it was Armenian for everyone; per-chat overrides can.
 func (c *Client) SetChatMenuButtonFor(ctx context.Context, chatID int64, text, url string) error {
+	if chatID <= 0 {
+		return ErrPrivateChat
+	}
 	ctx, span := obs.ComponentSender.CallService(ctx, "telegram", "setChatMenuButton")
 	defer span.End()
 	return c.call(ctx, "setChatMenuButton", map[string]any{
@@ -260,6 +269,9 @@ func (c *Client) SetChatMenuButtonFor(ctx context.Context, chatID int64, text, u
 // Failures are ignored by the caller: an indicator that did not appear is not a
 // reason to fail the command it was announcing.
 func (c *Client) SendChatAction(ctx context.Context, chatID int64, action string) error {
+	if chatID <= 0 {
+		return ErrPrivateChat
+	}
 	ctx, span := obs.ComponentSender.CallService(ctx, "telegram", "sendChatAction")
 	defer span.End()
 	return c.call(ctx, "sendChatAction", map[string]any{

@@ -123,7 +123,7 @@ func (w *Worker) ScheduleForUser(ctx context.Context, userID string) error {
 		if l.Balance.Sign() <= 0 {
 			continue
 		}
-		s, err := amortisation.Build(l.Contract, l.Balance, l.AsOf)
+		s, err := l.Schedule()
 		if err != nil || len(s.Rows) == 0 {
 			w.Log.WarnContext(ctx, "cannot project a loan for reminders", "error", err)
 			continue
@@ -198,9 +198,10 @@ func (w *Worker) SendDueReminders(ctx context.Context, limit int32) (int, error)
 // reminderBook is everything one user's reminders read: locale, chat, and each
 // live loan with its projected schedule, built once.
 type reminderBook struct {
-	locale i18n.Locale
-	chat   int64
-	loans  []scheduledLoan
+	locale  i18n.Locale
+	chat    int64
+	loans   []scheduledLoan
+	pending map[string]bool
 }
 
 type scheduledLoan struct {
@@ -221,7 +222,7 @@ func (w *Worker) reminderBook(ctx context.Context, userID string) *reminderBook 
 		w.Log.WarnContext(ctx, "reminder: no chat", "error", err)
 		return nil
 	}
-	book := &reminderBook{locale: i18n.Locale(locale), chat: chat}
+	book := &reminderBook{locale: i18n.Locale(locale), chat: chat, pending: map[string]bool{}}
 	loans, err := w.Loans.LoansForUser(ctx, userID, plan.MaxLoans+1)
 	if err != nil {
 		// Reminders still go out, without figures: a late reminder with a
@@ -230,10 +231,14 @@ func (w *Worker) reminderBook(ctx context.Context, userID string) *reminderBook 
 		return book
 	}
 	for _, ln := range loans {
+		if ln.UnreconciledPayments {
+			book.pending[ln.ID] = true
+			continue
+		}
 		if ln.Balance.Sign() <= 0 {
 			continue
 		}
-		s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
+		s, err := ln.Schedule()
 		if err != nil || len(s.Rows) == 0 {
 			continue
 		}
@@ -271,7 +276,11 @@ func reminderText(book *reminderBook, d DueReminder, today date.Date) string {
 			rows = append(rows, [2]string{clip(s.loan.Name, 18), s.sched.Rows[0].Payment.String()})
 		}
 	}
-	return "<b>" + i18n.T(l, "reminder.title", when) + "</b>\n" + strings.TrimRight(figures(rows), "\n")
+	text := "<b>" + i18n.T(l, "reminder.title", when) + "</b>\n" + strings.TrimRight(figures(rows), "\n")
+	if book.pending[d.LoanID] {
+		text += "\n" + i18n.T(l, "payment.reconcile")
+	}
+	return text
 }
 
 // instalmentOn finds the scheduled payment falling on the reminder's date.

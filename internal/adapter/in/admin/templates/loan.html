@@ -147,7 +147,7 @@
       <tr>
         <td class="num">{{.RecordedSeq}}</td>
         <td>{{.Kind}}</td>
-        <td class="nowrap">{{date .ValueDate}}</td>
+        <td class="nowrap">{{if .ValueDate.IsZero}}Pending posting{{else}}{{date .ValueDate}}{{end}}</td>
         <td class="num">{{if .AmountMinor}}{{minor .AmountMinor $.V.Loan.Currency}}{{else}}—{{end}}</td>
         <td class="num">{{if .BankOrder}}{{.BankOrder}}{{else}}—{{end}}</td>
         <td class="mono">{{if .BankReference}}{{.BankReference}}{{else}}—{{end}}</td>

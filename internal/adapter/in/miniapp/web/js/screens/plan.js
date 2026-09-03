@@ -94,6 +94,7 @@ async function load(g) {
       if (d.empty) { $("plan-body").hidden = true; $("plan-empty").hidden = false; return; }
       // The blocked card serves two facts-with-a-fix: a short budget and a
       // stale balance. A stale as-of is a year-scale fact: it keeps its year.
+      if (d.blocked === "payment_reconciliation") { blocked("payment.review", T("payment.reconcile"), "tab.activity", "activity"); return; }
       if (d.blocked === "balance_stale") {
         blocked("plan.stale", sub("plan.stale.why", { d: fmtFull(d.as_of) }), "plan.stale.fix", "loans");
         return;

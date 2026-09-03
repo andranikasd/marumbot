@@ -6,6 +6,7 @@ import "./screens/home.js";
 import "./screens/plan.js";
 import "./screens/loans.js";
 import "./screens/activity.js";
+import "./screens/payment.js";
 import "./screens/more.js";
 import "./screens/loan.js";
 import "./screens/add.js";

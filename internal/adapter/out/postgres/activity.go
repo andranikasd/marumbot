@@ -9,7 +9,11 @@ import (
 
 // BorrowerActivity returns only the authenticated borrower's source history.
 func (s *Store) BorrowerActivity(ctx context.Context, userID string) ([]app.ActivityFact, error) {
-	rows, err := s.pool.Query(ctx, q("BorrowerActivity"), userID)
+	return s.BorrowerActivityAfter(ctx, userID, "")
+}
+
+func (s *Store) BorrowerActivityAfter(ctx context.Context, userID, cursor string) ([]app.ActivityFact, error) {
+	rows, err := s.pool.Query(ctx, q("BorrowerActivity"), userID, cursor)
 	if err != nil {
 		return nil, err
 	}
@@ -17,7 +21,7 @@ func (s *Store) BorrowerActivity(ctx context.Context, userID string) ([]app.Acti
 	out := []app.ActivityFact{}
 	for rows.Next() {
 		var f app.ActivityFact
-		if err := rows.Scan(&f.ID, &f.LoanID, &f.Loan, &f.Currency, &f.AsOf, &f.PrincipalMinor, &f.Trust); err != nil {
+		if err := rows.Scan(&f.ID, &f.LoanID, &f.Loan, &f.Currency, &f.AsOf, &f.PrincipalMinor, &f.Trust, &f.Kind, &f.AmountMinor, &f.TransactionDate, &f.ValueDate, &f.Status, &f.Voids, &f.Voided, &f.Version); err != nil {
 			return nil, err
 		}
 		cur, err := money.Lookup(f.Currency)

@@ -138,3 +138,56 @@ Checkpoint verification completed: `make fmt`, `make lint` (zero issues),
 `deploy --dry-run --env dev` including its container build. Chromium at 390×844
 passed five-tab navigation, chart switching, separate payment view, icon
 prefill, budget field retention and save using the synthetic fixture.
+
+## Implementation checkpoint — 3 September, payment source facts
+
+**Not deployed. Full v3 remains incomplete.** These changes extend the requested
+feature branch; the development deployment recorded at the top is unchanged.
+
+Implemented and exercised:
+
+- Quick Record opens from a loan or the bot's paid callback. It captures amount,
+  transaction date, unknown/known bank value date, and required/extra intent.
+  Acknowledging a reminder alone never creates a payment. Entered facts remain
+  `user_entered`; selecting posted never upgrades trust to bank-confirmed.
+- Payment writes lock the owned loan, compare its ledger version, detect likely
+  duplicates, and preserve idempotent retries. Corrections atomically append a
+  void and replacement. Pending entries have no invented value date.
+- Activity includes statements, payments and voids, with correction/posting and
+  void actions. Immutable cursors keep older records accessible beyond 100 rows.
+- Unreconciled facts block new plans and projected repayment figures across the
+  Mini App, bot and reminders. Required reminders retain their date with a review
+  message instead of asserting an unverified amount.
+- Payment forms and validation share the account's business date. Uncertain
+  saves freeze the submitted fields and retry the same key and payload.
+- Telegram inbound financial commands require matching private sender/chat IDs;
+  outbound messages also reject non-private destinations left in old bindings.
+- Inverse-budget bisection refuses unproven domains with `NonMonotoneError`.
+  Its currently proven domain is one zero-interest loan with aligned supplied
+  instalments, immediate credit, constant funding and due-calendar payments.
+  The existing multi-loan numerical smoke test now requires that refusal;
+  an independent fixture proves the supported minimum and one-quantum boundary.
+
+Evidence: real PostgreSQL tests cover same-key concurrent retries, conflicting
+writers, ownership, duplicate detection, atomic rollback after a failed
+replacement, immutable history, and cursor pagination under new inserts.
+Migration 12 reapplies after its preservation-only rollback. Mobile browser
+checks at 390×844 cover pending entry, posting fields and correction prefill;
+these browser records are synthetic, never live account data.
+The lost-response browser check returns one record after retry. A CI screen
+lifecycle test covers navigation while a save is pending, restoration of two
+independent retry identities, and editing after a declined duplicate warning.
+The full race suite, store integration suite, lint and module syntax checks pass.
+
+**Still blocking release:** Quick Record has no bank-allocation/balance
+reconciliation command yet, so a genuine recorded payment pauses further
+planning. Completing that lifecycle and current-period cash/spending accounting
+is the next dependency; voiding a genuine payment is not a reconciliation fix.
+Actual-versus-plan attribution, activation provenance, remaining budget and
+strategy capabilities, role-scoped admin, setup/settings/alerts and the original
+field evidence gates remain open. Do not mark the broader payment, planning,
+admin or release checkboxes complete from this checkpoint.
+
+The next development build must use a distinct version for changed immutable
+assets; do not publish different application bytes under the existing `2.0.0`
+asset paths. No production promotion or release tag is part of this checkpoint.

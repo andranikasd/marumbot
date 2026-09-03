@@ -17,7 +17,6 @@ import (
 	"github.com/andranikasd/marumbot/internal/app"
 	"github.com/andranikasd/marumbot/internal/design"
 	"github.com/andranikasd/marumbot/internal/obs"
-	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
@@ -47,11 +46,13 @@ type Server struct {
 	// balance re-anchored. Optional: without it PATCH stays a rename.
 	Reviser LoanReviser
 	// BudgetConfig records the complete form atomically.
-	BudgetConfig app.BudgetConfigurator
-	Users        app.UserStore
-	Cipher       TagCipher
-	Clock        app.Clock
-	Log          *slog.Logger
+	Payments      *app.PaymentService
+	PaymentReader app.PaymentReader
+	BudgetConfig  app.BudgetConfigurator
+	Users         app.UserStore
+	Cipher        TagCipher
+	Clock         app.Clock
+	Log           *slog.Logger
 }
 
 // LoanReviser applies a full loan edit; the Worker implements it. Declared
@@ -83,6 +84,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/plan/approve", s.approvePlan())
 	mux.Handle("GET /api/budget", s.getBudget())
 	mux.Handle("GET /api/activity", s.activity())
+	mux.Handle("GET /api/loans/{id}/payments", s.paymentContext())
+	mux.Handle("POST /api/loans/{id}/payments", s.recordPayment())
 	mux.Handle("GET /api/loans", s.listLoans())
 	mux.Handle("PATCH /api/loans/{id}", s.updateLoan())
 	mux.Handle("DELETE /api/loans/{id}", s.deleteLoan())
@@ -440,7 +443,8 @@ func (s *Server) listLoans() http.Handler {
 			// The next instalment, projected the same way the bot projects it,
 			// so the summary card and the chat cannot disagree. Absent when the
 			// schedule cannot be built; the card then shows a dash, not a zero.
-			if s, err := amortisation.Build(l.Contract, l.Balance, l.AsOf); err == nil && len(s.Rows) > 0 {
+			row["needs_reconciliation"] = l.UnreconciledPayments
+			if s, err := l.Schedule(); err == nil && len(s.Rows) > 0 {
 				row["next_due"] = s.Rows[0].Due.String()
 				row["next_payment_major"] = major(s.Rows[0].Payment)
 			}
@@ -618,6 +622,10 @@ func (s *Server) planSheet() http.Handler {
 			goal = &g
 		}
 		sheet, err := s.Planner.PlanSheet(ctx, userID, goal)
+		if errors.Is(err, app.ErrPaymentReconciliation) {
+			writeJSON(w, http.StatusOK, map[string]string{"blocked": "payment_reconciliation"})
+			return
+		}
 		if err != nil {
 			if errors.Is(err, app.ErrNotFound) {
 				writeJSON(w, http.StatusOK, map[string]any{"empty": true})

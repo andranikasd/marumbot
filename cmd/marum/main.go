@@ -147,6 +147,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		BotToken: cfg.BotToken, Loans: store, Users: store, Budgets: store,
 		Editor: store, Reader: store, Required: worker, Filed: worker, Planner: worker,
 		Reviser: worker, BudgetConfig: store,
+		Payments: &app.PaymentService{Store: store, Clock: clock, Users: store}, PaymentReader: store,
 		Version: cfg.Version,
 		Cipher:  cipher, Clock: clock, Log: log,
 	}

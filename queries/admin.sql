@@ -57,7 +57,7 @@ SELECT id, as_of, captured_at, trust, principal_minor, accrued_interest_minor,
 FROM loan_snapshots WHERE loan_id = $1 ORDER BY as_of DESC, captured_at DESC;
 
 -- name: ListEventsForLoan
-SELECT e.id, e.recorded_seq, e.kind, e.value_date, e.recorded_at, e.amount_minor,
+SELECT e.id, e.recorded_seq, e.kind, COALESCE(e.value_date, DATE '0001-01-01'), e.recorded_at, e.amount_minor,
        e.bank_order, e.bank_reference, e.voids_event_id, e.contract_version_id,
        (SELECT count(*) FROM snapshot_event_coverage c WHERE c.event_id = e.id) > 0 AS covered
 FROM loan_events e WHERE e.loan_id = $1

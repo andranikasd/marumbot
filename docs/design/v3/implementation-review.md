@@ -90,3 +90,23 @@ The Plan screen shares one chart style for projected principal, monthly total pa
 User preference: keep routine views near one screen; use layers instead of long scrolling. The populated Mini App now has one chart selected by a dropdown (balance, monthly payments, monthly interest), with one cycle slider. Payments, milestones and calculation details are separate views. Home and Loans use compact loan rows. Bottom navigation remains visible, with overflow available on smaller screens rather than clipping content.
 
 Edit budget is visible in Budget; Edit loan is visible on loan rows and details; Update balance opens a separate snapshot form. Multi-block edit forms use tabs. Demo saves update in-memory fields only and explicitly mark the original calculation outdated. Existing charts never pretend to reflect edited terms. Browser interaction checks covered chart switching, budget saving, loan name/icon saving and snapshot saving.
+
+## Payment facts and inverse-search safety — 3 September
+
+Quick Record now writes append-only source events through an app-owned
+transaction. Unknown bank posting is SQL NULL, never the transfer date passed
+as a guessed value date. User entry cannot assert verified trust or derived
+allocation. A correction holds the loan lock across void and replacement;
+request retries compare the original payload before the current version.
+
+The current planner still starts from balance statements rather than replaying
+payment facts. Until reconciliation and period cash/spending accounting are
+implemented, active uncovered payments therefore refuse new plans and schedule
+figures. This is an explicit incomplete lifecycle, not a finished payment
+feature. The next implementation must not silently subtract reported payments
+from principal or from a budget that may already include them.
+
+Inverse search likewise has a narrower honest contract: one quantum below a
+returned answer is necessary but not sufficient evidence of global minimality.
+Rounded positive-interest allocation and multiple-loan policies remain refused
+until a monotonicity argument or an appropriate alternative search exists.

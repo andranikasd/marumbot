@@ -10,7 +10,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/andranikasd/marumbot/internal/i18n"
-	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
@@ -38,6 +37,9 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 	}
 
 	positions, owed, required, cur, err := w.positions(ctx, loans)
+	if errors.Is(err, ErrPaymentReconciliation) {
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "payment.reconcile"), w.mainMenu(l))
+	}
 	if err != nil {
 		return err
 	}
@@ -504,6 +506,9 @@ func (w *Worker) positions(ctx context.Context, loans []UserLoan) ([]plan.Positi
 		started  bool
 	)
 	for _, ln := range loans {
+		if ln.UnreconciledPayments {
+			return nil, owed, required, cur, ErrPaymentReconciliation
+		}
 		if ln.Balance.Sign() <= 0 {
 			continue
 		}
@@ -516,7 +521,7 @@ func (w *Worker) positions(ctx context.Context, loans []UserLoan) ([]plan.Positi
 			w.Log.WarnContext(ctx, "skipping a loan in another currency", "currency", ln.Contract.Currency.Code)
 			continue
 		}
-		s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
+		s, err := ln.Schedule()
 		if err != nil || len(s.Rows) == 0 {
 			w.Log.WarnContext(ctx, "cannot project a loan", "error", err)
 			continue

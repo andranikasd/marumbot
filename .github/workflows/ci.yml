@@ -79,6 +79,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with: { node-version: "22" }
+      - name: Payment retry lifecycle
+        run: node internal/adapter/in/miniapp/payment_ui_test.mjs
       - name: Smoke rollout regressions
         run: python3 deploy/cloudflare/smoke_test.py
       # node --check misses real syntax errors in this codebase (a stray
