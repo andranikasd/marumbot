@@ -1,5 +1,30 @@
 # Full v3 release checklist
 
+## Deployed build — 3 September 2026
+
+Development **2.0.0** is live from commit
+`219cac1a89dd00a829a28cd683c8447d89f4a36e` on the branch below.
+This deployment verifies the implemented build; **the full v3 specification
+is not complete**. The unchecked functional requirements remain open.
+
+- [CI passed](https://github.com/andranikasd/marumbot/actions/runs/33733922684),
+  including race tests, database tests, migration reapplication, both CPU
+  architectures, bundles, image build, lint, vulnerability and secret checks.
+- [Development deployment passed](https://github.com/andranikasd/marumbot/actions/runs/33734213874),
+  including authenticated Telegram-menu smoke. No production deployment,
+  release tag, or merge into main was performed for this build.
+- Live health and readiness return `2.0.0`, database ready, schema version 11.
+  Mini App and admin sign-in render `2.0.0`; the dev bot's global launch URL
+  is `https://dev.marum.loan/app/?v=2.0.0`.
+- Profile-name throttling is isolated from menu publication. The smoke check
+  now gives menu rollout its own startup deadline and compares exact versions.
+- Grafana's optional deployment annotation returned HTTP 503 while its instance
+  was loading; this did not affect application deployment or smoke verification.
+
+The original full-scope acceptance gates follow. Deployment does not imply
+that payment recording, advanced planning, role-scoped admin workflows,
+remaining setup/settings/alerts, or real-participant field validation are done.
+
 Implementation and release branch: `feature/v1.1.0-complete-ui-redesign`.
 Release target: **v2.0.0 — DEVELOPMENT ONLY**, after full implementation.
 No production environment exists; this release has no production promotion step.
