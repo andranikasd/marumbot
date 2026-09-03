@@ -110,3 +110,24 @@ capacity or a guaranteed free-tier fit. Local dashboard provisioning is in
 [deploy/observability](../../deploy/observability); development acceptance and
 remaining field evidence are in
 [development acceptance](../design/v3/development-acceptance.md).
+
+## Performance instruments
+
+The performance patch adds bounded, non-personal instruments:
+
+| Instrument | Interpretation |
+| --- | --- |
+| `marum_webhook_duration_seconds` | Durable acceptance plus inline handling; accepted/rejected/error |
+| `marum_telegram_call_duration_seconds` | Pacing, cooldown, network and response read by fixed API method/outcome |
+| `marum_telegram_rate_limited_total` | Actual HTTP 429 responses; waiting on a cooldown is not another 429 |
+| `marum_db_pool_active_connections`, `marum_db_pool_idle_connections`, `marum_db_pool_max_connections` | Checked-out, idle and configured maximum connections |
+| `marum_db_pool_waits_total`, `marum_db_pool_wait_seconds_total`, `marum_db_pool_canceled_acquires_total` | Pool pressure; successful waits and canceled acquisitions separately |
+| `marum_plan_search_cache_lookups_total` | Cache hit/miss, including expired entries and failed misses |
+| `marum_plan_search_duration_seconds` | Actual search computation on a miss; excludes DB reads and fingerprinting |
+| `marum_queue_depth`, `marum_queue_oldest_age_seconds` | Last successful tick/status sample, commands and deliveries separately |
+
+A failed queue read does not write zero. Pool collection reads in-memory pgx
+statistics and performs no SQL. Pool callbacks are removed before shutdown.
+No amounts, account IDs, URLs, tokens or error descriptions become labels.
+These instruments provide evidence after deployment; local tests are not dev
+latency percentiles or a capacity claim.

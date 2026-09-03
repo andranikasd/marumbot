@@ -23,6 +23,19 @@ func (s *Store) ScheduleReminders(ctx context.Context, due time.Time, loanID str
 	return err
 }
 
+// ScheduleReminderDates expands a loan's due dates in one database round trip.
+func (s *Store) ScheduleReminderDates(ctx context.Context, loanID string, dates []time.Time) error {
+	if len(dates) == 0 {
+		return nil
+	}
+	values := make([]string, len(dates))
+	for i, due := range dates {
+		values[i] = due.Format("2006-01-02")
+	}
+	_, err := s.pool.Exec(ctx, q("ScheduleReminderDates"), values, loanID)
+	return err
+}
+
 func (s *Store) DueReminders(ctx context.Context, limit int32) ([]app.DueReminder, error) {
 	rows, err := s.pool.Query(ctx, q("DueReminders"), limit)
 	if err != nil {

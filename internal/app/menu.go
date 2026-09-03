@@ -83,6 +83,14 @@ func (m *MenuPublication) Publish(ctx context.Context, p MenuPublisher, miniAppU
 	m.done.Store(true)
 }
 
+// PublishMenuDefaults shares startup's publication gate with command and tick
+// retries, so the first command does not repeat successful startup calls.
+func (w *Worker) PublishMenuDefaults(ctx context.Context) {
+	if w.Menus != nil {
+		w.menusPub.Publish(ctx, w.Menus, w.miniURL(""), w.Log)
+	}
+}
+
 // PublishMenus tells Telegram what this bot can do, in every language it
 // speaks, and points the chat's menu button at the loan form.
 //
@@ -178,6 +186,9 @@ func (w *Worker) RefreshMenuButtons(ctx context.Context, users MenuUserLister) (
 			return refreshed, fmt.Errorf("listing menu accounts: %w", err)
 		}
 		for _, user := range page {
+			if err := ctx.Err(); err != nil {
+				return refreshed, err
+			}
 			chatID, err := w.Chats.ChatID(ctx, user.ID)
 			if err == nil {
 				locale := i18n.Locale(user.Locale)

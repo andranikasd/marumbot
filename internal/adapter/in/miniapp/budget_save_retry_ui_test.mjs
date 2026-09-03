@@ -6,7 +6,7 @@ const budgetSource=clean(await readFile(new URL('./web/js/screens/budget-edit.js
 const policySource=clean(await readFile(new URL('./web/js/screens/budget-policy.js',import.meta.url),'utf8'));
 const response=(status=200,body={})=>({status,ok:status>=200&&status<300,json:async()=>body});
 function harness(kind,policyMode=false){
- const fields=new Map(),calls=[];let screen,current=kind==='policy'?'budget-policy':'budget-edit',post=async()=>response(),key=0;
+ const fields=new Map(),calls=[];let screen,current=kind==='policy'?'budget-policy':'budget-edit',post=async()=>response(),get=null,key=0;
  function field(id){if(!fields.has(id)){let value='';const f={id,disabled:false,hidden:false,readOnly:false,dataset:{},style:{},children:[],textContent:'',
  get value(){return value;},set value(v){value=String(v);},setAttribute(){},focus(){},append(...items){this.children.push(...items);},replaceChildren(...items){this.children=items;},addEventListener(type,fn){this[type]=fn;},
  querySelector(q){return field(id+q);},querySelectorAll(q){return q==='[data-section]'?['budget','funding','months'].map(section=>{const b=field('tab-'+section);b.dataset.section=section;return b;}):[];}};fields.set(id,f);}return fields.get(id);}
@@ -17,9 +17,9 @@ function harness(kind,policyMode=false){
  register:s=>{screen=s;},currentScreen:()=>current,go:id=>{current=id;},addStrings(){},T:k=>k,sub:k=>k,fmtMoney:String,haptic:{bad(){},tap(){},ok(){}},toast(){},invalidate(){},budgetHelpHTML:"",fundingHTML:'',
  majorAmount:v=>Number(v),minorAmount:v=>Number(v)*100,minorText:(n,e)=>String(n/10**e),validMonth:v=>/^\d{4}-\d\d$/.test(v),validDate:v=>typeof v==='string'&&/^\d{4}-\d\d-\d\d$/.test(v),
  createFunding:()=>({load(){field('funding-mode').value='separate';},read:()=>({ok:true,value:fundingData})}),
- api:async(path,init={})=>{calls.push({path,body:init.body});if(init.method==='POST')return post(path,init);return response(200,path==='api/budget'?budget:path==='api/loans'?{loans:[]}:policy);}};
+ api:async(path,init={})=>{calls.push({path,body:init.body});if(init.method==='POST')return post(path,init);if(get)return get(path);return response(200,path==='api/budget'?budget:path==='api/loans'?{loans:[]}:policy);}};
  vm.createContext(env);vm.runInContext(kind==='policy'?policySource:budgetSource,env);screen.onMount();
- return {field,calls,screen,env,budget,fundingData,policy,setPost:f=>post=f,setCurrent:c=>current=c,getKey:()=>key,submit:()=>kind==='policy'?field('bp-form').onsubmit({preventDefault(){}}):field('budget-form').submit({preventDefault(){}}),retry:()=>field(kind==='policy'?'bp-retry':'budget-save-retry').onclick({preventDefault(){}}),reload:()=>field(kind==='policy'?'bp-reload':'budget-reload').onclick()};
+ return {field,calls,screen,env,budget,fundingData,policy,setPost:f=>post=f,setGet:f=>get=f,setCurrent:c=>current=c,getKey:()=>key,submit:()=>kind==='policy'?field('bp-form').onsubmit({preventDefault(){}}):field('budget-form').submit({preventDefault(){}}),retry:()=>field(kind==='policy'?'bp-retry':'budget-save-retry').onclick({preventDefault(){}}),reload:()=>field(kind==='policy'?'bp-reload':'budget-reload').onclick()};
 }
 for(const mode of ['configuration','funding','policy']){
  const isPolicy=mode==='policy',h=harness(isPolicy?'policy':'budget',mode==='funding'),prefix=isPolicy?'bp-':'budget-',screen=isPolicy?'budget-policy':'budget-edit';
@@ -52,3 +52,25 @@ for(const mode of ['configuration','funding','policy']){
 }
 const h=harness('policy');await h.screen.onShow();h.setPost(async()=>response(422,{error:'unsupported',reason:'until_goal_then_release'}));await h.submit();assert.equal(h.field('bp-status').textContent,'bp.goalUnsupported');
 assert.match(h.screen.html,/data-i18n="bp.retry"/);assert.match(h.screen.html,/data-i18n="bp.goalUnsupported"/);
+
+// No response is needed before the other independent context reads start.
+const parallel=harness('budget'), resolves=new Map();
+parallel.setGet(path=>new Promise(resolve=>resolves.set(path,resolve)));
+const loading=parallel.screen.onShow();
+assert.deepEqual([...resolves.keys()],['api/budget','api/budget/policies','api/loans']);
+assert.equal(parallel.field('budget-fields').disabled,true);
+resolves.get('api/loans')(response(200,{loans:[]}));
+resolves.get('api/budget/policies')(response(200,parallel.policy));
+assert.equal(parallel.field('budget-fields').disabled,true,'context alone cannot unlock the financial form');
+resolves.get('api/budget')(response(200,parallel.budget));
+await loading;
+assert.equal(parallel.field('budget-fields').disabled,false);
+parallel.field('budget-next').onclick();
+assert.equal(parallel.field('budget-panel-funding').hidden,false);
+assert.equal(parallel.field('budget-save').hidden,false);
+console.log('Budget context starts in one request wave; fields unlock only after complete loading.');
+
+const changedContext=harness('budget');changedContext.policy.version++;
+await changedContext.screen.onShow();
+assert.equal(changedContext.field('budget-fields').disabled,true,'concurrent reads of different budget revisions must not enable saving');
+assert.equal(changedContext.field('budget-status').textContent,'be.load');

@@ -29,7 +29,16 @@ make test                        # unit tests, race detector on
 
 The bot runs in **long-polling** mode locally, so no public URL or tunnel is
 needed. Deployed dev uses webhooks; everything below the transport is the same
-code.
+code. Polling uses [Telegram’s `getUpdates`](https://core.telegram.org/bots/api#getupdates) and acknowledges an update only after durable
+inbox acceptance. It does not automatically delete a webhook: use a separate
+local bot token, or explicitly remove that bot’s webhook before switching.
+The local process also drains retries/reminders at `MARUM_TICK_INTERVAL`
+(default 60 seconds, must be positive). Hosted dev keeps its external cron.
+
+Production images build minified, split frontend assets during the Docker build.
+For frontend-only local previews: `cd deploy/cloudflare && npm ci && npm run build:assets`.
+The generated `dist/assets` directory is ignored by Git. Plain Go source runs
+remain usable with the source modules and gzip asset serving.
 
 ### The admin password
 

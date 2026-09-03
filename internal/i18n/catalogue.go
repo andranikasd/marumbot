@@ -185,12 +185,12 @@ var catalogue = map[Locale]map[string]string{
 
 		// --- budget ---
 		"budget.button": "Նշել բյուջեն",
-		"budget.prompt_or_type": "Որքա՞ն կարող եք ամսական հատկացնել բոլոր վարկերին՝ պարտադիր վճարումները ներառյալ։\n\n" +
-			"Գրեք գումարը (օրինակ՝ 100000) կամ բացեք ձևը։",
+		"budget.prompt_or_type": "Որքա՞ն է բոլոր վարկերի ամսական ծախսի սահմանը՝ պարտադիր վճարումները ներառյալ։\n\n" +
+			"Գրեք սահմանը (օրինակ՝ 100000) կամ բացեք ձևը՝ նաև գումարի մուտքի օրը նշելու համար։",
 		"budget.required_hint": "Այս ամիս պարտադիրը՝ <code>%s</code>։",
 		"budget.not_a_number":  "Չհասկացա գումարը։ Գրեք միայն թիվ, օրինակ՝ 100000։",
 		"budget.set":           "Բյուջեն նշված է՝ <code>%s</code>։",
-		"budget.set_surplus":   "Ավելցուկ՝ <code>%s</code>/ամիս։",
+		"budget.set_surplus":   "Սահմանում մնացող տեղ՝ <code>%s</code>/ամիս։ Հավելյալ վճարման համար նաև հասանելի գումար է պետք։",
 		"budget.set_low": "Բյուջեն նշված է՝ <code>%s</code>, բայց պարտադիր վճարումները <code>%s</code> են։ " +
 			"Պլանի համար պետք է առնվազն այդքան։",
 
@@ -396,12 +396,12 @@ var catalogue = map[Locale]map[string]string{
 		"add.unavailable": "The form is not available right now. That is a configuration problem, not yours.",
 
 		"budget.button": "Set a budget",
-		"budget.prompt_or_type": "How much can you put towards all your loans each month, required instalments included?\n\n" +
-			"Type the amount (for example 100000) or open the form.",
+		"budget.prompt_or_type": "What is your monthly spending limit for all loans, including required payments?\n\n" +
+			"Type the limit (for example 100000), or open the form to also set when your money arrives.",
 		"budget.required_hint": "Required this month: <code>%s</code>.",
 		"budget.not_a_number":  "I could not read that amount. Type just a number, for example 100000.",
 		"budget.set":           "Budget set: <code>%s</code>.",
-		"budget.set_surplus":   "Surplus: <code>%s</code>/month.",
+		"budget.set_surplus":   "Room in your limit: <code>%s</code>/month. Extra payments also need available cash.",
 		"budget.set_low": "Budget set to <code>%s</code>, but the required instalments come to <code>%s</code>. " +
 			"A plan needs at least that much.",
 

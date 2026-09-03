@@ -217,6 +217,8 @@ jobs:
       - uses: actions/setup-node@v7
         with: { node-version: "22", cache: npm, cache-dependency-path: deploy/cloudflare/package-lock.json }
       - run: npm ci || npm install
+      - name: Build and verify Mini App assets
+        run: npm run build:assets && node build-assets.test.mjs
       - name: Type-check the Worker
         run: npx tsc --noEmit
       # A wrangler config that does not parse is otherwise only discovered at

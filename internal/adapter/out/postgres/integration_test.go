@@ -553,6 +553,10 @@ func TestRemindersScheduleOnce(t *testing.T) {
 		}
 	}
 
+	// Batch scheduling uses the identical occurrence keys, including duplicates.
+	if err := s.ScheduleReminderDates(ctx, loanID, []time.Time{due, due}); err != nil {
+		t.Fatal(err)
+	}
 	all, err := s.DueReminders(ctx, 500)
 	if err != nil {
 		t.Fatalf("reading due reminders: %v", err)

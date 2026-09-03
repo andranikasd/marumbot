@@ -149,3 +149,42 @@ func TestReminderRechecksSnoozeBeforeDelivery(t *testing.T) {
 		t.Fatal("store did not receive injected clock")
 	}
 }
+
+type reminderTickFake struct {
+	reminderDeliveryFake
+	walks, reads int
+}
+
+func (f *reminderTickFake) ActiveLoanUsers(context.Context, int32) ([]string, error) {
+	f.walks++
+	return nil, nil
+}
+
+func (f *reminderTickFake) DueReminders(context.Context, int32) ([]DueReminder, error) {
+	f.reads++
+	return nil, nil
+}
+
+func TestReminderDeliveryRunsBetweenHourlyWalks(t *testing.T) {
+	f := &reminderTickFake{}
+	w := reviseWorker(t, &f.reviseFakes)
+	w.Reminders = f
+	clock := &fixedClock{at: time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)}
+	w.Clock = clock
+	for range 2 {
+		if _, err := w.TickReminders(t.Context(), f); err != nil {
+			t.Fatal(err)
+		}
+		clock.at = clock.at.Add(5 * time.Minute)
+	}
+	if f.walks != 1 || f.reads != 2 {
+		t.Fatalf("want one schedule walk, two delivery reads; got %d/%d", f.walks, f.reads)
+	}
+	clock.at = clock.at.Add(time.Hour)
+	if _, err := w.TickReminders(t.Context(), f); err != nil {
+		t.Fatal(err)
+	}
+	if f.walks != 2 || f.reads != 3 {
+		t.Fatalf("hourly walk did not resume: %d/%d", f.walks, f.reads)
+	}
+}

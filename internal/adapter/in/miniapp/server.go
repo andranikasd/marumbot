@@ -126,8 +126,9 @@ func (s *Server) Handler() http.Handler {
 	// imports inherit the versioned prefix, so every file the app loads is
 	// cacheable without ever being stale. This is what makes a warm open
 	// instant while /{$} itself stays no-store.
-	mux.Handle("GET /a/", s.immutable(http.StripPrefix("/a/", stripVersion(withTokens(sub, http.FileServerFS(sub))))))
-	mux.Handle("/", s.static(withTokens(sub, http.FileServerFS(sub))))
+	publicAssets := compressedAssets(sub, withTokens(sub, http.FileServerFS(sub)))
+	mux.Handle("GET /a/", s.immutable(http.StripPrefix("/a/", stripVersion(publicAssets))))
+	mux.Handle("/", s.static(publicAssets))
 	return mux
 }
 
@@ -244,7 +245,18 @@ func (s *Server) getBudget() http.Handler {
 		out := map[string]any{"today": today.String()}
 		if b, err := s.Budgets.Budget(ctx, userID); err == nil && b.Set {
 			out[keyCurrency] = b.Currency
-			permission, err := b.PermissionOn(today)
+			var cash plan.CashPlan
+			var permission money.Amount
+			if len(b.Policies) > 0 {
+				// Permission and funding use the same projection. CashPlans still
+				// validates both growth and no-growth rules before serving either.
+				cash, _, err = b.CashPlans(today)
+				if err == nil {
+					permission = cash.Spending.Changes[0].Limit
+				}
+			} else {
+				permission, err = b.PermissionOn(today)
+			}
 			if err != nil {
 				http.Error(w, "invalid budget policy", http.StatusUnprocessableEntity)
 				return
@@ -255,10 +267,12 @@ func (s *Server) getBudget() http.Handler {
 			out["version"] = b.Version
 			if b.Funding != nil {
 				funding := *b.Funding
-				cash, _, err := b.CashPlans(today)
-				if err != nil {
-					http.Error(w, "invalid budget policy", http.StatusUnprocessableEntity)
-					return
+				if len(b.Policies) == 0 {
+					cash, _, err = b.CashPlans(today)
+					if err != nil {
+						http.Error(w, "invalid budget policy", http.StatusUnprocessableEntity)
+						return
+					}
 				}
 				funding.SpentMinor = cash.Spending.Spent.Minor()
 				b.Opening = cash.OpeningCash

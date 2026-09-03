@@ -31,7 +31,7 @@ export const STRINGS = {
     "sum.note": "Հաշվարկը մոտավոր է մինչև բանկի հաստատումը։",
     save: "Պահպանել", saving: "Պահպանվում է…", saved: "Պահպանված է",
     "nav.label": "Հիմնական բաժիններ",
-    loading: "Բեռնվում է…", retry: "Փորձել նորից",
+    "load.failed": "Չհաջողվեց բացել էջը։ Փորձեք նորից։", loading: "Բեռնվում է…", retry: "Փորձել նորից",
     "offline": "Կապ չկա։ Ցուցադրվում են վերջին թվերը։", "offline.retry": "Նորից",
     "err.required": "Պարտադիր դաշտ", "err.number": "Մուտքագրեք թիվ",
     "err.positive": "Պետք է լինի զրոյից մեծ", "err.day": "1-ից 31",
@@ -49,18 +49,18 @@ export const STRINGS = {
     "manage.cancel": "Չեղարկել",
     "manage.confirm": "Հեռացնե՞լ այս վարկը։ Հաշվարկները կպահպանվեն։",
     "manage.excluded": "ընդհանուրում չէ", "loan.defname": "Վարկ",
-    "budget.title": "Բյուջե", "budget.monthly": "Ամսական բյուջե վարկերի համար",
-    "budget.hint": "Վարկերին հասանելի գումարը՝ հիմնական ծախսերից և պահուստից հետո։",
-    "budget.required": "Պարտադիր վճարումներ", "budget.safe_extra": "Անվտանգ հավելյալ",
+    "budget.title": "Բյուջե", "budget.monthly": "Ամսական ծախսի սահման",
+    "budget.hint": "Վարկերի համար ամսական առավելագույն ծախսը՝ ներառյալ պարտադիր վճարումները։",
+    "budget.required": "Պարտադիր վճարումներ", "budget.safe_extra": "Սահմանում մնացող տեղ",
     "budget.edit": "Խմբագրել", "budget.plan": "Տեսնել պլանը",
-    "budget.ok.pill": "ծածկված է", "budget.short": "պակաս է",
-    "budget.covered": "Ծածկում է բոլոր պարտադիր վճարումները։",
+    "budget.ok.pill": "սահմանի ներսում", "budget.short": "պակաս է",
+    "budget.covered": "Պարտադիր վճարումները տեղավորվում են ձեր սահմանում։",
     "budget.not_covered": "Չի ծածկում պարտադիր վճարումները։",
     "budget.exact": "Ծածկում է պարտադիրը՝ առանց ավելցուկի։",
     "budget.low": "Պակաս է պարտադիր վճարումներից՝ պլան չի ստացվի։",
-    "budget.ok": "Ավելցուկն ամեն ամիս կուղղվի մեկ վարկի՝ ավելի շուտ փակելու համար։",
+    "budget.ok": "Հավելյալ վճարման տեղ կա, եթե գումարը հասանելի է։",
     "budget.against": "Այս ամիս պարտադիրը՝ {r}։",
-    "budget.payday": "Աշխատավարձի օրը", "budget.payday.hint": "Օգնում է ընտրել վճարման ճիշտ օրը։",
+    "budget.payday": "Ե՞րբ է այս գումարը հասանելի", "budget.payday.hint": "Ամսվա օրը՝ 1-ից 31։",
     "budget.payday.day": "ամսի {d}", "budget.unset": "նշված չէ",
     "budget.opening": "Հասանելի գումար հիմա",
     "budget.opening.hint": "Այսօր մնացած գումարը՝ արդեն կատարած վճարումներից հետո։ Ներառեք պահուստը․ նույն գումարը կրկնակի մի հաշվեք։",
@@ -132,7 +132,7 @@ export const STRINGS = {
     "sum.note": "An estimate until your bank confirms it.",
     save: "Save", saving: "Saving…", saved: "Saved",
     "nav.label": "Main sections",
-    loading: "Loading…", retry: "Try again",
+    "load.failed": "Could not open this page. Please try again.", loading: "Loading…", retry: "Try again",
     "offline": "You're offline. Showing the last figures loaded.", "offline.retry": "Retry",
     "err.required": "Required", "err.number": "Enter a number",
     "err.positive": "Must be above zero", "err.day": "Between 1 and 31",
@@ -150,18 +150,18 @@ export const STRINGS = {
     "manage.cancel": "Cancel",
     "manage.confirm": "Remove this loan? Its calculations are kept.",
     "manage.excluded": "not in totals", "loan.defname": "Loan",
-    "budget.title": "Budget", "budget.monthly": "Monthly budget for loans",
-    "budget.hint": "What remains for loans after essential spending and the reserve you keep.",
+    "budget.title": "Budget", "budget.monthly": "Monthly spending limit",
+    "budget.hint": "The most you want to spend on loans each month, including required payments.",
     "budget.required": "Required instalments", "budget.safe_extra": "Room for extra payments",
     "budget.edit": "Edit", "budget.plan": "View plan",
-    "budget.ok.pill": "covered", "budget.short": "short",
-    "budget.covered": "Covers every required payment.",
+    "budget.ok.pill": "within limit", "budget.short": "short",
+    "budget.covered": "Required payments fit within your limit.",
     "budget.not_covered": "Does not cover the required payments.",
     "budget.exact": "Covers the required instalments with nothing spare.",
     "budget.low": "Below your required instalments: no plan is possible.",
-    "budget.ok": "The surplus goes to one loan every month, to clear it sooner.",
+    "budget.ok": "There is room for extra payments if money is available.",
     "budget.against": "Required this month: {r}.",
-    "budget.payday": "Payday", "budget.payday.hint": "Helps choose the right payment day.",
+    "budget.payday": "When does this money arrive?", "budget.payday.hint": "Day of the month, from 1 to 31.",
     "budget.payday.day": "day {d}", "budget.unset": "not set",
     "budget.opening": "Cash available now",
     "budget.opening.hint": "Money you still have today, after any payments already made. Include your reserve; do not count the same cash twice.",
@@ -220,7 +220,10 @@ export function addStrings(hy, en) {
   Object.assign(STRINGS.hy, hy);
   Object.assign(STRINGS.en, en);
 }
-// Fill data-i18n inside a rendered root.
+// Translate explicitly annotated text and accessible names in place.
 export function applyI18n(root) {
   for (const el of root.querySelectorAll("[data-i18n]")) el.textContent = T(el.dataset.i18n);
+  for (const el of root.querySelectorAll("[data-i18n-aria-label]")) {
+    el.setAttribute("aria-label", T(el.dataset.i18nAriaLabel));
+  }
 }

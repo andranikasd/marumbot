@@ -513,15 +513,21 @@ func (w *Worker) positions(ctx context.Context, loans []UserLoan) ([]plan.Positi
 		required money.Amount
 		started  bool
 	)
+	// Flags are scoped to this environment and this call. An absent flag also
+	// permits planning; remember it only until the next request can recheck it.
+	checkedProfiles := make(map[string]struct{})
 	for _, ln := range loans {
-		if w.ProfileFlags != nil && ln.Contract.AllocationPolicy.Key != "" {
-			flag, err := w.ProfileFlags.AdminProfileFlag(ctx, w.Environment, ln.Contract.AllocationPolicy.Key)
+		profile := ln.Contract.AllocationPolicy.Key
+		_, checked := checkedProfiles[profile]
+		if w.ProfileFlags != nil && profile != "" && !checked {
+			flag, err := w.ProfileFlags.AdminProfileFlag(ctx, w.Environment, profile)
 			if err != nil && !errors.Is(err, ErrNotFound) {
 				return nil, owed, required, cur, err
 			}
 			if err == nil && !flag.PlanningEnabled {
 				return nil, owed, required, cur, &plan.UnsupportedError{Feature: "lender profile temporarily disabled"}
 			}
+			checkedProfiles[profile] = struct{}{}
 		}
 		if ln.UnreconciledPayments {
 			return nil, owed, required, cur, ErrPaymentReconciliation

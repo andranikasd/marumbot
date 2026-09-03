@@ -64,20 +64,27 @@ func (h *Webhook) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, span := obs.ComponentWebhook.Enter(r.Context(), "update")
 		defer span.End()
+		status := http.StatusInternalServerError
+		if h.Clock != nil {
+			started := h.Clock.Now()
+			defer func() { obs.RecordWebhook(ctx, h.Clock.Now().Sub(started), status) }()
+		}
 
 		if h.ServiceToken != "" {
 			got := r.Header.Get("X-Marum-Service-Token")
 			if subtle.ConstantTimeCompare([]byte(got), []byte(h.ServiceToken)) != 1 {
 				// No detail in the response: an attacker learns nothing from a
 				// 401 and everything from "wrong token".
-				w.WriteHeader(http.StatusUnauthorized)
+				status = http.StatusUnauthorized
+				w.WriteHeader(status)
 				return
 			}
 		}
 		if h.WebhookSecret != "" {
 			got := r.Header.Get("X-Telegram-Bot-Api-Secret-Token")
 			if subtle.ConstantTimeCompare([]byte(got), []byte(h.WebhookSecret)) != 1 {
-				w.WriteHeader(http.StatusUnauthorized)
+				status = http.StatusUnauthorized
+				w.WriteHeader(status)
 				return
 			}
 		}
@@ -88,7 +95,8 @@ func (h *Webhook) Handler() http.Handler {
 			// somebody probing. Answering 200 stops a retry loop over something
 			// that will never parse.
 			h.Log.WarnContext(ctx, "undecodable update", "error", err)
-			w.WriteHeader(http.StatusOK)
+			status = http.StatusOK
+			w.WriteHeader(status)
 			return
 		}
 
@@ -96,16 +104,17 @@ func (h *Webhook) Handler() http.Handler {
 			// 500 makes Telegram retry, which is what we want: the update is
 			// not yet recorded anywhere, so dropping it would lose it.
 			h.Log.ErrorContext(ctx, "recording update failed", "error", err)
-			w.WriteHeader(http.StatusInternalServerError)
+			status = http.StatusInternalServerError
+			w.WriteHeader(status)
 			return
 		}
-		w.WriteHeader(http.StatusOK)
+		status = http.StatusOK
+		w.WriteHeader(status)
 	})
 }
 
-// accept resolves the sender and records the command. It deliberately does no
-// work beyond that: the reply is the worker's job, and doing it here would put
-// a Telegram round trip inside the window Telegram is timing.
+// accept records the command durably, then attempts its reply within a bounded
+// window. A failed inline attempt stays in the inbox for the next drain.
 func (h *Webhook) accept(ctx context.Context, u Update) error {
 	n, ok := Normalise(u)
 	if !ok {

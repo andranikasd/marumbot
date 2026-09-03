@@ -373,6 +373,22 @@ SELECT gen_random_uuid(), l.user_id, l.id, $1::date, r.offset_days,
  WHERE l.id = $2 AND l.archived_at IS NULL AND u.deleted_at IS NULL
 ON CONFLICT (idempotency_key) DO NOTHING;
 
+-- name: ScheduleReminderDates
+-- The same idempotent rule expansion for all nearby instalments of one loan.
+INSERT INTO reminder_occurrences (
+    id, user_id, loan_id, due_date, offset_days, target_send_at, idempotency_key
+)
+SELECT gen_random_uuid(), l.user_id, l.id, dates.due::date, r.offset_days,
+       ((dates.due::date + r.offset_days * interval '1 day')
+         + r.send_at_local) AT TIME ZONE u.timezone,
+       l.id::text || ':' || dates.due || ':' || r.offset_days::text
+  FROM unnest($1::text[]) AS dates(due)
+ CROSS JOIN loans l
+  JOIN users u ON u.id = l.user_id
+  JOIN reminder_rules r ON r.loan_id = l.id AND r.enabled
+ WHERE l.id = $2 AND l.archived_at IS NULL AND u.deleted_at IS NULL
+ON CONFLICT (idempotency_key) DO NOTHING;
+
 -- name: DueReminders
 -- Occurrences whose moment has arrived and that nothing has taken yet.
 SELECT o.id, o.user_id, o.loan_id, o.due_date::text, o.offset_days,

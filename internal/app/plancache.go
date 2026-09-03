@@ -10,6 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
+
+	"github.com/andranikasd/marumbot/internal/obs"
 	"github.com/andranikasd/marumbot/pkg/core/plan"
 )
 
@@ -35,9 +38,12 @@ const searchCacheMax = 256
 // exists so an unreachable entry is also eventually gone.
 const searchCacheTTL = 26 * time.Hour
 
+var planSearchMetrics = obs.NewPlanSearchMetrics(otel.Meter("github.com/andranikasd/marumbot"))
+
 type searchCache struct {
 	mu      sync.Mutex
 	entries map[string]searchEntry
+	metrics *obs.PlanSearchMetrics // optional override, set before use
 }
 
 type searchEntry struct {
@@ -126,18 +132,26 @@ func fingerprintValue(b *strings.Builder, v reflect.Value) {
 // search returns the cached report for this exact input, computing and
 // remembering it on a miss.
 func (c *searchCache) search(in plan.Input, g plan.Goal, now time.Time) (plan.Report, error) {
+	metrics := c.metrics
+	if metrics == nil {
+		metrics = planSearchMetrics
+	}
 	key := searchFingerprint(in, g)
 
 	c.mu.Lock()
 	if e, ok := c.entries[key]; ok && now.Sub(e.addedAt) < searchCacheTTL {
 		c.mu.Unlock()
+		metrics.CacheLookup(true)
 		return e.rep, nil
 	}
 	c.mu.Unlock()
+	metrics.CacheLookup(false)
 
 	// Compute outside the lock: a search can take seconds, and holding the
 	// lock across it would serialise every user behind the slowest plan.
+	finish := metrics.StartSearch()
 	rep, err := plan.Search(in, g)
+	finish(err == nil)
 	if err != nil {
 		return plan.Report{}, err
 	}

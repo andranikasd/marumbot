@@ -195,7 +195,7 @@ func (w *Worker) PlanSheet(ctx context.Context, userID string, goal *plan.Goal) 
 		g = approved.PlanGoal(cur)
 	}
 	if w.History != nil {
-		versions, _, historyErr := w.activePlans(ctx, userID)
+		versions, _, historyErr := w.activePlansForSources(ctx, userID, sources)
 		if historyErr != nil {
 			return Sheet{}, historyErr
 		}
@@ -242,9 +242,15 @@ func (w *Worker) PlanSheet(ctx context.Context, userID string, goal *plan.Goal) 
 		}
 		rep = withSelectedPolicy(rep, selected)
 	}
-	permission, err := budget.PermissionOn(asOf)
-	if err != nil {
-		return Sheet{}, err
+	var permission money.Amount
+	if len(budget.Policies) > 0 {
+		// CashPlans above already validated both policy timelines.
+		permission = cash.Spending.Changes[0].Limit
+	} else {
+		permission, err = budget.PermissionOn(asOf)
+		if err != nil {
+			return Sheet{}, err
+		}
 	}
 	sh, err := sheetFromReport(in, g, rep, owed, permission, approved)
 	if err != nil {
@@ -274,6 +280,17 @@ func (w *Worker) PlanSheet(ctx context.Context, userID string, goal *plan.Goal) 
 		}
 	}
 	if w.History != nil {
+		manifest, err := manifestFor(in, g, rep, budget.Version)
+		if err != nil {
+			return Sheet{}, err
+		}
+		manifest.Sources = sources
+		versions, revision, err := w.activePlansForSources(ctx, userID, sources)
+		if err != nil {
+			return Sheet{}, err
+		}
+		// Enclose both metadata reads in the source guard. Nothing is published
+		// if a source changed while computing or reading the final activation.
 		latest, err := w.History.PlanSources(ctx, userID)
 		if err != nil {
 			return Sheet{}, err
@@ -281,16 +298,7 @@ func (w *Worker) PlanSheet(ctx context.Context, userID string, goal *plan.Goal) 
 		if sources != latest {
 			return Sheet{}, ErrConflict
 		}
-		manifest, err := manifestFor(in, g, rep, budget.Version)
-		if err != nil {
-			return Sheet{}, err
-		}
-		manifest.Sources = sources
 		sh.Proposal, err = w.proposals.put(userID, manifest)
-		if err != nil {
-			return Sheet{}, err
-		}
-		versions, revision, err := w.activePlans(ctx, userID)
 		if err != nil {
 			return Sheet{}, err
 		}
