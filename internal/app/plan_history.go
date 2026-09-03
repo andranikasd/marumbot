@@ -134,6 +134,27 @@ func (w *Worker) activePlans(ctx context.Context, user string) ([]PlanVersion, i
 	return w.PlanHistory(ctx, user)
 }
 
+// activePlansForSources reuses a caller's source snapshot. The caller must
+// recheck those sources after its final metadata read, before publishing a plan.
+// Both reader paths retain their activation revision read.
+func (w *Worker) activePlansForSources(ctx context.Context, user, sources string) ([]PlanVersion, int64, error) {
+	if w.History == nil {
+		return nil, 0, ErrNotFound
+	}
+	read := w.History.PlanHistory
+	if reader, ok := w.History.(activePlanReader); ok {
+		read = reader.ActivePlanVersions
+	}
+	rows, revision, err := read(ctx, user)
+	if err != nil {
+		return nil, 0, err
+	}
+	for i := range rows {
+		rows[i].Outdated = approvedPlanOutdated(rows[i], sources)
+	}
+	return rows, revision, nil
+}
+
 func (w *Worker) PlanHistory(ctx context.Context, user string) ([]PlanVersion, int64, error) {
 	if w.History == nil {
 		return nil, 0, ErrNotFound

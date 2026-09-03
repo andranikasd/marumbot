@@ -8,11 +8,11 @@ payments come first. Extra payments use what remains under both constraints.
 
 | Field or concept | Meaning |
 | --- | --- |
-| Budget | Your loan spending limit for the budget period, including required payments |
-| Monthly loan money | Regular money set aside for loans; its availability date matters |
+| Monthly spending limit | Your loan spending limit for the budget period, including required payments |
+| Money set aside each month | Regular money set aside for loans; its availability date matters |
 | Payday | When the regular money becomes available, not a reset of spending |
-| Cash on hand | Money already held today; avoid also declaring it as a future receipt |
-| Reserve | Cash you want to keep untouched |
+| Cash available now | Money already held today; avoid also declaring it as a future receipt |
+| Keep untouched | Cash you want to keep untouched |
 | Already paid / spent | Loan payments already made in the current spending period; not new cash |
 | Additional receipt | A separate incoming amount and date; distinguish confirmed from expected |
 | Specific month | A replacement limit for that month, not extra cash or an addition to the normal limit |
@@ -54,10 +54,15 @@ or inconsistent situations rather than inventing missing funds.
 
 ## Editing and checking actual payments
 
-Open **Budget** from Home or **Edit budget** from More. The Budget, Funding and
-Months layers separate the limit, available money and month-specific choices.
-The collapsed **How budgeting works** guide is available in English and Armenian
-on Budget and Money screens.
+Open **Budget** from Home or **Edit budget** from More. The editor has three groups:
+
+- **Each month:** your spending limit, money set aside regularly, and arrival day.
+- **Today:** cash you still have, your protected reserve, and payments already made.
+- **Extras:** additional receipts, different limits for specific months, and advanced rules.
+
+Use **Next: today’s money** after the monthly questions, then **Save budget**.
+The overview shows regular money and the spending limit separately. Collapsed
+help remains available in English and Armenian.
 
 Record actual payments with their dates. If the lender provides an allocation
 between principal, interest and fees, enter it; otherwise the allocation remains

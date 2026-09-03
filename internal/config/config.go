@@ -67,6 +67,9 @@ func Load() (Config, error) {
 }
 
 func (c Config) validate() error {
+	if c.TickInterval <= 0 {
+		return errors.New("MARUM_TICK_INTERVAL must be positive")
+	}
 	var missing []string
 	if c.DatabaseURL == "" {
 		missing = append(missing, "MARUM_DATABASE_URL")

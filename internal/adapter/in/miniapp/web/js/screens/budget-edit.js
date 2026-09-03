@@ -8,9 +8,13 @@ import { fundingHTML, createFunding, majorAmount, validMonth, validDate, minorTe
 addStrings({
   "budget.editing": "Խմբագրել բյուջեն", "budget.save": "Պահպանել բյուջեն",
   "be.policyActive": "Բյուջեն ունի հաստատված կանոններ։ Սահմանաչափը փոխեք Բյուջեի կանոններ բաժնում։ Գումարի և ծախսերի նոր քաղվածքը ներկայացրեք համադրման միջոցով։",
-  "be.budget": "Բյուջե", "be.funding": "Գումար", "be.months": "Ամիսներ",
+  "be.budget": "Ամեն ամիս", "be.funding": "Այսօր", "be.months": "Հավելյալ",
+  "be.next": "Հաջորդը՝ այսօրվա գումարը",
+  "be.intro": "Նախ՝ պարտադիր վճարումները։",
+  "be.limitQuestion": "Ամսական ծախսի սահման",
+  "be.todayHint": "Այստեղ նշեք միայն այսօրվա գումարն ու արդեն կատարված վճարումները։",
   "be.permission": "Ամսական ծախսի սահմանաչափ",
-  "be.permissionHint": "Վարկերի համար ամսական թույլատրելի ծախսը։ Հասանելի գումարը նշեք Գումար բաժնում։",
+  "be.permissionHint": "Ներառեք վարկերի բոլոր պարտադիր վճարումները։",
   "be.retry": "Կրկնել պահպանումը", "be.uncertain": "Պահպանման արդյունքը հայտնի չէ։ Կրկնեք նույն հարցումը՝ նախքան փոփոխելը։",
   "be.reload": "Վերբեռնել՝ չպահպանված փոփոխությունները հեռացնելով",
   "be.conflict": "Բյուջեն այլ տեղ փոփոխվել է։ Ձեր մուտքագրածը պահպանվել է այս ձևում։ Վերբեռնեք վերջին տարբերակը՝ փոփոխությունները նորից կատարելու համար։",
@@ -19,9 +23,13 @@ addStrings({
 }, {
   "budget.editing": "Edit budget", "budget.save": "Save budget",
   "be.policyActive": "Approved rules govern this budget. Change permission in Budget rules. Update cash and spending statements through reconciliation.",
-  "be.budget": "Budget", "be.funding": "Money", "be.months": "Months",
+  "be.budget": "Each month", "be.funding": "Today", "be.months": "Extras",
+  "be.next": "Next: today’s money",
+  "be.intro": "Required payments come first.",
+  "be.limitQuestion": "Monthly spending limit",
+  "be.todayHint": "Only money you have today and payments already made belong here.",
   "be.permission": "Monthly spending limit",
-  "be.permissionHint": "How much may be spent on loans each month. Tell us when your money is available in Money.",
+  "be.permissionHint": "Include all required loan payments.",
   "be.retry": "Retry save", "be.uncertain": "The save outcome is unknown. Retry the same request before editing.",
   "be.reload": "Reload and discard unsaved changes",
   "be.conflict": "The budget changed elsewhere. Your entries are still here. Reload the latest version before making your changes again.",
@@ -32,14 +40,13 @@ addStrings({
 import { budgetHelpHTML } from "./budget-help.js";
 
 const HTML = `
-  ${budgetHelpHTML}
+  <p class="hint" data-i18n="be.intro"></p>
   <form id="budget-form" novalidate class="stack">
     <p id="budget-status" class="error" role="alert"></p>
-    <button type="button" class="alink" data-go="budget-policy" data-i18n="bp.title"></button>
     <button type="button" id="budget-reload" class="alink" data-i18n="be.reload" hidden></button>
     <button type="button" id="budget-save-retry" class="cta" data-i18n="be.retry" hidden></button>
     <fieldset id="budget-fields" class="stack" style="border:0;padding:0;margin:0;min-width:0" disabled>
-    <div class="chart-controls" role="tablist" aria-label="Budget">
+    <div class="chart-controls" role="tablist" aria-label="Budget" data-i18n-aria-label="budget.editing">
       <button type="button" id="budget-tab-budget" role="tab" aria-controls="budget-panel-budget" aria-selected="true" aria-pressed="true" data-section="budget" data-i18n="be.budget"></button>
       <button type="button" id="budget-tab-funding" role="tab" aria-controls="budget-panel-funding" aria-selected="false" aria-pressed="false" tabindex="-1" data-section="funding" data-i18n="be.funding"></button>
       <button type="button" id="budget-tab-months" role="tab" aria-controls="budget-panel-months" aria-selected="false" aria-pressed="false" tabindex="-1" data-section="months" data-i18n="be.months"></button>
@@ -47,8 +54,8 @@ const HTML = `
     <div id="budget-panel-budget" role="tabpanel" aria-labelledby="budget-tab-budget" class="stack">
     <div class="card stack">
       <div class="field">
-        <label for="monthly" data-i18n="be.permission">Սովորական ամսվա գումար</label>
-        <div class="row">
+        <label for="monthly" data-i18n="be.limitQuestion">Սովորական ամսվա գումար</label>
+        <div class="row budget-amount-row">
           <input id="monthly" name="monthly" inputmode="decimal" placeholder="0" required>
           <select id="budget-currency" name="budget-currency" class="narrow">
             <option value="AMD" selected>AMD</option>
@@ -61,6 +68,7 @@ const HTML = `
         <p class="error" id="e-monthly"></p>
         <p class="hint" id="b-note" hidden></p>
       </div>
+      <div id="budget-monthly-money"></div>
       <div class="field">
         <label for="payday" data-i18n="budget.payday">Երբ է գումարը հասանելի</label>
         <div class="in unit-w"><input id="payday" name="payday" inputmode="numeric" placeholder="1–31" required><span class="unit" data-i18n="unit.day">ամսի օր</span></div>
@@ -71,7 +79,7 @@ const HTML = `
 
     </div>
     <div id="budget-panel-funding" role="tabpanel" aria-labelledby="budget-tab-funding" class="stack" hidden>
-    <div class="card stack">${fundingHTML}</div>
+    <p class="hint" data-i18n="be.todayHint"></p>
     <div class="card stack">
       <div class="field">
         <label for="opening" data-i18n="budget.opening">Վարկերի համար հասանելի գումար հիմա</label>
@@ -85,11 +93,14 @@ const HTML = `
         <p class="hint" data-i18n="budget.reserve.hint"></p>
         <p class="error" id="e-reserve"></p>
       </div>
+      <div id="budget-paid"></div>
       <div class="kv" id="b-usable-row" hidden><div><span data-i18n="budget.usable.label">Օգտագործելի միանգամյա գումար</span><b class="num ok" id="b-usable"></b></div></div>
     </div>
 
     </div>
     <div id="budget-panel-months" role="tabpanel" aria-labelledby="budget-tab-months" class="stack" hidden>
+    <div class="card stack">${fundingHTML}</div>
+    <details class="fold"><summary data-i18n="budget.months"></summary><div class="fold-body">
     <div class="card stack">
       <div class="field">
         <span class="lbl" data-i18n="budget.months">Տարբեր ամիսներ</span>
@@ -98,10 +109,13 @@ const HTML = `
         <p class="error" id="e-overrides"></p>
       </div>
       <button class="alink" type="button" id="override-add" data-i18n="budget.months.add">Ավելացնել ամիս</button>
-    </div>
+    </div></div></details>
+    <button type="button" class="alink" data-go="budget-policy" data-i18n="bp.title"></button>
+    ${budgetHelpHTML}
 
     </div>
-    <button class="cta" type="submit" id="budget-save" data-i18n="budget.save">Պահպանել բյուջեն</button>
+    <button class="cta" type="button" id="budget-next" data-i18n="be.next"></button>
+    <button class="cta" type="submit" id="budget-save" hidden data-i18n="budget.save">Պահպանել բյուջեն</button>
     </fieldset>
   </form>
 `;
@@ -116,6 +130,8 @@ const currencies = new Set(["AMD", "USD", "EUR", "RUB"]);
 const exponent = () => $("budget-currency").value === loadedCurrency ? loadedExponent : 2;
 
 function showSection(section, focus = false) {
+  $("budget-next").hidden = section !== "budget";
+  $("budget-save").hidden = section === "budget";
   for (const button of $("budget-form").querySelectorAll("[data-section]")) {
     const active = button.dataset.section === section;
     button.setAttribute("aria-selected", String(active));
@@ -212,18 +228,22 @@ async function load(discard = false) {
   loading = true; controls();
   $("budget-status").textContent = T("loading");
   try {
-    const res = await api("api/budget", { cache: "no-store" });
-    if (!res.ok) throw new Error("load");
-    const b = await res.json(), meta = checkDocument(b);
+    const read = async path => {
+      const res = await api(path, { cache: "no-store" });
+      return { ok: res.ok, body: res.ok ? await res.json() : null };
+    };
+    const [res, policies, loans] = await Promise.allSettled([
+      read("api/budget"), read("api/budget/policies"), read("api/loans"),
+    ]);
+    if (res.status !== "fulfilled" || !res.value.ok) throw new Error("load");
+    const b = res.value.body, meta = checkDocument(b);
     policyMode = false;
     let today = b.today, targets = [];
     if (b.monthly_major != null) {
-      const [policies, loans] = await Promise.all([
-        api("api/budget/policies", { cache: "no-store" }), api("api/loans", { cache: "no-store" }),
-      ]);
-      if (!policies.ok || !loans.ok) throw new Error("funding context");
-      const policyDocument = await policies.json();
-      targets = (await loans.json()).loans;
+      if (policies.status !== "fulfilled" || !policies.value.ok || loans.status !== "fulfilled" || !loans.value.ok) throw new Error("funding context");
+      const policyDocument = policies.value.body;
+      if (policyDocument.version !== meta.version || policyDocument.today !== b.today) throw new Error("budget context changed");
+      targets = loans.value.body.loans;
       if (!Array.isArray(targets)) throw new Error("loans");
       policyMode = (policyDocument.policies || []).length > 0;
       today = policyDocument.today;
@@ -242,7 +262,7 @@ async function load(discard = false) {
     funding.load(b.funding, { today, loans: targets.filter(l => l.currency === meta.currency && !l.optional_excluded && l.balance_major > 0), locked: policyMode });
     for (const id of ["monthly", "opening", "reserve"]) $(id).readOnly = policyMode;
     $("budget-currency").disabled = policyMode;
-    $("budget-panel-months").querySelectorAll("input,button").forEach(el => { el.disabled = policyMode; });
+    $("override-list").querySelectorAll("input,button").forEach(el => { el.disabled = policyMode; });
     required = b.required_major != null ? { major: b.required_major, currency: b.currency } : null;
     version = meta.version; loaded = true; dirty = false; conflict = false;
     $("budget-status").textContent = policyMode ? T("be.policyActive") : ""; $("budget-reload").hidden = true;
@@ -298,7 +318,13 @@ async function save(e) {
     if (!result.ok) {
       haptic.bad();
       const invalid = [...$("budget-form").querySelectorAll('[aria-invalid="true"]')].find(el => !el.closest("#funding-separate")?.hidden);
-      if (invalid) { showSection(invalid.closest('[role="tabpanel"]').id.replace("budget-panel-", "")); invalid.focus(); }
+      if (invalid) {
+        showSection(invalid.closest('[role="tabpanel"]').id.replace("budget-panel-", ""));
+        for (let parent = invalid.parentElement; parent; parent = parent.parentElement) {
+          if (parent.tagName === "DETAILS") parent.open = true;
+        }
+        invalid.focus();
+      }
       return;
     }
     const body = policyMode ? {
@@ -333,6 +359,9 @@ register({
   id: "budget-edit", parent: "budget", titleKey: "budget.editing", html: HTML,
   onMount() {
     const form = $("budget-form"); funding = createFunding(form, changed, exponent);
+    // Keep the declaration model intact; group questions by the borrower’s timeline.
+    $("budget-monthly-money").append($("funding-monthly-field"));
+    $("budget-paid").append($("funding-spent-field"));
     form.querySelector('[role="tablist"]').setAttribute("aria-label", T("budget.editing"));
     for (const id of ["monthly", "payday", "opening", "reserve"]) $(id).setAttribute("aria-describedby", "e-" + id);
     form.addEventListener("input", changed); form.addEventListener("change", changed);
@@ -352,6 +381,7 @@ register({
       if ($("override-list").children.length >= 36) return;
       const row = overrideRow(); $("override-list").append(row); changed(); row.querySelector("input").focus();
     };
+    $("budget-next").onclick = () => { showSection("funding"); $("opening").focus(); };
     $("budget-reload").onclick = () => load(true);
     $("budget-save-retry").onclick = save;
     form.addEventListener("submit", save);

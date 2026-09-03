@@ -29,9 +29,11 @@ export const haptic = {
 export let lang = (tg?.initDataUnsafe?.user?.language_code || "hy").slice(0, 2) === "en" ? "en" : "hy";
 document.documentElement.lang = lang;
 let locale = lang === "en" ? "en-GB" : "hy-AM";
+export let languageRevision = 0;
 
 export function setLanguage(value){
  if(value!=="hy"&&value!=="en")return;
+ languageRevision++;
  lang=value;locale=lang==="en"?"en-GB":"hy-AM";document.documentElement.lang=lang;
 }
 

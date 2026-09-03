@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -34,6 +35,11 @@ type ReminderStore interface {
 	CancelRemindersForLoan(ctx context.Context, loanID string) error
 }
 
+// ReminderDateBatcher expands the same rules for multiple instalments at once.
+type ReminderDateBatcher interface {
+	ScheduleReminderDates(context.Context, string, []time.Time) error
+}
+
 // remindHorizon is how far ahead occurrences are generated. Two weeks covers
 // the earliest reminder offset with room to spare, and keeps the table small
 // enough that a scheduling bug is visible rather than buried.
@@ -44,27 +50,39 @@ type UserLister interface {
 	ActiveLoanUsers(ctx context.Context, limit int32) ([]string, error)
 }
 
-// remindEvery is how often the tick actually does the work. The scheduler
+// remindEvery is how often the tick generates occurrences. The scheduler
 // calls every few minutes to keep the container warm; generating occurrences
 // that often would be churn for rows that change daily.
 const remindEvery = time.Hour
 
 // TickReminders schedules upcoming occurrences and sends the due ones. It is
-// called from the scheduler tick and rate-limits itself with the injected
-// clock, so calling it every minute costs one comparison.
+// called from the scheduler tick. Occurrence generation is hourly; already-due
+// deliveries are drained on every tick, including after a send retry.
 func (w *Worker) TickReminders(ctx context.Context, users UserLister) (int, error) {
 	if w.Reminders == nil || users == nil {
-		return 0, nil
-	}
-	now := w.Clock.Now()
-	last := w.lastRemind.Load()
-	if last != 0 && now.Sub(time.Unix(0, last)) < remindEvery {
 		return 0, nil
 	}
 	if !w.reminding.CompareAndSwap(false, true) {
 		return 0, nil // another tick won the walk
 	}
 	defer w.reminding.Store(false)
+	now := w.Clock.Now()
+	// Existing deliveries get a turn even when generation repeatedly times out.
+	sent, deliveryErr := w.SendDueReminders(ctx, 50)
+	last := w.lastRemind.Load()
+	if last != 0 && now.Sub(time.Unix(0, last)) < remindEvery {
+		return sent, deliveryErr
+	}
+	generationCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	generationErr := w.generateReminders(generationCtx, users, now)
+	if generationErr == nil {
+		w.lastRemind.Store(now.UnixNano())
+	}
+	return sent, errors.Join(deliveryErr, generationErr)
+}
+
+func (w *Worker) generateReminders(ctx context.Context, users UserLister, now time.Time) error {
 	// Housekeeping rides the hourly walk: completed inbox rows only serve
 	// update-id dedup, and Telegram's retries span minutes, so a week of
 	// retention is generous. Optional -- a fake store simply skips it.
@@ -77,20 +95,22 @@ func (w *Worker) TickReminders(ctx context.Context, users UserLister) (int, erro
 	}
 	ids, err := users.ActiveLoanUsers(ctx, 500)
 	if err != nil {
-		return 0, fmt.Errorf("listing accounts for reminders: %w", err)
+		return fmt.Errorf("listing accounts for reminders: %w", err)
 	}
 	for _, id := range ids {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := w.ScheduleForUser(ctx, id); err != nil {
 			// One account's broken loan must not silence everyone else's
 			// reminders; it is logged and the walk continues.
 			w.Log.WarnContext(ctx, "scheduling reminders failed", "error", err)
 		}
 	}
-	n, err := w.SendDueReminders(ctx, 50)
-	if err == nil {
-		w.lastRemind.Store(now.UnixNano())
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	return n, err
+	return nil
 }
 
 // OnLoanFiled sets up reminders the moment a loan exists: the default rules,
@@ -132,13 +152,23 @@ func (w *Worker) ScheduleForUser(ctx context.Context, userID string) error {
 		// Only the instalments inside the horizon. Generating the whole
 		// schedule would fill the table with rows nothing will read for years,
 		// and every contract change would invalidate them.
+		var dates []time.Time
 		for _, row := range s.Rows {
 			due := row.Due.AtLocal(0, 0, time.UTC)
 			if due.After(horizon) {
 				break
 			}
-			if err := w.Reminders.ScheduleReminders(ctx, due, l.ID); err != nil {
-				return fmt.Errorf("scheduling loan reminder: %w", err)
+			dates = append(dates, due)
+		}
+		if batcher, ok := w.Reminders.(ReminderDateBatcher); ok {
+			if err := batcher.ScheduleReminderDates(ctx, l.ID, dates); err != nil {
+				return fmt.Errorf("scheduling loan reminders: %w", err)
+			}
+		} else {
+			for _, due := range dates {
+				if err := w.Reminders.ScheduleReminders(ctx, due, l.ID); err != nil {
+					return fmt.Errorf("scheduling loan reminder: %w", err)
+				}
 			}
 		}
 	}

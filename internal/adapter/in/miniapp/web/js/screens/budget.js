@@ -3,16 +3,17 @@
 // payday, cash on hand, the untouched reserve, the stated months. Editing
 // is a sub-screen reached from the app bar.
 "use strict";
-import "./budget-policy.js";
 import { haptic, fmtMoney, fmtMonth, fmtFull } from "../core.js";
 import { T, sub, addStrings } from "../i18n.js";
 import { getJSON } from "../api.js";
 import { register, go, setAction, currentScreen } from "../nav.js";
 
 addStrings({'budget.cashdate':'Գումարի ամսաթիվը','budget.cashdate.unknown':'Ամսաթիվը նշված չէ'},{'budget.cashdate':'Cash as of','budget.cashdate.unknown':'Date not supplied'});
+import { minorText } from "./budget-funding.js";
 import { budgetHelpHTML } from "./budget-help.js";
+addStrings({"budget.moneyMonthly":"Վարկերի ամսական գումար"},{"budget.moneyMonthly":"Money available each month"});
+addStrings({"budget.limitOnly":"Սահմանում մնացող տեղը հասանելի կանխիկ գումար չէ։ Պլանը ստուգում է նաև գումարի մուտքի օրը։"},{"budget.limitOnly":"Room in your limit is not cash available. The plan also checks when money arrives."});
 const HTML = `
-  ${budgetHelpHTML}
   <div id="budget-view" class="stack" hidden>
     <div class="hero">
       <div class="k"><span data-i18n="budget.monthly">Ամսական բյուջե</span><span class="pill" id="bo-state"></span></div>
@@ -24,8 +25,12 @@ const HTML = `
       </div>
     </div>
     <div class="card kv" id="bo-facts"></div>
-    <button class="cta ghost" type="button" data-go="budget-policy" data-i18n="bp.title"></button>
-    <p class="lede" data-i18n="budget.note">Պլանը հավելյալը ծախսում է միայն պարտադիր վճարումները ծածկելուց հետո։</p>
+    <button class="cta" type="button" data-go="budget-edit" data-i18n="budget.edit"></button>
+    <details class="fold"><summary data-i18n="bp.title"></summary><div class="fold-body">
+    <button class="alink" type="button" data-go="budget-policy" data-i18n="bp.title"></button>
+    </div></details>
+    ${budgetHelpHTML}
+    <p class="hint" data-i18n="budget.limitOnly"></p>
     <button class="cta ghost" type="button" data-go="plan" data-i18n="budget.plan">Տեսնել պլանը</button>
   </div>
   <div id="budget-loading" hidden><div class="skel hero-skel"></div><div class="skel" style="margin-top:12px"></div></div>
@@ -42,7 +47,7 @@ const HTML = `
 `;
 
 const $ = (id) => document.getElementById(id);
-let known = false;
+let known = false, displayedBudget = null;
 
 const row = (label, value, cls) => {
   const d = document.createElement("div");
@@ -53,6 +58,7 @@ const row = (label, value, cls) => {
 };
 
 function render(b) {
+  displayedBudget = b;
   const set = b.monthly_major != null;
   $("budget-view").hidden = !set;
   $("budget-none").hidden = set;
@@ -71,6 +77,13 @@ function render(b) {
   $("bo-extra").textContent = surplus == null ? "—" : fmtMoney(Math.max(0, surplus), cur);
 
   const facts = $("bo-facts"); facts.textContent = "";
+  let monthlyMoney = T("budget.unset");
+  if (b.funding) {
+    const [whole, fraction = ""] = minorText(b.funding.monthly_minor, b.currency_exponent).split(".");
+    const decimals = fraction.replace(/0+$/, "");
+    monthlyMoney = cur + " " + whole.replace(/\B(?=(\d{3})+(?!\d))/g, " ") + (decimals ? "." + decimals : "");
+  }
+  facts.append(row(T("budget.moneyMonthly"), monthlyMoney, b.funding ? "num" : "mute"));
   facts.append(row(T("budget.payday"), b.pay_day > 0 ? sub("budget.payday.day", { d: b.pay_day }) : T("budget.unset"), b.pay_day > 0 ? "" : "mute"));
   const opening = b.opening_major || 0, reserve = b.reserve_major || 0;
   const declared = !!b.opening_as_of || opening > 0;
@@ -106,4 +119,6 @@ register({
     $("budget-retry").addEventListener("click", () => { haptic.tap(); load(); });
   },
   onShow() { load(); },
+  // Relabel the already displayed snapshot without claiming a fresh read.
+  onLanguage() { if (displayedBudget) render(displayedBudget); },
 });

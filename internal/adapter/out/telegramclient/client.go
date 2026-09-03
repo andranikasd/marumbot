@@ -1,8 +1,7 @@
 // Package telegramclient is the only outbound path to Telegram.
 //
-// One place, because Telegram's limits are per bot rather than per process: a
-// second sender somewhere else in the codebase would not know about this one's
-// budget, and the two together would exceed a limit neither was breaking alone.
+// Calls through one Client share pacing and rate-limit cooldowns. These gates
+// are process-local; separate clients or replicas do not share a bot-wide quota.
 package telegramclient
 
 import (
@@ -17,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/andranikasd/marumbot/internal/adapter/out/sysclock"
 	"github.com/andranikasd/marumbot/internal/app"
 	"github.com/andranikasd/marumbot/internal/obs"
 )
@@ -31,20 +31,21 @@ var ErrPrivateChat = errors.New("telegram: private chat required")
 
 // Client sends messages.
 type Client struct {
-	token string
-	http  *http.Client
-	base  string
+	token   string
+	http    *http.Client
+	base    string
+	pace    pacing
+	observe func(context.Context, CallObservation)
 }
 
-// New builds a client. The timeout is deliberately short: a send that has not
-// completed in ten seconds has almost certainly already been delivered, and
-// waiting longer only widens the window in which the lease expires and someone
-// else sends it again.
+// New builds a client with a ten-second network timeout. Delivery after a
+// transport timeout is unknown; the client never automatically repeats a call.
 func New(token string) *Client {
 	return &Client{
 		token: token,
 		base:  "https://api.telegram.org",
 		http:  &http.Client{Timeout: 10 * time.Second},
+		pace:  pacing{clock: sysclock.New(), chats: make(map[int64]time.Time)},
 	}
 }
 
@@ -86,6 +87,14 @@ func (c *Client) AnswerCallbackQuery(ctx context.Context, id string) error {
 }
 
 func (c *Client) call(ctx context.Context, method string, body map[string]any) error {
+	return c.callResult(ctx, method, body, nil)
+}
+
+func (c *Client) callResult(ctx context.Context, method string, body map[string]any, result any) (err error) {
+	if c.observe != nil {
+		start := c.pace.clock.Now()
+		defer func() { c.observeCall(ctx, method, start, err) }()
+	}
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return err
@@ -96,12 +105,19 @@ func (c *Client) call(ctx context.Context, method string, body map[string]any) e
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	var chat int64
+	if method == "sendMessage" {
+		chat, _ = body["chat_id"].(int64)
+	}
+	if err := c.pace.wait(ctx, chat); err != nil {
+		return err
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
 		// A transport error is ambiguous: the message may or may not have been
-		// delivered. Retryable is the safe reading, because a duplicate reminder
-		// is a nuisance and a missing one is a missed payment.
+		// delivered. ErrRetryable leaves retry policy to the owning worker;
+		// this transport does not replay an ambiguous send.
 		//
 		// The URL inside a *url.Error carries the bot token; wrapped as-is it
 		// would put the token into every log line about a network blip.
@@ -112,17 +128,42 @@ func (c *Client) call(ctx context.Context, method string, body map[string]any) e
 		return fmt.Errorf("%w: %w", ErrRetryable, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	limit := int64(1 << 16)
+	if method == "getUpdates" {
+		// One update may be as large as the inbound webhook limit. Polling
+		// requests a single update; other methods keep the smaller bound.
+		limit = 1 << 20
+	}
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 
 	switch {
 	case resp.StatusCode == http.StatusTooManyRequests:
 		// Telegram says exactly how long to wait; retrying sooner re-hits the
 		// limit and extends it.
-		if wait := retryAfter(raw); wait > 0 {
-			return &TooManyError{Wait: wait, Detail: describe(raw)}
+		wait := retryAfter(raw)
+		if wait <= 0 {
+			wait = time.Second
 		}
-		return fmt.Errorf("%w: %s: %s", ErrRetryable, resp.Status, describe(raw))
+		c.pace.cooldown(wait)
+		return &TooManyError{Wait: wait, Detail: describe(raw)}
 	case resp.StatusCode == http.StatusOK:
+		if readErr != nil {
+			return fmt.Errorf("%w: reading telegram response: %w", ErrRetryable, readErr)
+		}
+		if int64(len(raw)) > limit {
+			return fmt.Errorf("telegram: response exceeds limit")
+		}
+		if result != nil {
+			var envelope struct {
+				Result json.RawMessage `json:"result"`
+			}
+			if err := json.Unmarshal(raw, &envelope); err != nil {
+				return fmt.Errorf("telegram: decoding response: %w", err)
+			}
+			if err := json.Unmarshal(envelope.Result, result); err != nil {
+				return fmt.Errorf("telegram: decoding result: %w", err)
+			}
+		}
 		return nil
 	case resp.StatusCode >= 500:
 		return fmt.Errorf("%w: %s: %s", ErrRetryable, resp.Status, describe(raw))
@@ -151,11 +192,15 @@ func (e *TooManyError) RetryAfter() time.Duration { return e.Wait }
 func retryAfter(raw []byte) time.Duration {
 	var r struct {
 		Parameters struct {
-			RetryAfter int `json:"retry_after"`
+			RetryAfter int64 `json:"retry_after"`
 		} `json:"parameters"`
 	}
 	if err := json.Unmarshal(raw, &r); err != nil || r.Parameters.RetryAfter <= 0 {
 		return 0
+	}
+	const maxWait = time.Duration(1<<63 - 1)
+	if r.Parameters.RetryAfter > int64(maxWait/time.Second) {
+		return maxWait
 	}
 	return time.Duration(r.Parameters.RetryAfter) * time.Second
 }

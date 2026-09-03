@@ -131,8 +131,8 @@ function secretsMatch(a: string | null, b: string): boolean {
   return diff === 0;
 }
 
-/** One instance per deployment slot, so the token bucket inside the Go sender
- *  is genuinely global. */
+/** One instance per deployment slot. Background scan gates and outbound pacing
+ *  are process-local; horizontal replicas require shared coordination first. */
 function app(env: Env) {
   return getContainer(env.MARUM_APP, "singleton");
 }

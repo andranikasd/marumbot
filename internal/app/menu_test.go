@@ -139,3 +139,17 @@ func TestRefreshMenuButtonsPagesEveryAccount(t *testing.T) {
 		}
 	}
 }
+
+func TestStartupSharesMenuPublicationGate(t *testing.T) {
+	sender := &menuSenderFake{}
+	w := &Worker{Menus: sender, MiniApp: "https://example.test/app/", AppVersion: "test"}
+	w.PublishMenuDefaults(t.Context())
+	calls := len(sender.commandLanguages)
+	if calls == 0 {
+		t.Fatal("startup did not publish")
+	}
+	w.menusPub.Publish(t.Context(), sender, w.miniURL(""), nil)
+	if len(sender.commandLanguages) != calls {
+		t.Fatal("first command repeated startup publication")
+	}
+}

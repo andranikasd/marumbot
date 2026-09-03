@@ -7,17 +7,25 @@
 // back button (Telegram's own inside Telegram, ours outside) and the dock
 // hides while it is on, because a detail page has one way out, not four.
 "use strict";
-import { haptic, mainButton, backButton } from "./core.js";
-import { applyI18n, T } from "./i18n.js";
+import { haptic, mainButton, backButton, lang, toast } from "./core.js";
+import { applyI18n, T, STRINGS } from "./i18n.js";
 
 import { beginView } from "./api.js";
 
 const screens = new Map();
+let navigationRevision = 0;
 let current = null;
 let params = null;
+let renderedLanguage = lang;
 
-export function register({ id, icon, labelKey, titleKey, parent, html, onMount, onShow }) {
-  screens.set(id, { id, icon, labelKey, titleKey, parent, html, onMount, onShow, el: null });
+export function register({ id, icon, labelKey, titleKey, parent, html, onMount, onShow, onLanguage }) {
+  screens.set(id, { id, icon, labelKey, titleKey, parent, html, onMount, onShow, onLanguage, htmlLanguage: lang, el: null });
+}
+
+// Secondary tools are downloaded only when opened. Registering metadata keeps
+// parent navigation intact without evaluating their forms during startup.
+export function registerLazy({id,parent,load}) {
+  if(!screens.has(id))screens.set(id,{id,parent,load,el:null});
 }
 
 export function currentScreen() { return current; }
@@ -38,6 +46,24 @@ export function setAction(label, handler) {
 }
 
 export function go(id, withParams) {
+  const revision=++navigationRevision;
+  const pending=screens.get(id);
+  if(pending?.load){
+    $("view").setAttribute("aria-busy","true");
+    toast(T("loading"));
+    pending.promise ??= pending.load().catch(error=>{pending.promise=null;throw error;});
+    pending.promise.then(()=>{
+      if(revision===navigationRevision)go(id,withParams);
+    }).catch(()=>{
+      if(revision!==navigationRevision)return;
+      $("view").removeAttribute("aria-busy");
+      if(!current)go("loans");
+      toast(T("load.failed"));
+      setAction(T("retry"),()=>go(id,withParams));
+    });
+    return;
+  }
+  $("view").removeAttribute("aria-busy");
   if (!screens.has(id)) id = "loans";
   const view = $("view");
   for (const s of screens.values()) {
@@ -49,6 +75,7 @@ export function go(id, withParams) {
     s.el = document.createElement("section");
     s.el.className = "screen on";
     s.el.innerHTML = s.html;
+    relabel(s.el, s.htmlLanguage);
     applyI18n(s.el);
     view.appendChild(s.el);
     s.onMount?.(s.el);
@@ -101,16 +128,51 @@ export function buildTabs() {
   });
 }
 
-// Update labels without resetting unsaved child-screen forms.
+// Legacy generated action captions have no data-i18n key. Only these trusted
+// action buttons may use catalogue matching; never inspect option text, hints,
+// loan names or arbitrary content. Other labels require explicit annotations.
+function relabel(root, from) {
+ if(from===lang)return;
+ const translations=new Map();
+ for(const key of Object.keys(STRINGS[from])){
+  const before=STRINGS[from][key],after=STRINGS[lang][key];
+  if(!before||!after||before.includes('{'))continue;
+  translations.set(before,translations.has(before)&&translations.get(before)!==after?null:after);
+ }
+ for(const el of root.querySelectorAll('button.cta, button.alink, #appbar-action')){
+  if(el.hasAttribute('data-arg')||el.querySelector('input, select, textarea'))continue;
+  for(const node of el.childNodes){
+   if(node.nodeType!==3)continue;
+   const label=node.nodeValue.trim(),replacement=translations.get(label);
+   if(replacement)node.nodeValue=node.nodeValue.replace(label,replacement);
+  }
+ }
+ // The adjustment operation values are fixed UI enums, not loan identifiers.
+ for(const option of root.querySelectorAll('#bp-adjustments select option')){
+  const key={replacement_minor:'bp.replace',delta_minor:'bp.delta'}[option.value];
+  if(key)option.textContent=T(key);
+ }
+ for(const el of root.querySelectorAll('#bp-adjustments input[type="month"], #bp-adjustments select'))el.setAttribute('aria-label',T('bp.adjust'));
+ for(const el of root.querySelectorAll('#bp-adjustments input[inputmode="decimal"]'))el.setAttribute('aria-label',T('bp.limit'));
+}
+
+// Refresh forms in place; preserve the current view's stale-resource tracking.
 export function refreshLanguage(){
  $('tabs').setAttribute('aria-label',T('nav.label'));
  $('offline-text').textContent=T('offline');
  $('offline-retry').textContent=T('offline.retry');
- for(const s of screens.values())if(s.el)applyI18n(s.el);
+ for(const s of screens.values())if(s.el){relabel(s.el,renderedLanguage);applyI18n(s.el);s.onLanguage?.(s.el);}
  for(const b of document.querySelectorAll('nav.tabs button')){
   const s=screens.get(b.dataset.go);if(s)b.querySelector('span').textContent=T(s.labelKey);
  }
- const s=screens.get(current);if(!s)return;
- setTitle(T(s.titleKey||s.labelKey));
- if(!s.parent)s.onShow?.(s.el,params);
+ const s=screens.get(current);
+ if(s&&$('appbar-title').textContent===STRINGS[renderedLanguage][s.titleKey||s.labelKey])setTitle(T(s.titleKey||s.labelKey));
+ relabel($('appbar-action').parentElement,renderedLanguage);
+ const select=$('settings-language');if(select&&!select.disabled)select.value=lang;
+ renderedLanguage=lang;
+ // Read-only root cards contain generated labels/dates without annotations.
+ // Reuse their normal fresh-read path rather than guessing at user content or
+ // presenting an in-memory snapshot as fresh. Child forms and More's editable
+ // preferences must never be re-shown by a background language response.
+ if(s&&!s.parent&&s.id!=='more')s.onShow?.(s.el,params);
 }

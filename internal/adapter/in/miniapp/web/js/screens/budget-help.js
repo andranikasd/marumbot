@@ -9,7 +9,7 @@ addStrings({
   "bh.cash": "Այսօր ձեռքի տակ եղած գումարը նշեք առանձին։ Նշեք նաև պահուստը, որը չեք ուզում ծախսել։",
   "bh.paid": "«Արդեն վճարվածը» ընթացիկ բյուջետային ժամանակահատվածում վարկերին վճարած գումարն է, ոչ թե նոր հասանելի գումար։ Գումարի մուտքի օրը այն չի զրոյանում։",
   "bh.overrides": "Առանձին ամսվա սահմանը փոխարինում է սովորական սահմանին․ այն գումար չի ավելացնում։",
-  "bh.extra": "Չհաստատված լրացուցիչ գումարը երաշխավորված չէ․ նշեք այն որպես սպասվող։",
+  "bh.extra": "Չհաստատված լրացուցիչ գումարը նշեք որպես սպասվող։ Այն չի ներառվում հիմնական պլանում մինչև հաստատումը։",
 }, {
   "bh.title": "How budgeting works",
   "bh.rule": "The plan needs both available money and room in your budget. Required payments come first; extra payments use what remains.",
@@ -18,7 +18,7 @@ addStrings({
   "bh.cash": "Enter cash you hold today separately. Also set the reserve you want to keep untouched.",
   "bh.paid": "Already paid means loan payments made in the current budget period, not fresh cash. Payday does not reset it.",
   "bh.overrides": "A limit for a specific month replaces your usual limit. It does not create money.",
-  "bh.extra": "Uncertain extra money is not guaranteed. Mark it as expected.",
+  "bh.extra": "Mark uncertain extra money as expected. It stays out of the base plan until confirmed.",
 });
 
 export const budgetHelpHTML = `

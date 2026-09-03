@@ -4,24 +4,25 @@
 "use strict";
 import "./screens/home.js";
 import "./screens/plan.js";
-import "./screens/plan-history.js";
-import "./screens/plan-inverse.js";
-import "./screens/plan-comparison.js";
-import "./screens/plan-scenarios.js";
 import "./screens/loans.js";
 import "./screens/activity.js";
-import "./screens/payment.js";
-import "./screens/reconcile.js";
 import "./screens/more.js";
-import "./screens/loan.js";
-import "./screens/add.js";
 import "./screens/budget.js";
 import "./screens/budget-edit.js";
-import "./screens/budget-policy.js";
-import { buildTabs, go, refreshLanguage } from "./nav.js";
+import { buildTabs, go, refreshLanguage, registerLazy } from "./nav.js";
 import { api, prefetch, watchOffline } from "./api.js";
 
-import {lang,setLanguage} from "./core.js";
+import {lang,setLanguage,languageRevision} from "./core.js";
+
+registerLazy({id:"plan-history",parent:"plan",load:()=>import("./screens/plan-history.js")});
+registerLazy({id:"plan-inverse",parent:"plan",load:()=>import("./screens/plan-inverse.js")});
+registerLazy({id:"plan-comparison",parent:"plan",load:()=>import("./screens/plan-comparison.js")});
+registerLazy({id:"plan-scenarios",parent:"plan",load:()=>import("./screens/plan-scenarios.js")});
+registerLazy({id:"payment",parent:"activity",load:()=>import("./screens/payment.js")});
+registerLazy({id:"reconcile",parent:"activity",load:()=>import("./screens/reconcile.js")});
+registerLazy({id:"add",parent:"loans",load:()=>import("./screens/add.js")});
+registerLazy({id:"budget-policy",parent:"budget",load:()=>import("./screens/budget-policy.js")});
+registerLazy({id:"loan",parent:"loans",load:()=>import("./screens/loan.js")});
 
 buildTabs();
 document.getElementById("appbar-language").onclick=()=>go("more");
@@ -68,13 +69,26 @@ const query = new URLSearchParams(location.search);
 const requested = query.get("screen") || "home";
 
 let languageSync=null;
+let languageChoice=0;
+// A pending account read must not overtake an explicit choice, even while
+// saving that choice is still in flight.
+document.addEventListener('change',event=>{
+ if(event.target.id==='settings-language')languageChoice++;
+},true);
 function syncLanguage(){
  if(languageSync)return languageSync;
- languageSync=(async()=>{try{const res=await api('api/settings');if(!res.ok)return;const settings=await res.json();if(settings.locale!==lang){setLanguage(settings.locale);refreshLanguage();}}catch{}finally{languageSync=null;}})();
+ const revision=languageRevision,choice=languageChoice;
+ languageSync=(async()=>{try{
+  const res=await api('api/settings');if(!res.ok)return;
+  const settings=await res.json();
+  if(revision!==languageRevision||choice!==languageChoice||document.getElementById('settings-language')?.disabled)return;
+  if((settings.locale==='en'||settings.locale==='hy')&&settings.locale!==lang){setLanguage(settings.locale);refreshLanguage();}
+ }catch{}finally{languageSync=null;}})();
  return languageSync;
 }
-// Resolve the account language before mounting deep-linked forms, whose
-// dynamic labels otherwise retain Telegram's language until reopened.
-syncLanguage().finally(()=>go(requested, query.get("id") ? { id: query.get("id") } : null));
+// Settings are not a prerequisite for useful content. Mount the deep link
+// once; a late locale response only relabels the existing view in place.
+go(requested, query.get("id") ? { id: query.get("id") } : null);
+syncLanguage();
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')syncLanguage();});
 window.Telegram?.WebApp?.onEvent?.('activated',syncLanguage);

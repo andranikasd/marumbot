@@ -318,3 +318,7 @@ input[type="checkbox"]{width:22px;min-width:22px;max-width:22px;height:22px;min-
 #budget-form[aria-busy="true"] #budget-status{color:var(--hint)}
 .budget-help p{margin:0;color:var(--hint);font-size:13px}
 .budget-help b{display:block;color:var(--fg);margin-bottom:3px}
+
+/* Keep amount and currency together on narrow phones. */
+#budget-form .budget-amount-row{display:grid;grid-template-columns:minmax(0,1fr) 96px;gap:8px}
+#budget-form .budget-amount-row>*{width:100%;min-width:0}

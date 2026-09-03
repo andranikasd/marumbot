@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	neturl "net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -32,7 +31,6 @@ import (
 	"github.com/andranikasd/marumbot/internal/adapter/out/telegramclient"
 	"github.com/andranikasd/marumbot/internal/app"
 	"github.com/andranikasd/marumbot/internal/config"
-	"github.com/andranikasd/marumbot/internal/i18n"
 	"github.com/andranikasd/marumbot/internal/identity"
 	"github.com/andranikasd/marumbot/internal/obs"
 	"github.com/andranikasd/marumbot/pkg/core/money"
@@ -126,7 +124,9 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		return fmt.Errorf("identity key: %w", err)
 	}
 
-	bot := telegramclient.New(cfg.BotToken)
+	bot := telegramclient.New(cfg.BotToken).WithObserver(func(ctx context.Context, call telegramclient.CallObservation) {
+		obs.RecordTelegram(ctx, call.Method, call.Outcome, call.Duration, call.RateLimited)
+	})
 	worker := &app.Worker{
 		ProfileFlags: store, Environment: cfg.Env,
 		Inbox: store, Users: store, Loans: store, Editor: store, Budgets: store, Convos: store,
@@ -223,11 +223,7 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		defer background.Done()
 		menuCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		if err := app.PublishMenus(menuCtx, bot, cfg.MiniAppURL+"?v="+neturl.QueryEscape(cfg.Version)); err != nil {
-			log.Warn("publishing the command menus failed", "err", err)
-		} else {
-			log.Info("command menus published", "languages", len(i18n.Supported()))
-		}
+		worker.PublishMenuDefaults(menuCtx)
 		refreshed, err := worker.RefreshMenuButtons(menuCtx, store)
 		if err != nil {
 			log.Warn("refreshing per-chat menu buttons failed", "err", err, "refreshed", refreshed)
@@ -240,6 +236,32 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 			log.Warn("publishing the bot profile failed", "err", err)
 		}
 	}()
+
+	if cfg.Mode == "polling" {
+		background.Add(2)
+		go func() { defer background.Done(); hook.Poll(ctx, bot) }()
+		go func() {
+			defer background.Done()
+			ticker := time.NewTicker(cfg.TickInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					tickCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+					if _, err := worker.Drain(tickCtx, 25); err != nil {
+						log.WarnContext(tickCtx, "local inbox drain failed", "error", err)
+					}
+					if _, err := worker.TickReminders(tickCtx, store); err != nil {
+						log.WarnContext(tickCtx, "local reminder tick failed", "error", err)
+					}
+					observeQueues(tickCtx, store)
+					cancel()
+				}
+			}
+		}()
+	}
 
 	log.Info("marum listening",
 		"addr", cfg.Addr, "admin", cfg.AdminAddr, "mode", cfg.Mode, "env", cfg.Env,
@@ -307,6 +329,7 @@ func publicRoutes(a *app.Operations, hook *telegram.Webhook, w *app.Worker,
 		h := a.Health(r.Context())
 		body := map[string]any{"database": h.DatabaseOK, "migration_version": h.MigrationVersion, "version": version}
 		if o, err := a.Status(r.Context()); err == nil {
+			obs.RecordQueues(r.Context(), o.CommandsPending, o.DeliveriesPending, o.OldestCommandAgeS, o.OldestDeliveryAgeS)
 			body["oldest_pending_command_s"] = o.OldestCommandAgeS
 			body["oldest_pending_delivery_s"] = o.OldestDeliveryAgeS
 			body["commands_pending"] = o.CommandsPending
@@ -328,7 +351,9 @@ func tickHandler(w *app.Worker, users app.UserLister, serviceToken string, log *
 			rw.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		ctx, span := obs.ComponentScheduler.Enter(r.Context(), "tick")
+		tickCtx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+		defer cancel()
+		ctx, span := obs.ComponentScheduler.Enter(tickCtx, "tick")
 		defer span.End()
 
 		n, err := w.Drain(ctx, batch)
@@ -338,8 +363,8 @@ func tickHandler(w *app.Worker, users app.UserLister, serviceToken string, log *
 			writeJSON(rw, http.StatusInternalServerError, map[string]any{"error": "tick failed"})
 			return
 		}
-		// Reminders ride the same tick. The call rate-limits itself to once
-		// an hour; a failure is logged rather than failing the tick, because
+		// Reminders ride the same tick: generation is hourly, delivery is every
+		// tick. A failure is logged rather than failing the tick, because
 		// a stuck reminder must not stop the inbox draining.
 		if sent, err := w.TickReminders(ctx, users); err != nil {
 			span.RecordError(err)
@@ -357,9 +382,18 @@ func tickHandler(w *app.Worker, users app.UserLister, serviceToken string, log *
 		// not running looks exactly like a scheduler with nothing to do, and
 		// the difference matters: the tick is also what keeps the container
 		// awake, so its absence turns every message into a cold start.
+		observeQueues(ctx, w.Inbox)
 		log.InfoContext(ctx, "tick", "handled", n)
 		writeJSON(rw, http.StatusOK, map[string]any{"handled": n})
 	})
+}
+
+func observeQueues(ctx context.Context, store any) {
+	if source, ok := store.(app.OperationsStore); ok {
+		if status, err := (&app.Operations{Store: source}).Status(ctx); err == nil {
+			obs.RecordQueues(ctx, status.CommandsPending, status.DeliveriesPending, status.OldestCommandAgeS, status.OldestDeliveryAgeS)
+		}
+	}
 }
 
 func writeJSON(w http.ResponseWriter, code int, body any) {

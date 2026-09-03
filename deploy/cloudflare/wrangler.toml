@@ -23,6 +23,9 @@ type = "Text"
 globs = ["**/tokens.css"]
 fallthrough = true
 
+[build]
+command = "npm run build:assets"
+
 [observability]
 enabled = true
 
@@ -33,7 +36,7 @@ enabled = true
 name = "marum-dev"
 
 [env.dev.assets]
-directory = "../../internal/adapter/in/miniapp/web"
+directory = "dist/assets"
 binding = "ASSETS"
 run_worker_first = true
 
@@ -106,7 +109,7 @@ id = "set-after-creating-the-dev-hyperdrive-config"
 [env.prod]
 
 [env.prod.assets]
-directory = "../../internal/adapter/in/miniapp/web"
+directory = "dist/assets"
 binding = "ASSETS"
 run_worker_first = true
 

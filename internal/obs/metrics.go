@@ -14,6 +14,7 @@ import (
 // series, and a label whose cardinality grows with users is both a bill and an
 // outage. Per-entity detail belongs in logs and traces.
 type Metrics struct {
+	meter           metric.Meter
 	DBQueryDuration metric.Float64Histogram
 	DBQueryErrors   metric.Int64Counter
 	AdminSignIns    metric.Int64Counter
@@ -44,6 +45,7 @@ func newMetrics(mp metric.MeterProvider, version string) *Metrics {
 		metric.WithDescription("events considered by one ledger replay"))
 
 	return &Metrics{
+		meter:           m,
 		DBQueryDuration: f("marum_db_query_duration_seconds", "time spent in a named query", "s"),
 		DBQueryErrors:   c("marum_db_query_errors_total", "named queries that returned an error"),
 		AdminSignIns:    c("marum_admin_sign_ins_total", "admin interface sign-in attempts"),

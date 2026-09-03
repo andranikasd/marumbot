@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -148,4 +150,83 @@ func TestReminderRechecksSnoozeBeforeDelivery(t *testing.T) {
 	if !f.selectedAt.Equal(clock.at) {
 		t.Fatal("store did not receive injected clock")
 	}
+}
+
+type reminderTickFake struct {
+	reminderDeliveryFake
+	walks, reads int
+}
+
+func (f *reminderTickFake) ActiveLoanUsers(context.Context, int32) ([]string, error) {
+	f.walks++
+	return nil, nil
+}
+
+func (f *reminderTickFake) DueReminders(context.Context, int32) ([]DueReminder, error) {
+	f.reads++
+	return nil, nil
+}
+
+func TestReminderDeliveryRunsBetweenHourlyWalks(t *testing.T) {
+	f := &reminderTickFake{}
+	w := reviseWorker(t, &f.reviseFakes)
+	w.Reminders = f
+	clock := &fixedClock{at: time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)}
+	w.Clock = clock
+	for range 2 {
+		if _, err := w.TickReminders(t.Context(), f); err != nil {
+			t.Fatal(err)
+		}
+		clock.at = clock.at.Add(5 * time.Minute)
+	}
+	if f.walks != 1 || f.reads != 2 {
+		t.Fatalf("want one schedule walk, two delivery reads; got %d/%d", f.walks, f.reads)
+	}
+	clock.at = clock.at.Add(time.Hour)
+	if _, err := w.TickReminders(t.Context(), f); err != nil {
+		t.Fatal(err)
+	}
+	if f.walks != 2 || f.reads != 3 {
+		t.Fatalf("hourly walk did not resume: %d/%d", f.walks, f.reads)
+	}
+}
+
+// A repeatedly stalled generation walk must never prevent the delivery query.
+type stalledReminderWalk struct {
+	reminderTickFake
+	order []string
+}
+
+func (f *stalledReminderWalk) ActiveLoanUsers(ctx context.Context, _ int32) ([]string, error) {
+	f.order = append(f.order, "generation")
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (f *stalledReminderWalk) DueReminders(context.Context, int32) ([]DueReminder, error) {
+	f.order = append(f.order, "delivery")
+	return nil, nil
+}
+
+func TestSlowReminderGenerationCannotStarveDueDelivery(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := &stalledReminderWalk{}
+		w := reviseWorker(t, &f.reviseFakes)
+		w.Reminders = f
+		w.Clock = &fixedClock{at: time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)}
+		for range 2 {
+			if _, err := w.TickReminders(t.Context(), f); !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatal(err)
+			}
+			if t.Context().Err() != nil {
+				t.Fatal("generation canceled delivery parent")
+			}
+		}
+		if strings.Join(f.order, ",") != "delivery,generation,delivery,generation" {
+			t.Fatal(f.order)
+		}
+		if w.lastRemind.Load() != 0 {
+			t.Fatal("incomplete generation marked complete")
+		}
+	})
 }

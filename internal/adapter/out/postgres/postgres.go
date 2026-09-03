@@ -7,9 +7,12 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/andranikasd/marumbot/internal/obs"
@@ -17,7 +20,33 @@ import (
 )
 
 // Store owns the connection pool.
-type Store struct{ pool *pgxpool.Pool }
+type Store struct {
+	pool       *pgxpool.Pool
+	unregister func() error
+	closeOnce  sync.Once
+}
+
+func poolConfig(dsn string) (*pgxpool.Config, error) {
+	// Let pgx parse URL and keyword DSNs (including quoted values). Its pool
+	// parser removes pool options, so inspect presence before that conversion.
+	conn, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	if _, set := conn.RuntimeParams["pool_max_conns"]; !set {
+		cfg.MaxConns = 8
+	}
+	if cfg.MinConns < 0 || cfg.MinConns > cfg.MaxConns {
+		return nil, errors.New("pool_min_conns must be between zero and pool_max_conns")
+	}
+	cfg.MaxConnLifetime = time.Hour
+	cfg.HealthCheckPeriod = 30 * time.Second
+	return cfg, nil
+}
 
 // Open connects and verifies the database is reachable. It fails fast: a
 // service that starts and then cannot serve is worse than one that refuses.
@@ -26,13 +55,10 @@ type Store struct{ pool *pgxpool.Pool }
 // not timed - useful in tests, and in a self-hosted deployment with telemetry
 // switched off entirely.
 func Open(ctx context.Context, dsn string, m *obs.Metrics) (*Store, error) {
-	cfg, err := pgxpool.ParseConfig(dsn)
+	cfg, err := poolConfig(dsn)
 	if err != nil {
 		return nil, fmt.Errorf("parsing database url: %w", err)
 	}
-	cfg.MaxConns = 8
-	cfg.MaxConnLifetime = time.Hour
-	cfg.HealthCheckPeriod = 30 * time.Second
 	cfg.ConnConfig.Tracer = newQueryTracer(m)
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
@@ -45,10 +71,38 @@ func Open(ctx context.Context, dsn string, m *obs.Metrics) (*Store, error) {
 		pool.Close()
 		return nil, fmt.Errorf("pinging: %w", err)
 	}
-	return &Store{pool: pool}, nil
+	s := &Store{pool: pool}
+	if err := s.observePool(m); err != nil {
+		s.Close()
+		return nil, fmt.Errorf("registering pool metrics: %w", err)
+	}
+	return s, nil
 }
 
-func (s *Store) Close() { s.pool.Close() }
+func (s *Store) observePool(m *obs.Metrics) error {
+	stop, err := m.RegisterDBPool(func() obs.DBPoolStats {
+		stat := s.pool.Stat()
+		return obs.DBPoolStats{
+			Active: int64(stat.AcquiredConns()), Idle: int64(stat.IdleConns()), Max: int64(stat.MaxConns()),
+			WaitCount: stat.EmptyAcquireCount(), WaitDuration: stat.EmptyAcquireWaitTime(),
+			CanceledAcquires: stat.CanceledAcquireCount(),
+		}
+	})
+	if err != nil {
+		return err
+	}
+	s.unregister = stop
+	return nil
+}
+
+func (s *Store) Close() {
+	s.closeOnce.Do(func() {
+		if s.unregister != nil {
+			_ = s.unregister()
+		}
+		s.pool.Close()
+	})
+}
 
 // Ping reports whether the database is reachable. Used by readiness, never by
 // liveness — a liveness probe that depends on Postgres turns a database blip

@@ -173,7 +173,15 @@ func (w *Worker) handle(ctx context.Context, l Lease) {
 	ctx, span := obs.ComponentWorker.Enter(ctx, l.Command.Kind)
 	defer span.End()
 
-	err := w.apply(ctx, l.Command)
+	// Pacing and remote cooldowns must not keep a command sending past its
+	// lease. Settle the outcome with the parent context, not this work deadline.
+	remaining := LeaseFor
+	if !l.Until.IsZero() {
+		remaining = min(remaining, l.Until.Sub(w.Clock.Now()))
+	}
+	workCtx, cancel := context.WithTimeout(ctx, remaining)
+	err := w.apply(workCtx, l.Command)
+	cancel()
 	if err == nil {
 		if err := w.Inbox.Complete(ctx, l.Command.ID, l.Token); err != nil &&
 			!errors.Is(err, ErrNotLeased) {
@@ -231,22 +239,13 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 	if err != nil {
 		return fmt.Errorf("resolving chat: %w", err)
 	}
-	// A per-chat menu overrides Telegram's global default forever. Refresh it on
-	// every interaction so even an account missed by a rollout sweep converges
-	// to this build before the user opens the Mini App again.
-	if w.MiniApp != "" {
-		if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.DashboardButton(l), w.miniURL("")); err != nil {
-			w.Log.DebugContext(ctx, "menu button not refreshed", "error", err)
+	// Only announce commands that load/project loans. Cheap replies should not
+	// wait for a separate typing request. Reply-keyboard text reaches this gate
+	// after matching its command below, so it announces the work only once.
+	if c.Kind == KindAdvice || c.Kind == KindLoans {
+		if err := w.Send.SendChatAction(ctx, chat, "typing"); err != nil {
+			w.Log.DebugContext(ctx, "typing indicator failed", "error", err)
 		}
-	}
-
-	// Show that the bot heard, before doing the work that produces a reply.
-	// This does not make anything faster; it makes the wait legible, which is
-	// the difference between a bot that seems slow and one that seems broken.
-	// A failure here is ignored: an indicator that did not appear is no reason
-	// to fail the command it was announcing.
-	if err := w.Send.SendChatAction(ctx, chat, "typing"); err != nil {
-		w.Log.DebugContext(ctx, "typing indicator failed", "error", err)
 	}
 
 	switch c.Kind {
@@ -255,6 +254,11 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 		// forever — including its URL. /start re-pins it, so the one command
 		// everyone knows always leads to the current app. Best-effort: a
 		// missing button is not a reason to greet nobody.
+		if w.MiniApp != "" {
+			if err := w.Send.SetChatMenuButtonFor(ctx, chat, i18n.DashboardButton(l), w.miniURL("")); err != nil {
+				w.Log.DebugContext(ctx, "menu button not refreshed", "error", err)
+			}
+		}
 		return w.Send.SendMessage(ctx, chat, w.withTip(ctx, c.UserID, l, w.startText(l), stageNoLoans), w.mainMenu(l))
 
 	case KindHelp:
