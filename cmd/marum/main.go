@@ -222,6 +222,11 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		} else if refreshed > 0 {
 			log.Info("per-chat menu buttons refreshed", "accounts", refreshed)
 		}
+		// Discovery copy is best-effort and must not prevent either global or
+		// per-chat launch buttons from following a deployment.
+		if err := app.PublishProfile(menuCtx, bot); err != nil {
+			log.Warn("publishing the bot profile failed", "err", err)
+		}
 	}()
 
 	log.Info("marum listening",

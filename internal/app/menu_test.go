@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -26,8 +27,12 @@ func (menuChatsFake) ChatID(_ context.Context, userID string) (int64, error) {
 }
 
 type menuSenderFake struct {
-	buttons []string
-	profile []string
+	buttons          []string
+	profile          []string
+	globalURL        string
+	commandLanguages []string
+	profileErr       error
+	commandErr       error
 }
 
 func (f *menuSenderFake) SendMessage(context.Context, int64, string, any) error { return nil }
@@ -37,11 +42,19 @@ func (f *menuSenderFake) SetChatMenuButtonFor(_ context.Context, _ int64, text, 
 	return nil
 }
 
-func (f *menuSenderFake) SetMyCommands(context.Context, string, []BotCommand) error { return nil }
-func (f *menuSenderFake) SetChatMenuButton(context.Context, string, string) error   { return nil }
+func (f *menuSenderFake) SetMyCommands(_ context.Context, lang string, _ []BotCommand) error {
+	f.commandLanguages = append(f.commandLanguages, lang)
+	return f.commandErr
+}
+
+func (f *menuSenderFake) SetChatMenuButton(_ context.Context, _, url string) error {
+	f.globalURL = url
+	return nil
+}
+
 func (f *menuSenderFake) SetMyName(_ context.Context, lang, value string) error {
 	f.profile = append(f.profile, "name|"+lang+"|"+value)
-	return nil
+	return f.profileErr
 }
 
 func (f *menuSenderFake) SetMyShortDescription(_ context.Context, lang, value string) error {
@@ -54,9 +67,9 @@ func (f *menuSenderFake) SetMyDescription(_ context.Context, lang, value string)
 	return nil
 }
 
-func TestPublishMenusPublishesLocalizedProfileAndDefault(t *testing.T) {
+func TestPublishProfilePublishesLocalizedProfileAndDefault(t *testing.T) {
 	sender := &menuSenderFake{}
-	if err := PublishMenus(context.Background(), sender, ""); err != nil {
+	if err := PublishProfile(context.Background(), sender); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{
@@ -71,6 +84,37 @@ func TestPublishMenusPublishesLocalizedProfileAndDefault(t *testing.T) {
 		if !strings.HasPrefix(sender.profile[i], prefix) {
 			t.Errorf("profile call %d = %q, want prefix %q", i, sender.profile[i], prefix)
 		}
+	}
+}
+
+func TestProfileRateLimitDoesNotBlockMenus(t *testing.T) {
+	rateLimit := errors.New("profile rate limited")
+	sender := &menuSenderFake{profileErr: rateLimit}
+	ctx := context.Background()
+	if err := PublishProfile(ctx, sender); !errors.Is(err, rateLimit) {
+		t.Fatalf("profile error = %v", err)
+	}
+	var publication MenuPublication
+	const launch = "https://example.test/app/?v=2.0.0"
+	publication.Publish(ctx, sender, launch, nil)
+	publication.Publish(ctx, sender, launch, nil)
+	if sender.globalURL != launch || len(sender.commandLanguages) != 3 {
+		t.Fatalf("launch = %q, commands = %v", sender.globalURL, sender.commandLanguages)
+	}
+	if len(sender.profile) != 1 {
+		t.Fatalf("menu publication retried rate-limited profile: %v", sender.profile)
+	}
+}
+
+func TestLaunchButtonUpdatesBeforeCommandFailure(t *testing.T) {
+	failure := errors.New("commands unavailable")
+	sender := &menuSenderFake{commandErr: failure}
+	const launch = "https://example.test/app/?v=2.0.0"
+	if err := PublishMenus(context.Background(), sender, launch); !errors.Is(err, failure) {
+		t.Fatalf("command error = %v", err)
+	}
+	if sender.globalURL != launch {
+		t.Fatalf("launch button stayed stale: %q", sender.globalURL)
 	}
 }
 
