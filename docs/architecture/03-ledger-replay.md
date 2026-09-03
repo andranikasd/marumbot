@@ -1,7 +1,8 @@
 # Ledger and replay
 
-`ledger.Replay` is the definition of what Marum believes. Everything else is a
-memo of it.
+`ledger.Replay` reconstructs the core loan position from contract versions,
+an anchor and events. Payment posting/reconciliation and approved-plan replay
+have separate application records; they are not all copies of `loan_state`.
 
 ```go
 func Replay(in ledger.Input) (ledger.Result, error)
@@ -82,8 +83,10 @@ a ledger that never contained the voided payment.
 
 ## The event set hash
 
-A SHA-256 over the anchor plus the fields that change the arithmetic: event ID,
-sequence, kind, value date, amount, currency.
+The current hash covers anchor ID/date and each active event’s ID, sequence,
+kind, value date, amount and currency. It is an event-set fingerprint, not a
+complete contract/policy/input manifest; see
+[`hashEvents`](../../pkg/core/ledger/helpers.go).
 
 **Recording timestamps are excluded on purpose.** Re-entering the same payment
 later must not look like a different ledger.
@@ -97,8 +100,8 @@ confirmed this morning.
 arrears present            → unsupported
 ambiguous pre-anchor event → needs_reconciliation
 allocation policy unknown  → needs_reconciliation
-anchor not confirmed       → estimated
-anchor older than 35 days  → stale
+anchor neither bank_confirmed nor imported_verified → estimated
+anchor older than freshness threshold (default 35 days) → stale
 otherwise                  → confirmed
 ```
 
@@ -122,3 +125,24 @@ is safe degradation, not a failure.
 **Money is conserved.** A split always totals exactly the payment, with
 anything uninterpretable recorded as `Unapplied` rather than dropped. A test
 asserts the buckets fall by precisely what the split claims was applied.
+
+## Application audit and retry boundaries
+
+[Loan commands](../../internal/app/loan_commands.go) and
+[budget commands](../../internal/app/budget_commands.go) serialize on the owner,
+look up a durable receipt and compare the request hash before applying a new
+mutation. Reusing a key with different content conflicts; retrying the same
+committed command returns its original result/version, even after later edits.
+The mutation and receipt commit together. Aggregate mutation versions guard
+stale forms independently of the derived `loan_state.state_version`.
+
+[Payment reconciliation](../../internal/app/payment_reconciliation.go) keeps
+statement dates and coverage explicit. Posting and correction do not silently
+rewrite original events or substitute an inferred bank allocation.
+
+[Plan replay](../../internal/app/plan_manifest.go) is a different replay boundary:
+it normalizes the original retained input, runs the selected policy and compares
+the result hash. Unsupported manifest schema/engine returns
+`ErrHistoricalEngine`; input/result mismatch returns a conflict. Original
+manifests, policy/source history and scenario declarations persist for audit,
+while projected payment rows are rebuilt. See [database](05-database.md).

@@ -1,120 +1,101 @@
 # Releasing
 
-Tags are the trigger and the source of truth. Nothing else creates a release,
-so what is running can always be traced back to a tag.
+Tags trigger Release builds and GitHub artifacts, **not production deployment**.
+Dev deploys from main pushes (excluding docs-only/ignored paths), or through
+manual `cd-dev.yml` dispatch. No production environment exists.
 
-```mermaid
-flowchart LR
-  pr["Pull request"] --> ci["CI<br/><i>lint · vet · vuln · tests<br/>migrations · engine purity<br/>image · edge config</i>"]
-  ci --> main["Merge to main"]
-  main --> dev["CD · dev<br/><i>automatic</i>"]
-  main --> tag["Tag vX.Y.Z"]
-  tag --> rel["Release<br/><i>validate · compat · image · notes</i>"]
-  rel --> gh["GitHub Release"]
-  gh --> prod["CD · production<br/><i>required reviewer</i>"]
-```
+## Verified baseline
 
-## Two environments
+Operator-verified state supplied for this audit (2026-09-03):
 
-| | dev | production |
-| --- | --- | --- |
-| Deploys on | every merge to `main` | a published release |
-| Approval | none | required reviewer |
-| Bot | its own | its own |
-| Domain | `dev.marum.loan` | `marum.loan` |
-| Version | `0.2.1-dev.a1b2c3d` | `0.2.1` |
-| Instances | 1 | 2 |
+| Item | Verified value |
+| --- | --- |
+| Dev application version / tag | `2.0.3` / `v2.0.3` |
+| Commit | `8d34606852f5d88ef31b8b32df757e37f0cce203` |
+| Integration | PR #99 merged to `main` |
+| Database schema | 22 |
+| Planning engine | `plan/5` |
+| Dev CD | run `33774632460`, success |
+| Tag Release | run `33773187762`, success |
+| CI | run `33773084763`, success |
 
-**A separate bot per environment, always.** Sharing one would mean a dev deploy
-silently taking over the webhook of the bot real people are talking to.
-
-dev is not a staging rehearsal that happens occasionally — it is where `main`
-runs continuously. By the time a release is cut, the code has already been
-serving on dev, so a release is a **promotion of something already running**
-rather than a leap.
-
-The dev version is a pre-release of the next patch, so it always sorts *before*
-any real release and can never be mistaken for one.
+The optional Grafana annotation returned HTTP 401 (`Invalid API key`); deployment
+worked. These are verified baseline facts, not a claim that this document polls
+live infrastructure.
 
 ## Versioning
 
-Semantic versioning, `vMAJOR.MINOR.PATCH`.
+Use `vMAJOR.MINOR.PATCH`: MINOR for user-visible features, PATCH for fixes,
+MAJOR for breaking `pkg/core` API changes. The Release parser also accepts a
+hyphenated prerelease suffix; `0.x` and suffixed versions are marked prereleases.
 
-| Change | Bump |
-| --- | --- |
-| A user-visible feature | MINOR |
-| A fix with no interface change | PATCH |
-| A breaking change to `pkg/core`'s public API | MAJOR |
-| Anything at all, while below 1.0.0 | MINOR for features, PATCH for fixes |
+Automatic dev builds use the next patch after the highest stable tag plus
+`-dev.<short-sha>`. Manual dev `version` accepts only `MAJOR.MINOR.PATCH`, without
+`v` or a suffix. It stamps the selected ref; it does not check out the tag or
+check that the version belongs to that commit.
 
-**Below 1.0.0 nothing is promised to be stable**, and the release workflow
-marks every `0.x` tag as a pre-release so that is visible rather than assumed.
+The application version and engine version are distinct. The planning engine
+constant in `pkg/core/plan/search.go` is `plan/5`, recorded in certificates and
+plan manifests; it is not stamped from the release tag. Ledger replay accepts
+its engine version as input. Preserve both code revision and recorded engine
+metadata when investigating a number.
 
-`pkg/core` is importable on its own and carries its own compatibility promise.
-A change that would break an external importer is a MAJOR bump even if the bot
-is unaffected.
+## Cutting a new release
 
-### The engine version
-
-`EngineVersion` is stamped from the tag and recorded on every plan and every
-allocation result. A number shown to a user can always be traced to the code
-that produced it, which is what makes a discrepancy report answerable months
-later.
-
-## Cutting a release
+After the intended code is merged and CI passes, choose an unused version:
 
 ```bash
-git switch main && git pull
-git tag -a v0.3.0 -m "reminders and payment recording"
-git push origin v0.3.0
+git switch main
+git pull --ff-only
+VERSION=2.0.4  # example next patch; choose the intended unused version
+git tag -a "v$VERSION" -m "Release $VERSION"
+git push origin "v$VERSION"
 ```
 
-The workflow then:
+Release then:
 
-1. **Validates the tag** — strict SemVer, and it must be an ancestor of `main`.
-   A tag that is not a version is a mistake, and a mistake that reaches a
-   registry is one somebody has to chase.
-2. **Runs the full suite** with the race detector.
-3. **Checks backward compatibility** — applies this tag's migrations, then runs
-   the *previous* release's tests against them. Migrations expand first, so the
-   binary being replaced must keep working. This matters more than up/down/up:
-   rolling back a binary is routine, rolling back a migration is not.
-4. **Builds** a multi-arch image with an SBOM and a provenance attestation, and
-   pushes it to GHCR.
-5. **Publishes** a GitHub Release with notes grouped by Conventional Commit
-   type, and the image digest.
+1. Validates the version and requires the tagged commit to be an ancestor of
+   `origin/main`.
+2. Runs `go test -race -count=1 ./...`.
+3. Applies the new migrations to Postgres and runs the previous stable release's
+   tests from a clean worktree. **This job sets `GOOSE_DBSTRING`, but not
+   `TEST_DATABASE_URL`**: store tests requiring the latter skip. A green job
+   alone does not prove previous-release store compatibility with the new schema.
+4. Publishes amd64/arm64 GHCR images with SBOM, provenance and attestation.
+5. Publishes GitHub Release notes grouped from Conventional Commits and the image
+   digest. There is no deployment job chained after this.
 
-## Commits
+CI separately runs store tests against a migrated Postgres with
+`TEST_DATABASE_URL`, plus lint, vet/vulnerability checks, tests, Mini App and
+smoke regressions, arm64 determinism, engine isolation, migration reversibility,
+Worker checks and image build. Secret scanning is a separate workflow.
 
-Conventional Commits. The release notes are generated from them, so a lazy
-subject line becomes a bad changelog entry.
+## Deploying an explicit release to dev
 
-```
-feat(core): add payment allocation and ledger replay
-fix(obs): correlate logs with the span that produced them
-```
+First verify the selected source equals the release tag. With local refs freshly
+updated, the current baseline check and dispatch are:
 
-Subject ≤ 50 characters, imperative mood, no trailing period. The body explains
-**why**, and only when the why is not obvious. Sign off with `git commit -s`.
-
-## Deploying
-
-Production follows a **published release**, never a branch. dev follows `main`.
-
-```
-expand migration → deploy dual-schema code → smoke → (rollback on failure)
+```bash
+test "$(git rev-parse main)" = "$(git rev-parse 'v2.0.3^{commit}')"
+gh workflow run cd-dev.yml --ref main -f version=2.0.3
 ```
 
-Rolling back the binary never requires rolling back the schema, because the
-schema only ever expanded. A destructive contract migration happens in a later
-release, once nothing reads the old representation.
+The workflow checks out remote `main`; ensure it has not advanced since that
+comparison. If main has moved, do not stamp newer code as `2.0.3`. Use the normal
+dev stamp or cut the appropriate new release. Tag-ref dispatch is rejected by
+dev environment protection; retain the protection.
 
-Both pipelines call the same reusable workflow, so dev genuinely rehearses
-production: the same steps, the same order, the same smoke test. Re-run either
-manually from **Actions → CD · dev** or **CD · production**.
+See [deployment.md](deployment.md) for infrastructure, expand migrations,
+pre-release rollback target capture, secret sync and exact-version smoke.
+`cd-prod.yml` remains manual future use only; do not treat it as a ready
+promotion command.
 
-## Hotfixes
+## Commits and hotfixes
 
-Branch from the tag, fix, tag a PATCH, and merge back to `main`. Do not tag off
-a branch that is not an ancestor of `main` — the workflow refuses it, on
-purpose.
+Use Conventional Commits, subject at most 50 characters, imperative mood and
+no trailing period. Explain why in the body when needed; sign off with
+`git commit -s`.
+
+For a hotfix, branch from the appropriate tag, fix and merge to main before
+pushing a PATCH tag. The tagged commit must be an ancestor of main; dev follows
+the main source, not whichever tag was most recently published.

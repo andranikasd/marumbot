@@ -1,84 +1,85 @@
 # System overview
 
-Marum is one Go binary and one Postgres database. Everything else — the
-Telegram webhook, the command worker, the scheduler, the message sender, the
-calculation engine and the admin interface — lives inside that binary and is
-selected by configuration rather than by deployment.
+This audit describes development **v2.0.3**, commit
+`8d34606852f5d88ef31b8b32df757e37f0cce203`, schema **22**, engine **`plan/5`**.
+There is no production deployment. The
+[development acceptance evidence](../design/v3/development-acceptance.md)
+defines the supported bounds and remaining field validation. The
+[release checklist](../design/v3/release-checklist.md) records the completed rollout.
 
-That is a deliberate reversal of an earlier design. Splitting into services
-multiplied cold starts, idle cost and failure modes without solving the risk
-that actually threatens this product, which is arithmetic being wrong.
-
-That risk is measured rather than asserted. `internal/corpus` replays the
-repayment schedules real lenders issued, row by row, and fails on a single
-minor unit of disagreement; the loan agreement in it reproduces 59 of its 59
-non-final rows exactly, to the luma, on interest and on principal.
-That is one lender and two documents. Phase 1 does not close until ten
-schedules from four lenders reproduce, and the corpus is a long way from it —
-[money and dates](04-money-and-dates.md) records what it does and does not
-show.
+Marum is a Telegram loan repayment planner: one Go binary and PostgreSQL.
+Arithmetic is deterministic; there is no AI in the product. The public listener
+serves the Telegram webhook, authenticated Mini App, internal tick and bounded
+health/status endpoints. Admin has a separate authenticated listener, exposed on the development admin
+hostname; it is not a loopback-only service.
 
 ```mermaid
 flowchart TB
-  user["Borrower<br/>Telegram client"]
-  tg["Telegram Bot API"]
-  cf["Cloudflare<br/>DNS · TLS · WAF"]
-
-  subgraph app["marum — one Go binary"]
-    web["webhook<br/>authenticate, normalise,<br/>persist, answer 200"]
-    worker["command worker<br/>lease · apply · enqueue"]
-    sched["scheduler<br/>60s tick"]
-    send["sender<br/>single leader"]
-    admin["admin interface<br/>private, loopback"]
-    core["pkg/core<br/>pure engine"]
-  end
-
-  pg[("PostgreSQL<br/>inbox · ledger · state · outbox")]
-  obs["OTLP → Grafana"]
-
-  user <--> tg --> cf --> web
-  web --> pg
-  worker --> pg
-  worker --> core
-  sched --> pg
-  send --> pg
-  send --> tg
-  admin --> pg
-  app -.-> obs
+  user["Borrower · private Telegram chat"] <--> tg["Telegram Bot API"]
+  tg --> edge["Cloudflare Worker"]
+  edge --> hook["Webhook · persist, then attempt handling"]
+  user --> mini["Mini App · signed Telegram initData"]
+  edge --> tick["Internal tick · inbox, reminders, shadow"]
+  hook --> app["internal/app · use cases"]
+  mini --> app
+  tick --> app
+  admin["Admin · identities, TOTP, roles"] --> app
+  app --> core["pkg/core · pure arithmetic and planning"]
+  app --> store["Postgres adapter"]
+  store --> pg[("Facts · declarations · receipts · manifests · caches")]
+  app --> sender["Telegram client"]
+  sender --> tg
 ```
 
 ## The parts
 
-| Component | Package | Responsibility |
+| Component | Source | Responsibility |
 | --- | --- | --- |
-| webhook | `internal/adapter/in/telegram` | Verify the secret token, normalise the update, persist it, answer 200. Nothing expensive. |
-| command worker | `internal/adapter/in/telegram` | Lease a command, apply the whole effect in one transaction, complete it with a fencing token. |
-| scheduler | `internal/adapter/in/tick` | 60-second tick under an advisory lock. Generates reminders, groups deliveries, reconciles. |
-| sender | `internal/adapter/out/telegramclient` | Exactly one active instance. 28 msg/s globally, 1 msg/s per chat. |
-| admin | `internal/adapter/in/admin` | Private interface for the operator. See [admin UI](06-admin-ui.md). |
-| engine | `pkg/core` | Pure, deterministic, no I/O. Replayed against real lender schedules by `internal/corpus`. See [money and dates](04-money-and-dates.md). |
-| store | `internal/adapter/out/postgres` | The only package that talks to the database. |
+| Wiring and tick | [cmd/marum/main.go](../../cmd/marum/main.go) | Compose services; drain inbox and invoke reminder/shadow work through the internal tick. |
+| Webhook | [telegram/webhook.go](../../internal/adapter/in/telegram/webhook.go) | Authenticate, normalize private-chat updates, persist, then attempt immediate handling within a bounded request. |
+| Command worker | [app/worker.go](../../internal/app/worker.go) | Lease and process commands; complete/fail using a fencing token. |
+| Mini App | [miniapp](../../internal/adapter/in/miniapp) | Borrower UI and authenticated loan, payment, budget, planning and preference workflows. |
+| Reminders | [app/reminders.go](../../internal/app/reminders.go) | Generate occurrences and deliver due required/optional reminders; see [messaging](07-messaging.md). |
+| Telegram client | [telegramclient/client.go](../../internal/adapter/out/telegramclient/client.go) | Outbound Bot API calls; the current client is not a distributed rate-limited sender queue. |
+| Admin | [admin UI](06-admin-ui.md) | Role-scoped inspection, support, policy review/publication and access management. |
+| Engine | [pkg/core](../../pkg/core) | Money, dates, amortisation, allocation, ledger replay and dated portfolio planning. |
+| Store | [postgres](../../internal/adapter/out/postgres) | Database access using SQL from [queries](../../queries). |
 
 ## Rules that shape everything else
 
-1. **Dependencies point inward.** Adapters depend on `internal/app`, which
-   depends on `pkg/core`. The engine imports nothing from `internal/`, enforced
-   by `depguard` and by a CI job that builds the engine on its own. This is also
-   why the corpus that proves the engine correct sits in `internal/corpus`: it
-   reads files, and the engine performs no I/O.
-2. **Acknowledgement means durable acceptance.** Telegram gets its 200 only
-   after the command has committed. A crash after the answer cannot lose the
-   action.
-3. **No network call inside a transaction.** Telegram, object storage and
-   telemetry all happen after the commit.
-4. **Facts are append-only.** A mistake is superseded or voided, never edited.
-5. **Derived state is disposable.** Delete `loan_state` and replay rebuilds it
-   byte for byte.
+1. **Dependencies point inward:** adapters → app → core. Core imports no
+   `internal` package and performs no I/O or randomness.
+2. **Money is integer minor units.** The unchanged float-exception policy
+   and its obsolete package reference are explained in the
+   [engineering guide](../engineering-guide.md#11-the-five-invariants).
+3. **Time is supplied.** `time.Now()` belongs only in the system-clock adapter;
+   the engine receives business dates explicitly.
+4. **Financial facts are append-only.** Corrections append voids/reversals and
+   replacement facts. `loan_state` is a rebuildable, version-guarded cache.
+5. **No amount or personal identifier in logs or metric labels.** Use request
+   correlation; restricted audit records are a separate data surface.
+6. **Transactions belong to use cases; no network call inside one.** A durable
+   receipt and its mutation commit together. This does not mean the entire bot
+   conversation, including its Telegram reply, is one database transaction.
+7. **Derived projections are recomputed; audit inputs survive.** Original budget
+   declarations, policies, scenario changes, activation manifests and hashes are
+   retained. “Plans are never persisted” is not the storage contract.
+
+## Evidence and limits
+
+The [golden manifest](../../testdata/golden/MANIFEST.json) records exact-row
+coverage and provisional/experimental support per fixture. It includes two
+Inecobank documents, a Unibank worked schedule and a CBA regulatory example;
+none establishes lender-wide coverage. Unknown allocation rules remain
+`unknown/v0` or cause explicit refusal.
+
+`plan/5` separates funding from spending permission. Search certificates state
+what was searched and what remains unknown; reduced-domain dynamic and inverse
+proofs are not general optimality guarantees. See [domain model](02-domain-model.md)
+and [money and dates](04-money-and-dates.md).
 
 ## Where to go next
 
-- [Domain model](02-domain-model.md) — what a loan actually is here
-- [Ledger and replay](03-ledger-replay.md) — how a balance is derived
-- [Money and dates](04-money-and-dates.md) — the arithmetic, and where it bites
-- [Database](05-database.md) — the schema
+- [Domain model](02-domain-model.md) · [Ledger and replay](03-ledger-replay.md)
+- [Money and dates](04-money-and-dates.md) · [Database](05-database.md)
 - [Admin UI](06-admin-ui.md) · [Messaging](07-messaging.md) · [Observability](08-observability.md)

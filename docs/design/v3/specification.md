@@ -1,5 +1,10 @@
 # Marum v3 — Undebt.it-Informed Product, UX, Budget, and Engine Specification
 
+> **Original v3 product specification, preserved as proposed.** Statements below describe their original baseline,
+> not the current deployed feature set or remaining release gates. Original
+> content is retained for traceability. See [current state](../../current-state.md) for v2.0.3
+> and links to current acceptance and release evidence.
+
 **Status:** proposed implementation specification  
 **Date:** 2 September 2026  
 **Scope:** Telegram bot chat, Telegram Mini App, administrator interface, budget semantics, planning engine, data/API contracts, and delivery plan  

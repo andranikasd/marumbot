@@ -1,5 +1,10 @@
 # Marum Decision Engine Review and Definition of Done v2
 
+> **Historical decision-engine review (2026-08-27).** Statements below describe their original baseline,
+> not the current deployed feature set or remaining release gates. Original
+> content is retained for traceability. See [current state](../current-state.md) for v2.0.3
+> and links to current acceptance and release evidence.
+
 **Date:** 27 August 2026  
 **Scope reviewed:** `advice.go`, `plan.Search`, goal ranking, monthly simulator, `stepCache`, amortization engine, inverse budget solver, report output, and the proposed 25-point acceptance checklist.  
 **Desired product claim:** calculate the best possible repayment scenario without AI, using the lender's arithmetic and clearly stated assumptions.

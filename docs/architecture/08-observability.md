@@ -1,8 +1,10 @@
 # Observability
 
-Five signals, correlated by one trace ID. `make up` brings the whole stack up
-locally; production sends the same OTLP to Grafana Cloud. **Only the URL
-differs**, so what is exercised on a laptop is what runs in production.
+Traces, metrics, logs and continuous profiles are wired by
+[internal/obs](../../internal/obs). The local Compose stack includes the OTel
+Collector, Grafana, Tempo, Loki, Prometheus and Pyroscope. Export destinations
+are configurable; **there is no production deployment** and this document does
+not claim production parity or measured capacity.
 
 ```mermaid
 flowchart TB
@@ -36,54 +38,55 @@ flowchart TB
 | Starting from | Path |
 | --- | --- |
 | A latency spike | Exemplar on the panel → the exact trace → its spans → each span's logs |
-| An error alert | Alert annotation carries `trace_id` → trace → the failing span |
+| A traced error | Follow its correlation ID to the trace and failing span; aggregate alerts do not inherently identify one request |
 | A user quotes a correlation ID | Loki filter on structured metadata → `trace_id` → full trace |
 | CPU high, no slow trace | Pyroscope directly — the case traces cannot answer |
 
 Span → logs works because the log handler stamps `trace_id` and `span_id` onto
-every record from the context, and the Tempo datasource queries Loki on that
-metadata field. The built-in `filterByTraceID` greps the log *line*, which
+records with a valid span context, and the Tempo datasource queries Loki on
+that metadata field. The built-in `filterByTraceID` greps the log *line*, which
 never contains the ID.
 
 ## Seeing inside the monolith
 
-Marum is one deployable but several independent pieces of work. A service graph
-keyed on `service.name` shows **one node**, which is true of the deployment and
-useless for understanding the system.
+Marum is one deployable but several independent pieces of work. A single
+shared `service.name` would collapse those pieces into one graph node.
 
-Every span therefore carries `marum.component`, and Tempo emits it as a span-
-metric dimension:
-
-```go
-ctx, span := obs.ComponentStore.Start(ctx, "select.loans")
-```
+Component tracing uses one provider per logical component with
+`service.name=marum-<component>`, `service.namespace=marum` and
+`marum.component`. `Enter` and `Call` create server/client boundaries, allowing
+the service graph to show logical edges inside the monolith. These names do not
+mean the components are separately deployed services.
 
 | Component | Work |
 | --- | --- |
-| `webhook` | authenticate, normalise, persist, answer |
+| `webhook` | authenticate, normalize, persist and attempt immediate handling |
 | `worker` | lease a command and apply its effect |
-| `scheduler` | tick: generate, group, reconcile |
-| `sender` | the single rate-limited Telegram egress |
-| `engine` | pure calculation |
+| `scheduler` | tick: inbox, reminders and shadow work |
+| `sender` | outbound Telegram calls |
+| `engine` | calculation spans around the pure engine |
 | `store` | database access |
-| `admin` | the private operator interface |
+| `admin` | private operator interface |
 
-The **Inside the monolith** dashboard row reads call rate, p95, p99 and errors
-per component. The service graph stays for what crosses a process boundary —
-`user → marum → postgresql`.
+See [component tracing](../../internal/obs/component.go) and
+[provider configuration](../../internal/obs/obs.go). The pure core does not
+export telemetry or perform network I/O itself.
 
 ## What never reaches a sink
 
-A redacting `slog` handler strips:
+The [redacting `slog` handler](../../internal/obs/redact.go) replaces
+`money.Amount` values by type and attributes whose keys contain denied terms
+(amount, balance, principal, payment, instalment, interest, fee, penalty, chat,
+telegram, token, secret, password, payload, body, phone or card). It recursively
+scrubs groups, reduces error values to their concrete type and truncates long
+attribute strings after 512 bytes. It does not make arbitrary free-text logging
+safe.
 
-- any value of type `money.Amount` — **by type, not by field name**
-- keys matching a denylist: amount, balance, principal, payment, interest, fee,
-  penalty, chat, telegram, token, secret, password, payload, body, phone, card
-- anything over 512 bytes
-
-No user, loan or chat identifier is ever a metric **label**. Metric labels are
-billed by active series, and a label whose cardinality grows with users is both
-a bill and an outage. Per-entity detail lives in logs and traces.
+**No amount or personal identifier belongs in logs or metric labels.** Use a
+request correlation ID, bounded labels and non-personal diagnostics. Restricted
+admin access/security audit records are distinct from ordinary telemetry; do
+not route financial evidence into logs or traces as a substitute for authorized
+audit access.
 
 `service.version` is deliberately **not** a resource attribute: resource
 attributes become metric labels, and a label that changes every deploy
@@ -92,16 +95,18 @@ once by `marum_build_info`.
 
 ## Profiling
 
-`pyroscope-go`, five profile types, **60-second** upload interval rather than
-the SDK default of 15s — the default is a coin flip against the free-tier
-allowance and buys resolution nobody needs at a few requests per second.
+`pyroscope-go` uploads CPU, allocation-object/space and in-use-object/space
+profiles at a configured **60-second** interval. Grafana provisions a
+trace-to-profile link by service. That link alone does not prove attribution
+of samples to an individual span or guarantee matching profiles for every
+logical component service name.
 
-Span profiles are the part that earns its keep: a slow span links to the flame
-graph *of that span*, not a process-wide average.
+## Deployment and capacity claims
 
-## Free tier
-
-Everything above fits inside Grafana Cloud's free tier by construction. The
-binding constraints are **configuration choices, not volume** — trace volume
-binds at roughly 117,000 users, but a third synthetic probe breaks the
-allowance next week. See §11.12 of the design document.
+An empty OTLP endpoint disables export and leaves stdout logging; profile
+startup also depends on reaching the configured telemetry setup and having a
+Pyroscope address. Configuration and pricing assumptions are not measured
+capacity or a guaranteed free-tier fit. Local dashboard provisioning is in
+[deploy/observability](../../deploy/observability); development acceptance and
+remaining field evidence are in
+[development acceptance](../design/v3/development-acceptance.md).

@@ -1,9 +1,9 @@
 # Development acceptance evidence
 
-Branch: `feature/v1.1.0-complete-ui-redesign`.
-Target: development `2.0.2`, a new immutable asset version after `2.0.0`.
-This document describes software evidence. Deployment status and run links belong
-in `release-checklist.md`; this file does not claim a deployment happened.
+Application release: **v2.0.3**, merged into `main` through PR #99 from
+`feature/v1.1.0-complete-ui-redesign`. Schema 22; engine `plan/5`.
+This file records software evidence and supported scope; the
+[release checklist](release-checklist.md) records the completed development rollout.
 
 ## Payment lifecycle and current-period accounting
 
@@ -74,7 +74,7 @@ rules and never replace base assumptions.
   payload. Cases require classified evidence; no financial-fact overwrite API
   exists. Profile flags act independently, and historical replay uses original manifests with the available engine. An
   unavailable engine version returns a visible refusal; it never substitutes
-  the latest rules. This is the first deployment of immutable plan history.
+  the latest rules. Immutable plan history is deployed in the current development release.
 - Public readiness and queue summaries use a separate non-personal service;
   administrative authorization is not weakened to make health checks pass.
 
@@ -84,6 +84,23 @@ key rotation, export/pagination and additional billing/support operations.
 
 ## Evidence that software tests cannot supply
 
-The user's point 4 is the final physical Telegram/iPhone check. Participant
+Physical Telegram/iPhone validation remains a user-owned field check after the
+v2.0.3 fixes; earlier screenshots supplied the mobile regressions. Participant
 usability trials and two months of real bank reconciliation remain field
 validation, not outcomes proved by synthetic examples or automated tests.
+
+## v2.0.3 budget guidance and mobile recovery
+
+Budget and Money include collapsed English/Armenian guidance separating spending
+limits, available cash, reserves, expected receipts and already-made payments.
+Language selection precedes collapsed reminder settings. Date/time/month field
+widths, checkbox controls, save styling and Retry text have mobile regressions.
+
+API fetch and body reads have bounded waits. Visible-screen stale warnings do
+not discard hidden stale markers; successful rereads refresh their own state.
+Plan comparisons load on demand and reset obsolete values. Budget load/save
+retry controls are distinct, and financial writes never auto-retry.
+
+Evidence: Mini App behavior suites, adapter race tests and synthetic 320px/390px
+English/Armenian browser checks. Physical Telegram/iPhone validation remains a
+separate field check. See the [budget guide](../../product/budgeting.md).

@@ -1,8 +1,9 @@
 # Domain model
 
 The central idea: **Marum separates what it was told from what it worked out.**
-Four things change for different reasons, at different times, from different
-sources, so they are four different tables and four different Go types.
+The loan ledger separates contract terms, bank observations, reported events
+and derived state. Budget declarations, payment posting facts and plan history
+add distinct records around those core types.
 
 ```mermaid
 flowchart TB
@@ -13,7 +14,7 @@ flowchart TB
   r{{"Replay"}}
   a["Allocation results<br/><i>superseded, never rewritten</i>"]
   st["loan_state<br/><i>rebuildable cache</i>"]
-  p["Projection<br/><i>never stored</i>"]
+  p["Projection<br/><i>recomputed from retained inputs/policy</i>"]
 
   c --> r
   s --> r
@@ -34,8 +35,10 @@ maturity, rounding policy, the allocation policy that governs it.
 
 Immutable and versioned. A restructuring or a rate change creates a **new
 version**; the old one stays, because an event recorded last year must still be
-interpretable under the terms that applied then. Effective periods may not
-overlap.
+interpretable under the terms that applied then. At the shared boundary date
+of a revision, replay selects the version with the latest effective start;
+accrual splits intervals at version boundaries. See
+[replay implementation](../../pkg/core/ledger/helpers.go).
 
 ### 2. Bank snapshot — `model.Snapshot`
 
@@ -44,13 +47,13 @@ split into buckets that are settled independently: principal, accrued interest,
 unpaid interest, current fees, overdue fees, penalties, overdue principal,
 advance credit.
 
-It carries a **trust level**, and only one of them counts:
+It carries a **trust level**:
 
 | Trust | Meaning |
 | --- | --- |
 | `user_entered` | A number the borrower typed. Usable, labelled, does not reset drift. |
-| `bank_confirmed` | Confirmed against the bank's app, statement or schedule. **The only kind that anchors a confident plan.** |
-| `imported_verified` | Imported from a supported source and confirmed. Not in the MVP. |
+| `bank_confirmed` | Confirmed against the bank's app, statement or schedule. Eligible for confirmed replay grading, subject to other checks. |
+| `imported_verified` | Recognized as confirmed by core replay; this does not establish an available verified-import workflow. |
 
 Marum never infers a snapshot. If it does not have one it says so.
 
@@ -75,10 +78,10 @@ Conflating the two mis-states interest by four days.
 
 ### 4. Derived state — `model.LoanState`
 
-A cache with an `event_set_hash` and an optimistic-lock `state_version`. A
-nightly job recomputes it; a mismatch rebuilds the cache and raises an alert,
-because the two disagreeing means one of them is wrong and it is not the
-ledger.
+A cache with an `event_set_hash` and an optimistic-lock `state_version`.
+`ledger.Replay` provides deterministic reconstruction from original facts. The
+current tick wiring does not run a nightly full-cache replay/repair job; do not
+confuse that intended operational check with implemented statement reconciliation.
 
 ## Reliability is part of the state
 
@@ -87,7 +90,7 @@ replay rather than decided by the interface.
 
 | Reliability | Tier | May show |
 | --- | --- | --- |
-| `confirmed` | confident | plans, savings, debt-free dates |
+| `confirmed` | confident | eligible for plans, savings and dates within supported planner bounds |
 | `estimated` | indicative | projections, labelled with the anchor's age |
 | `stale` | indicative | same, plus a prompt to confirm the balance |
 | `needs_reconciliation` | blocked | the ledger and the exact reason |
@@ -106,3 +109,61 @@ only the second can be checked against a bank statement.
 
 `AdvanceCredit` is money the lender is *holding*, so it reduces what is owed
 rather than being a debt.
+
+## Payment posting and reconciliation
+
+The [payment use case](../../internal/app/payments.go) adds reported, pending
+and posted lifecycle facts around the core ledger. Original transaction/value
+dates remain explicit. A bank-reported principal/interest/fee allocation is
+optional and must sum to the payment; absence means unknown, not an inferred
+principal reduction. User-entered “posted” does not promote trust to
+bank-confirmed.
+
+Corrections append a reversal/void and replacement, rather than overwriting a
+financial fact. [Reconciliation](../../internal/app/payment_reconciliation.go)
+records the statement, event coverage, declared after-payment cash and spending
+atomically, guarded by loan and budget versions. A correction to a covered
+payment requires a fresh statement.
+
+## Budget: permission is not funding
+
+[Budget funding](../../internal/app/budget_funding.go) says which cash is
+available and when. Spending permission says how much may be used in an
+independent spending period. Confirmed cash, expected receipts, reserve and
+already-spent totals are separate. New calculations require an explicit funding
+declaration; original historical manifests retain their original interpretation.
+
+[Effective-dated policies](../../internal/app/budget_policies.go) support
+fixed/percentage changes with caps, whole-period replacements, carry and
+confirmed released-payment rules. Future-funding edits preserve reconciled cash,
+spent totals, reserve and permission. Routing declarations can pool, earmark,
+split an entire cash event, or hold it until a date/threshold; past routing needs
+explicit retained-cash reconfirmation, never an assumption that cash remains.
+
+## Planning, scenarios and activation
+
+[plan.Input](../../pkg/core/plan/input.go) supplies the dated portfolio simulator
+with loan positions, cash and spending rules. Required payments, reserve and
+permission constrain optional actions. Comparison normalizes one source input;
+activating a named baseline preserves that policy and does not borrow the
+optimizer winner's certificate.
+
+Projections are recomputed, but **original plan inputs and decisions persist**.
+[PlanManifest](../../internal/app/plan_manifest.go) records source identity,
+schema/engine version, input, goal, selected policy, input/result hashes and
+budget version. Activation appends a version and activation event with a durable
+receipt and expected revision; it checks sources and valuation date before a
+new activation.
+
+[Scenarios](../../internal/app/plan_scenarios.go) retain the original manifest,
+budget declaration, changes, selected policy and result hash. Preview/save do
+not activate. Activation applies the budget declaration and plan together under
+source/version checks. Historical replay checks original hashes and refuses an
+unavailable engine rather than substituting current rules.
+
+The [acceptance bounds](../design/v3/development-acceptance.md) remain explicit:
+inverse proof is limited to the supported fee-free zero-interest domain;
+dynamic proof covers a reduced independent-oracle domain. Unknown lender
+clauses, posting calendars or fee maxima stay unknown/refused. Search coverage
+and unknown bounds must remain visible; there is no lender-wide or general
+optimality claim.

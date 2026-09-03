@@ -1,131 +1,97 @@
 # Messaging
 
-Everything Telegram touches, in both directions. This is where the delivery
-guarantees live, and where the design is most explicit about what it cannot
-promise.
+Telegram communication is private-chat only. The
+[normalizer](../../internal/adapter/in/telegram/update.go) rejects group/channel
+messages, bots, invalid IDs and mismatched sender/chat ownership, including
+callbacks. The outbound [client](../../internal/adapter/out/telegramclient/client.go)
+also refuses non-positive chat IDs so legacy group bindings cannot receive
+financial messages.
 
-## Inbound: acknowledgement means durable acceptance
+## Inbound durability and retries
 
 ```mermaid
 sequenceDiagram
     participant T as Telegram
-    participant W as webhook
+    participant W as Webhook
     participant D as PostgreSQL
-    participant C as command worker
-    participant S as sender
-
-    T->>W: update (secret token header)
-    W->>W: verify, bound, normalise
-    W->>D: INSERT ON CONFLICT (telegram_update_id) DO NOTHING
-    D-->>W: commit
-    W-->>T: 200 OK — only after the commit
-    Note over W,T: Crash before this point: Telegram retries.<br/>Crash after: the command is already durable.
-    C->>D: lease command (fencing token)
-    C->>C: apply effect: event, allocation, state, reminders
-    C->>D: one transaction; complete with the same token
-    Note over C: No Telegram call inside this transaction.
-    S->>D: claim reply delivery
-    S->>T: sendMessage
-    S->>D: mark sent + message_id
+    participant C as app.Worker
+    W->>W: Verify configured secrets; normalize private update
+    W->>D: Persist command, unique telegram_update_id
+    D-->>W: Accepted or duplicate
+    W->>T: Acknowledge callback where applicable
+    opt Newly accepted command
+        W->>C: HandleOne, bounded to 10 seconds
+        C->>D: Lease the named command
+        C->>C: Apply use case
+        C->>T: Send reply
+        C->>D: Complete/fail with fencing token
+    end
+    W-->>T: HTTP 200 after durable acceptance
 ```
 
-### Why a durable inbox, not a dedup table
+The [webhook](../../internal/adapter/in/telegram/webhook.go) attempts immediate
+handling after persistence. Failure of that attempt does not turn an accepted
+command into HTTP 500: the internal tick drains pending work later. Persistence
+failure does return 500. Unsupported or malformed updates are acknowledged
+without creating a financial command.
 
-A table holding only `update_id` is unsafe. Insert the ID, crash before
-applying the action, and Telegram's retry is discarded as a duplicate — the
-user's payment is silently lost. The inbox stores the **normalised command and
-its processing state**, so a retry finds work still pending.
+The durable inbox holds payload and processing state, not just a deduplication
+ID. Leases carry fencing tokens; a stale worker cannot complete a reclaimed
+lease. [Inbox policy](../../internal/app/inbox.go) sets five attempts with
+backoff; the hourly reminder walk purges completed rows older than seven days.
+Telegram update deduplication is therefore not permanent history.
 
-### Leases and fencing
+Loan/budget/payment/preference/activation mutations have their own durable
+command identities and transaction boundaries. Their receipts prevent a lost
+response from appending the same fact or consuming another aggregate revision;
+see [database](05-database.md). The bot's whole apply-and-reply path is not one
+transaction, and a financial receipt does not guarantee exactly-once messaging.
 
-Claiming sets `status='leased'` and a `lease_token`. Completion requires the
-same token:
+## Outbound delivery
 
-```sql
-UPDATE telegram_commands
-   SET status = 'completed', completed_at = now()
- WHERE id = $1 AND status = 'leased' AND lease_owner = $2 AND lease_token = $3;
-```
+[app.Worker](../../internal/app/worker.go) and
+[reminders](../../internal/app/reminders.go) call the Telegram client directly.
+The schema retains notification delivery/item tables and admin views, but the
+current wiring does not implement a single-leader, globally rate-limited outbox
+sender, cross-loan reminder bundles or editing a previous reminder in place.
 
-A stale worker whose lease expired cannot complete a command another worker has
-already reclaimed.
+Delivery is at-least-once: Telegram may accept a message before Marum can record
+success, so retry can duplicate it. Reminder copy uses explicit dates and must
+remain understandable on repeat. The client classifies throttling, server and
+transport failures; this is not a guarantee of distributed throughput or a
+measured delivery SLO.
 
-## Outbound: at-least-once, stated plainly
+## Language and preferences
 
-```mermaid
-stateDiagram-v2
-    direction TB
-    [*] --> pending: scheduler groups occurrences<br/>into one user delivery
-    pending --> leased: claim + fencing token
-    leased --> sent: Telegram 200,<br/>store message_id
-    leased --> pending: 429 with retry_after,<br/>5xx, or timeout
-    leased --> pending: lease expired<br/>(worker died)
-    leased --> dead: 403 blocked, malformed,<br/>or six attempts
-    pending --> canceled: send-time guard —<br/>every occurrence satisfied
-    sent --> [*]
-    dead --> [*]
-    canceled --> [*]
-```
+English (`en`) and Armenian (`hy`) are supported. Locale is persisted on the
+user and shared by Mini App and bot; changing language updates the bot's menu
+and subsequent messages. See [worker language handling](../../internal/app/worker.go)
+and [user storage](../../queries/telegram.sql).
 
-**The gap cannot be closed.** If Telegram accepts a message and the process
-dies before the local mark, the message is sent again. There is no idempotency
-key Telegram will honour.
+[Preferences](../../internal/app/user_preferences.go) persist an IANA timezone,
+optional quiet window and version, with durable retry receipts. Quiet windows
+may cross midnight. The schema defaults quiet hours to disabled (stored window
+22:00–08:00); there is no fixed universal 09:00–21:00 sending rule.
 
-Three consequences, all of them product decisions rather than code:
+## Required and optional reminders
 
-1. Reminder text must read correctly if it arrives twice. No "as I mentioned",
-   no sequence numbers.
-2. Where a recent identical reminder exists for the same chat, the sender edits
-   it via `telegram_message_id` rather than posting again.
-3. The runbook does not say "should be impossible". A duplicate is a known,
-   rare, accepted outcome, and it is measured.
-
-## Never drop a financial action
-
-An earlier design answered `204` to throttled updates. Telegram treats that as
-delivered, which **destroys** the update — potentially a recorded payment or a
-deletion confirmation.
-
-Instead:
-
-1. **Deduplicate** on `update_id` — a conflict means already handled.
-2. **Persist** before any throttling decision.
-3. **Throttle by cost, not by packet.** A plan recomputation is rate limited;
-   tapping "Paid in full" is not.
-4. **Answer the user** when limited, never silently.
-
-## Exactly one sender
-
-An in-process token bucket only bounds the process it lives in. Two instances
-would allow 56 msg/s against Telegram's ~30. The sender takes a Postgres
-session advisory lock at startup; only the holder sends.
-
-```go
-ok, err := db.TryAdvisoryLock(ctx, lockKey("marum-sender"))
-// ok == false: another instance is the sender; this one serves webhooks only.
-```
-
-Detection of a dead leader is not instantaneous, so a brief overlap exists.
-Two consequences are accepted: the rate may briefly exceed 28/s, which Telegram
-absorbs as throttling; and a delivery may be attempted twice, which the fencing
-token turns into one successful mark and one rejection.
-
-## Scheduling
-
-| Rule | Behaviour |
+| Rule | Current behavior |
 | --- | --- |
-| Offsets | −7, −3, −1, 0 days, plus an overdue notice at +1. Per loan, editable, disableable. |
-| Quiet hours | Nothing sent outside 09:00–21:00 local. A reminder due at 03:00 waits for 09:00. |
-| Jitter | Deterministic, seeded from the occurrence ID — spreads the 09:00 spike without becoming irreproducible. |
-| Collapsing | Several loans due the same day become **one** message. |
-| Send-time guard | Immediately before sending, at least one attached occurrence must still be valid. |
+| Required defaults | Three days before and on the due date, at 10:00 local; see [SQL](../../queries/loans.sql). Preferences cannot disable required reminders. |
+| Scheduling | Generate within a fourteen-day horizon. The internal tick invokes a reminder walk gated to hourly within the process. |
+| Priority | Required reminders fill the delivery batch first; optional reminders use remaining capacity. |
+| Quiet hours | Filter before the batch limit and recheck before sending. |
+| Snooze | Versioned, owned occurrence command with retry receipt; move delivery to a future instant within seven days, preserving contractual due date. |
+| Send-time checks | Re-read occurrence status and target time; guarded completion preserves a snooze arriving during the send. |
+| Optional extras | Refer to a positive extra-payment action in the approved dated timeline, identified by plan and action index; explicitly labelled optional. |
+| Optional freshness | Recheck active approval and original source identity before sending; cancel obsolete/stale actions. Midnight alone does not invalidate an approved timeline, but a past action is not sent. |
 
-### Collapsing is a capacity decision, not formatting
+Optional reminders store notification identity/state, not evidence of payment or
+a copied authoritative projection. Amounts come from replay of the approved
+manifest. Previewing or saving a scenario does not approve reminders.
 
-The binding case is the 09:00 release after quiet hours on a salary day.
-
-| Users | Collapsed | Not collapsed |
-| ---: | ---: | ---: |
-| 5,000 | 54 s | 5.4 min |
-| 20,000 | 3.6 min | **21 min — breaches the SLO** |
-| 50,000 | 8.9 min | **54 min — breaches** |
+Evidence: [optional reminder use case](../../internal/app/optional_reminders.go),
+[preference SQL](../../queries/user_preferences.sql),
+[optional reminder SQL](../../queries/optional_reminders.sql),
+[freshness regressions](../../internal/app/optional_reminders_freshness_test.go)
+and [development acceptance](../design/v3/development-acceptance.md).

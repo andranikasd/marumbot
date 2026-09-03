@@ -1,11 +1,12 @@
 # The correctness corpus
 
-Every file here is a repayment schedule a real lender actually issued, with the
-figures they actually printed. A test replays each one row by row and fails if
-this engine disagrees by a single minor unit.
+This directory contains lender-issued schedules, a lender's published example
+and a regulatory reference example. It is scoped evidence, not certification of
+all products from those lenders. The [manifest](MANIFEST.json) records source
+hashes, row counts, exact matches and support states.
 
-This is the asset. The engine is replaceable; the evidence that it matches real
-paperwork is not.
+The corpus tests preserve known discrepancies and prevent coverage regressions.
+They do not assert that every row of every fixture currently matches exactly.
 
 ## Why it exists
 
@@ -27,11 +28,10 @@ app is wrong, and stop believing the rest of it.
 
 ## What a fixture records
 
-Each file carries the source document, the terms, the convention that
-reproduces it, and every published row. The convention is **per lender**,
-because it is a property of their system rather than of Armenian law: nothing
-in the Civil Code, the Consumer Lending Law, the Mortgage Law or CBA
-Regulations 8/01 and 8/05 prescribes a rounding rule for payments.
+Each fixture records its source and the terms/rows available from that source.
+The reproduction convention is profile-specific; do not generalize one loan's
+payment rounding or final-row treatment to an entire lender. Regulatory examples
+are reference inputs, not borrower-issued repayment schedules.
 
 ## Adding one
 
@@ -41,7 +41,8 @@ engine does not yet know.
 
 1. Copy a lender's schedule into a new `*.json` here.
 2. Run `make test`. If it fails, the difference is the finding.
-3. Record the convention that reproduces it. Do not adjust the published
+3. Update `MANIFEST.json` provenance/support evidence in the same reviewed change.
+   Record the convention that reproduces it. Do not adjust the published
    figures to fit the engine — the paperwork is the authority.
 
 ## Coverage
@@ -51,11 +52,10 @@ engine does not yet know.
 | Inecobank M26/029210, loan agreement | 60 | **59 / 59** | dated solve | ACT/365, 0.10 AMD |
 | Inecobank M26/029210, re-issued schedule | 55 | 52 / 54 | dated solve | ACT/365, 0.10 AMD |
 | Unibank, published annuity example | 12 | 8 / 11 | **rate / 12** | ACT/365, 0.01 AMD |
-| CBA Reg 8/01, worked example | 12 | — | — | ACT/365, 0.01 AMD |
+| CBA Reg 8/01, worked example | 0 schedule rows in manifest | — | regulatory reference | ACT/365, 0.01 AMD |
 
 Two lenders, and already two conventions for the instalment. Both accrue
-interest daily on the declining balance over a 365-day year — as does every
-one of the ten Armenian banks whose terms state a rule. They differ in how the
+interest daily on the declining balance over a 365-day year in these fixtures. They differ in how the
 level payment is set: Inecobank solves it over the actual dated schedule, and
 Unibank uses the textbook formula with r = annual/12 (90,258.31 reproduces
 exactly that way; the dated solve gives 90,269.17).
@@ -71,4 +71,8 @@ One lender, one loan, two documents, a tenth of a dram apart. That is the whole
 argument for measuring against real paperwork instead of against a formula:
 no amount of reasoning about conventions would have predicted it.
 
-Phase 1 does not close until ten schedules from four lenders reproduce.
+The original research target was ten schedules from four lenders. Current
+coverage is narrower: the original Inecobank profile is provisional and the
+reissued/Unibank examples are experimental in the manifest. That research goal
+is not evidence of coverage already achieved by the development release.
+See [current acceptance](../../docs/design/v3/development-acceptance.md).
