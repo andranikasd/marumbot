@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -66,10 +67,22 @@ func (w *Worker) TickReminders(ctx context.Context, users UserLister) (int, erro
 	}
 	defer w.reminding.Store(false)
 	now := w.Clock.Now()
+	// Existing deliveries get a turn even when generation repeatedly times out.
+	sent, deliveryErr := w.SendDueReminders(ctx, 50)
 	last := w.lastRemind.Load()
 	if last != 0 && now.Sub(time.Unix(0, last)) < remindEvery {
-		return w.SendDueReminders(ctx, 50)
+		return sent, deliveryErr
 	}
+	generationCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	generationErr := w.generateReminders(generationCtx, users, now)
+	if generationErr == nil {
+		w.lastRemind.Store(now.UnixNano())
+	}
+	return sent, errors.Join(deliveryErr, generationErr)
+}
+
+func (w *Worker) generateReminders(ctx context.Context, users UserLister, now time.Time) error {
 	// Housekeeping rides the hourly walk: completed inbox rows only serve
 	// update-id dedup, and Telegram's retries span minutes, so a week of
 	// retention is generous. Optional -- a fake store simply skips it.
@@ -82,11 +95,11 @@ func (w *Worker) TickReminders(ctx context.Context, users UserLister) (int, erro
 	}
 	ids, err := users.ActiveLoanUsers(ctx, 500)
 	if err != nil {
-		return 0, fmt.Errorf("listing accounts for reminders: %w", err)
+		return fmt.Errorf("listing accounts for reminders: %w", err)
 	}
 	for _, id := range ids {
 		if err := ctx.Err(); err != nil {
-			return 0, err
+			return err
 		}
 		if err := w.ScheduleForUser(ctx, id); err != nil {
 			// One account's broken loan must not silence everyone else's
@@ -95,10 +108,9 @@ func (w *Worker) TickReminders(ctx context.Context, users UserLister) (int, erro
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return 0, err
+		return err
 	}
-	w.lastRemind.Store(now.UnixNano())
-	return w.SendDueReminders(ctx, 50)
+	return nil
 }
 
 // OnLoanFiled sets up reminders the moment a loan exists: the default rules,

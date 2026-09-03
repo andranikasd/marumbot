@@ -69,7 +69,9 @@ supported planner search still affect response time.
 - Polling is implemented through the same durable inbox. The earlier documented
   default had no getUpdates loop. It never silently removes a hosted webhook.
 - Reminder dates batch per loan. Generation remains hourly; due delivery runs
-  each tick. Hosted ticks have a 45-second deadline and cancellation stops scans.
+  each tick, before generation. Generation has its own 20-second deadline so a
+  stalled walk cannot starve already-due deliveries. Newly generated occurrences
+  are eligible on the following tick. Hosted ticks have a 45-second deadline.
   Startup menu work already had a 30-second deadline; it remains bounded.
 - One container remains deliberate. Shared scheduler coordination and distributed
   sender pacing are prerequisites for horizontal replicas. The full-account menu
