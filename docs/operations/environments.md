@@ -29,7 +29,7 @@ changes the build stamp, not the source checkout. To deploy a release version,
 first ensure `main` and the tag identify the same commit, then use:
 
 ```bash
-gh workflow run cd-dev.yml --ref main -f version=2.0.3
+gh workflow run cd-dev.yml --ref main -f version=2.0.4
 ```
 
 Without an explicit input, CD computes the next patch after the highest stable

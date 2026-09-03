@@ -6,22 +6,23 @@ manual `cd-dev.yml` dispatch. No production environment exists.
 
 ## Verified baseline
 
-Operator-verified state supplied for this audit (2026-09-03):
+Verified through CI, release jobs and development smoke on 2026-09-03:
 
 | Item | Verified value |
 | --- | --- |
-| Dev application version / tag | `2.0.3` / `v2.0.3` |
-| Commit | `8d34606852f5d88ef31b8b32df757e37f0cce203` |
-| Integration | PR #99 merged to `main` |
+| Dev application version / tag | `2.0.4` / `v2.0.4` |
+| Commit | `e6814ce406d2a7aea86b09c76429292165f0273f` |
+| Integration | PR #101 merged to `main` |
 | Database schema | 22 |
 | Planning engine | `plan/5` |
-| Dev CD | run `33774632460`, success |
-| Tag Release | run `33773187762`, success |
-| CI | run `33773084763`, success |
+| Dev CD | run `33791948953`, success |
+| Tag Release | [Workflow run 33791949489](https://github.com/andranikasd/marumbot/actions/runs/33791949489) |
+| CI | run `33791905817`, success |
 
-The optional Grafana annotation returned HTTP 401 (`Invalid API key`); deployment
-worked. These are verified baseline facts, not a claim that this document polls
-live infrastructure.
+The earlier v2.0.3 deployment had an optional Grafana annotation HTTP 401
+(`Invalid API key`). Annotation outcomes are separate from application smoke
+checks; consult the linked run for this release. This record does not poll live
+infrastructure.
 
 ## Versioning
 
@@ -47,7 +48,7 @@ After the intended code is merged and CI passes, choose an unused version:
 ```bash
 git switch main
 git pull --ff-only
-VERSION=2.0.4  # example next patch; choose the intended unused version
+VERSION=2.0.5  # example next patch; choose the intended unused version
 git tag -a "v$VERSION" -m "Release $VERSION"
 git push origin "v$VERSION"
 ```
@@ -76,12 +77,12 @@ First verify the selected source equals the release tag. With local refs freshly
 updated, the current baseline check and dispatch are:
 
 ```bash
-test "$(git rev-parse main)" = "$(git rev-parse 'v2.0.3^{commit}')"
-gh workflow run cd-dev.yml --ref main -f version=2.0.3
+test "$(git rev-parse main)" = "$(git rev-parse 'v2.0.4^{commit}')"
+gh workflow run cd-dev.yml --ref main -f version=2.0.4
 ```
 
 The workflow checks out remote `main`; ensure it has not advanced since that
-comparison. If main has moved, do not stamp newer code as `2.0.3`. Use the normal
+comparison. If main has moved, do not stamp newer code as `2.0.4`. Use the normal
 dev stamp or cut the appropriate new release. Tag-ref dispatch is rejected by
 dev environment protection; retain the protection.
 

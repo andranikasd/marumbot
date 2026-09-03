@@ -31,14 +31,14 @@ installs Worker dependencies with `npm ci`; manual Worker tooling runs from
 `deploy/cloudflare` after the same install.
 
 Main pushes deploy automatically except documentation-only and other ignored
-paths. For the verified release stamp, when `main` and `v2.0.3` still resolve to
+paths. For the verified release stamp, when `main` and `v2.0.4` still resolve to
 the same commit:
 
 ```bash
-gh workflow run cd-dev.yml --ref main -f version=2.0.3
+gh workflow run cd-dev.yml --ref main -f version=2.0.4
 ```
 
-Do not dispatch dev with `--ref v2.0.3`: environment protection rejects tag
+Do not dispatch dev with `--ref v2.0.4`: environment protection rejects tag
 refs. Do not weaken that protection. `deploy.yml` is reusable (`workflow_call`),
 not directly dispatchable. Tags trigger Release builds and artifacts only.
 `cd-prod.yml` is a dormant manual workflow for a future `prod` environment.
@@ -80,7 +80,7 @@ Telegram's `getWebhookInfo` separately from application smoke.
 From the repository root, with Bash, curl and jq installed and `PUBLIC_URL` set:
 
 ```bash
-./deploy/cloudflare/smoke.sh "$PUBLIC_URL" 2.0.3
+./deploy/cloudflare/smoke.sh "$PUBLIC_URL" 2.0.4
 ```
 
 Supply `MARUM_BOT_TOKEN` through the environment to include the bot menu check;
@@ -90,7 +90,7 @@ CD does this. Without it, that check is skipped. `SMOKE_DEADLINE_S` defaults to
 Smoke checks the exact `/healthz` version, database readiness and schema at
 least 22, `/status`, the versioned Mini App shell, `/app/version`, modules,
 styles, unsigned API rejection, and the Telegram global menu URL's
-`v=2.0.3` query parameter. GET/HEAD probes send **no request body**; mutation
+`v=2.0.4` query parameter. GET/HEAD probes send **no request body**; mutation
 probes send JSON. Requests retry across deployment/secret-sync restarts.
 
 The final wake measurement pauses 20 seconds and retries health. It does not
@@ -103,7 +103,7 @@ For a quick version comparison:
 curl -fsS "$PUBLIC_URL/healthz"
 curl -fsS "$PUBLIC_URL/readyz"
 curl -fsS "$PUBLIC_URL/app/version"
-curl -fsS "$PUBLIC_URL/app/" | grep -F 'a/2.0.3/js/main.js'
+curl -fsS "$PUBLIC_URL/app/" | grep -F 'a/2.0.4/js/main.js'
 ```
 
 Shell/version responses use `no-store`; versioned assets are immutable. A

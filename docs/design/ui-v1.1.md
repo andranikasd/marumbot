@@ -1,4 +1,4 @@
-# Interface: current v2.0.3 conventions
+# Interface: current v2.0.4 conventions
 
 This file retains its original name for existing links. It describes the current
 Mini App, bot and admin, replacing the earlier v1.1 brass/green proposal.
@@ -37,7 +37,7 @@ and may be unknown when the bank allocation is absent. Required-only comparison
 is labeled as a comparison, not presented as paid history.
 
 The header language action opens More. English/Armenian selection is first;
-reminder preferences are collapsed below it. Budget and Money include the
+reminder preferences are collapsed below it. the budget overview and editor include the
 collapsed [budget explanation](../product/budgeting.md). Inputs for month/date/time
 must stay within their card on iOS; checkboxes and their labels have independent
 sizes. Retry actions must not shrink into broken words.
@@ -73,8 +73,18 @@ visual polish must not bypass them. See [admin](../architecture/06-admin-ui.md).
 
 ## Verification and historical previews
 
-v2.0.3 includes Mini App behavior tests and synthetic 320px/390px English/Armenian
+v2.0.4 includes Mini App behavior tests and synthetic 320px/390px English/Armenian
 browser checks. Those checks do not certify Telegram's physical iPhone webview.
 The HTML mockups and three-loan dataset in this directory are design/reference
 assets, not live account state or proof of supported lender behavior. See
 [current state](../current-state.md) and [release evidence](v3/release-checklist.md).
+
+## v2.0.4 budget and loading changes
+
+The editor groups existing declarations into Each month, Today and Extras.
+The monthly step leads to today’s cash statement before saving. Advanced
+policies and month overrides remain behind explicit controls.
+
+Account-language loading does not block the first screen or reset forms.
+Secondary tools download when opened; failed downloads preserve the current
+form and offer Retry. See [the implementation evidence](performance-budget-flow.md).

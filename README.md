@@ -7,12 +7,12 @@ bank accounts. Bank statements remain the authority for actual balances.
 
 ## Status
 
-**v2.0.3 is deployed to development**, verified on 2026-09-03. There is no
+**v2.0.4 is deployed to development**, verified on 2026-09-03. There is no
 production environment. The tagged implementation is merged into `main`.
 
 - Mini App/API: [dev.marum.loan](https://dev.marum.loan)
 - Development bot: [marum_dev_bot](https://t.me/marum_dev_bot)
-- [Release v2.0.3](https://github.com/andranikasd/marumbot/releases/tag/v2.0.3)
+- [Release v2.0.4](https://github.com/andranikasd/marumbot/releases/tag/v2.0.4)
 - Database schema **22**; planning engine **`plan/5`**
 
 [Current state](docs/current-state.md) records scope and limitations;
@@ -73,7 +73,7 @@ A specific month's override replaces its usual limit. Expected receipts are
 excluded from base-plan funding; a scenario with newly assumed cash requires
 confirmation before activation. Payday does not reset spending recorded in the current
 budget period. The Mini App includes a collapsed English/Armenian explanation
-on Budget and Money screens. See the [budget guide](docs/product/budgeting.md).
+on the budget overview and editor screens. See the [budget guide](docs/product/budgeting.md).
 
 ## Architecture
 
@@ -147,7 +147,7 @@ invariants require human review. Never log amounts, account identifiers or secre
 See [Security](SECURITY.md) for private vulnerability reporting and admin access.
 Local observability is provisioned by `make up`; hosted export is configurable.
 The current Grafana deployment-annotation credential needs repair, although the
-v2.0.3 deployment and application smoke checks passed.
+v2.0.4 deployment and application smoke checks passed.
 
 ## Licence
 

@@ -1,6 +1,6 @@
 # Engineering guide
 
-Current implementation reference for v2.0.3. Read [current state](current-state.md)
+Current implementation reference for v2.0.4. Read [current state](current-state.md)
 for release scope and [AGENTS.md](../AGENTS.md) for the governing invariants.
 Historical design documents describe intent; they are not evidence of runtime
 behavior. Some conventions require review as well as automated checks.
