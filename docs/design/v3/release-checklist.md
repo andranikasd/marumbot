@@ -1,91 +1,81 @@
 # Development release checklist
 
-## Current status
+## Current release
 
-Deployed: **2.0.2 — development only** on
-`feature/v1.1.0-complete-ui-redesign`.
+**v2.0.3 is deployed to development**, verified 2026-09-03. The implementation
+from `feature/v1.1.0-complete-ui-redesign` was merged through
+[PR #99](https://github.com/andranikasd/marumbot/pull/99).
+Tag `v2.0.3` and the released `main` commit are
+`8d34606852f5d88ef31b8b32df757e37f0cce203`.
 
-The first expanded rollout (`2.0.1`, commit `7c5062d`) reached schema 22,
-then failed a malformed smoke probe: GET requests incorrectly carried a JSON
-body, which the edge Fetch proxy rejected. The rollback step ran; do not infer
-complete container rollback from the Worker rollback alone. A normal unsigned
-GET returned 401. The probe has a reproducing regression and is corrected. Rollback now pins
-the pre-release Worker version before deployment and secret synchronization,
-rather than selecting the immediately previous revision implicitly.
-The fresh `2.0.2` rollout succeeded on 2026-09-03 from application commit
-`45169b620ba143ff2e7bd1714792a5cc535e3df5`. Live API and Mini App version
-checks report `2.0.2`; readiness reports schema 22; admin login reports `2.0.2`.
-The deployment smoke verified that the Telegram menu opens version `2.0.2`.
-Changed assets must use a new version; existing `2.0.0` URLs remain immutable.
-No production deployment, merge to main, Git tag or GitHub Release is requested.
+The live API, Mini App and admin report **2.0.3**. Readiness reports schema **22**;
+the engine is **`plan/5`**. The smoke verified that the Telegram menu opens the
+Mini App at 2.0.3. There is no production environment or production rollout.
 
-Release evidence:
-[exact-commit CI](https://github.com/andranikasd/marumbot/actions/runs/33766922851) and
-[successful development deployment](https://github.com/andranikasd/marumbot/actions/runs/33767241888).
-An independent live smoke run also passed. The optional Grafana deployment
-annotation returned HTTP 401 (invalid API key); its annotation token needs
-replacement. This did not block deployment or application health checks.
+## Evidence
 
-## Software scope
+| Gate | Evidence |
+| --- | --- |
+| PR checks | [CI 33772749526](https://github.com/andranikasd/marumbot/actions/runs/33772749526) |
+| Merged source checks | [CI 33773084763](https://github.com/andranikasd/marumbot/actions/runs/33773084763) |
+| Tagged release | [Release 33773187762](https://github.com/andranikasd/marumbot/actions/runs/33773187762) |
+| Published release | [v2.0.3](https://github.com/andranikasd/marumbot/releases/tag/v2.0.3) |
+| Final development rollout | [CD 33774632460](https://github.com/andranikasd/marumbot/actions/runs/33774632460) |
 
-[Development acceptance evidence](development-acceptance.md) records the
-implemented workflows and supported-domain boundaries. The implementation covers:
+- [x] Application/core race tests, PostgreSQL integration and migration checks.
+- [x] Lint, frontend behavior, bundle and rollout-smoke regressions.
+- [x] Release compatibility job completed and artifacts/SBOM/provenance published.
+  This job does not prove previous-release database compatibility: it omits
+  `TEST_DATABASE_URL`, so database-dependent tests skip.
+- [x] PR merged, tag published and exact source deployed to development.
+- [x] Live version, readiness/schema, assets, unsigned-call rejection and bot
+  menu verified; independent live smoke also passed.
 
-- Payment recording, immutable corrections, statement reconciliation, exact
-  current-period cash/spending accounting and actual-versus-plan attribution.
-- Effective budget policies, growth, overrides, carry/release choices, explicit
-  funding, cash routing, strategy comparisons, isolated scenarios, activation
-  history, exact replay/export, inverse-budget domain proof and stress reports.
-- Compact Mini App layers, editable loans/budgets, explicit icons, chart legends,
-  aligned amounts, statement dates, Armenian/English and persistent stale labels.
-- Required/optional reminders, exact payment links, snooze, account settings and
-  private-chat protection. Unchanged approved future actions survive midnight;
-  stale or superseded optional reminders are suppressed.
-- Individual admin identities/TOTP, roles, purpose audit, classified cases,
-  independent policy review/publication, fixture evidence, original-manifest replay with the available engine and
-  scoped profile controls.
-- Durable retry receipts and aggregate-version checks for financial commands;
-  application-owned transactions and compatible source-history locking.
+Release and development jobs build their own images. Matching source commits
+are verified; this does not claim their image digests are identical.
 
-Unsupported financial domains remain explicit refusals or Unknown results,
-never guessed calculations. See the acceptance document and admin README for
-specific limitations; this release does not certify every lender or every
-advanced engine domain described in the exploratory specification.
+## Deployment path and recovery
 
-## Release gates
+Development protection rejects tag refs. The attempted tag-ref run
+[33774376583](https://github.com/andranikasd/marumbot/actions/runs/33774376583)
+was rejected before deployment. The successful run dispatched `cd-dev.yml` from
+`main` with explicit version `2.0.3`, after verifying main matched the tag commit.
+No protection rules were changed. See [release procedure](../../operations/releases.md).
 
-- [x] Final race-enabled application/core tests.
-- [x] Final PostgreSQL integration tests through migration 22.
-- [x] Lint, frontend behavioral tests, bundle and rollout-smoke regressions.
-- [x] Preservation-only rollback/reapplication of the latest migration.
-- [x] Commit and push the verified implementation on the requested branch.
-- [x] CI passes for that exact commit, including both architecture reports.
-- [x] Deploy that branch with manual **CD · dev**, version `2.0.2`.
-- [x] Verify live version, schema, assets, unsigned-call rejection and bot menu.
+The earlier 2.0.1 rollout exposed a smoke bug: GET requests carried a JSON body
+that the edge proxy rejected. The regression is fixed. Rollback now captures the
+pre-release Worker version before deployment and secret synchronization; it must
+not silently choose the immediately previous revision. Worker rollback alone is
+not proof of container or database rollback. 2.0.2 then deployed successfully,
+before the merged/tagged 2.0.3 release above.
 
-## User-owned field check
+## Changes validated in v2.0.3
 
-The user will perform point 4 afterwards: reopen Telegram on iPhone and check
-language, aligned numbers, chart labels, Loans, editing, payments and reminders.
-Participant usability trials and two months of bank reconciliation additionally
-require real people, source statements and elapsed time. Automated tests and the
-synthetic three-loan example do not replace that field evidence.
+The [acceptance record](development-acceptance.md) covers payments, reconciliation,
+budget/funding policies, planning/scenarios/history, reminders and admin controls.
+The iPhone feedback follow-up fixes native date/time overflow, compressed Retry
+text, checkbox/save styling and confusing budget wording. It adds collapsed
+English/Armenian budget guidance and puts language ahead of reminder settings.
 
-## v2.0.3 iPhone feedback follow-up
+Read/body waits are bounded with explicit loading/error/retry states. Stale
+warnings follow the visible screen; hidden stale data stays marked until read.
+Strategy comparisons load on demand and clear obsolete figures. Financial
+writes are not automatically retried.
 
-The next tagged development release addresses the screenshots from the 2.0.2
-field check: native date/time field overflow, compressed Retry text, oversized
-checkboxes and the reminder save button. Budget and Money now have a collapsed
-English/Armenian explanation of spending limits, available cash and payments
-already made. Reminder settings are collapsed below the language selector.
+## Remaining field and operations checks
 
-Read and response-body waits are bounded, with explicit loading/error/retry
-states. No financial write is automatically retried. Stale warnings follow the
-visible screen, while hidden snapshots remain marked stale until reread. Plan
-strategy comparisons load on demand and cannot retain old figures on reopening.
-Budget view and save retries have distinct element IDs.
+- Previous-release store compatibility needs a run with `TEST_DATABASE_URL` set.
+  Current-release PostgreSQL CI passes, but is a different guarantee.
+- The backup bucket is provisioned, but a scheduled dump/upload and verified
+  restore procedure are not implemented. See [runbooks](../../operations/runbooks.md).
 
-Validation: all Mini App behavioral suites, adapter race tests and synthetic
-320px/390px English/Armenian browser checks. These checks do not replace testing
-inside Telegram's iPhone webview. The user has authorized merging PR #99 and
-publishing a new tag to development; production remains out of scope.
+- The optional Grafana deployment annotation returned HTTP 401 (invalid API key).
+  Replace its annotation credential separately; deployment and application health
+  checks succeeded despite this warning.
+- Reopen the Mini App in Telegram on iPhone to confirm layout, language, editing,
+  payment and reminder flows. Automated synthetic browser checks are evidence of
+  those fixtures, not certification of the device webview.
+- Participant usability trials and extended bank-statement reconciliation still
+  need real users, source statements and elapsed time.
+- Unsupported financial domains remain explicit refusals/Unknown; this release
+  does not certify every lender or the complete exploratory v3 specification.

@@ -1,9 +1,16 @@
-# Admin security integration (specification section 9)
+# Admin security integration
 
-Apply migration 00015 before starting admin. The migration preserves identities,
-policy/control revisions and audits on Down, and is safe to reapply.
+Audited against development **v2.0.3**, commit
+`8d34606852f5d88ef31b8b32df757e37f0cce203`, schema **22**, engine **`plan/5`**.
+There is no production deployment. See the
+[architecture](../../../../docs/architecture/06-admin-ui.md) and
+[development acceptance bounds](../../../../docs/design/v3/development-acceptance.md).
 
-Parent wiring:
+Apply the current migration set before starting admin. Migration 00015 introduced
+security identities, policy/control revisions and audit records; its Down
+preserves them. History/scenarios and command receipts use later migrations.
+
+Current [main wiring](../../../../cmd/marum/main.go):
 
 ```go
 svc := app.NewAdmin(store).
@@ -92,15 +99,14 @@ Management pages (no JSON authoring required):
 All form actions call the same application authorization and optimistic-lock
 boundaries as the APIs. The role check also controls navigation, but hiding a
 button never grants or removes application authority. New directory queries use
-existing migration15 tables; these pages need no new migration or main wiring.
+the security tables introduced in migration 00015; the complete application
+uses schema 22.
 `admin.New` attaches the embedded corpus automatically.
 
-Remaining product gaps (do not mark full spec9 complete):
+Remaining product gaps (do not mark the full admin specification complete):
 
 - Unknown lender/product definitions are not implemented or automatically trusted.
   Publication records reviewed versions; existing contracts stay pinned.
-- Parent now wires profile-flag enforcement and derives the signing key. The
-  budget owner separately owns preservation-compatible account deletion.
 - No authenticator recovery/reset or signing-key rotation interface.
 - Corpus metadata reports committed results; this UI does not run/attest the
   complete golden suite or replace independent policy verification.
@@ -112,3 +118,18 @@ Remaining product gaps (do not mark full spec9 complete):
   beyond existing command retry. Case user-notification/confirmation remains absent.
 - A publisher or verifier cites source evidence manually; a fixture reference
   does not promote trust or prove lender-wide coverage.
+
+Replay retains original manifests, not merely a pointer to today's loan/budget
+state. [PlanManifest](../../../app/plan_manifest.go) contains the source identity,
+original input, goal, selected policy, schema/engine and budget versions, and
+input/result hashes. Projection rows are recomputed and verified; mismatched
+hashes conflict and an unavailable engine refuses. Original inputs/policies and
+activation history are persisted for audit, so “plans are never persisted” is
+incorrect. Previewed/saved scenarios do not activate a plan.
+
+Source evidence: [session/TOTP handling](security.go),
+[authorization and audits](../../../app/admin_security.go),
+[role capabilities](../../../app/admin_access.go),
+[review/publication](../../../app/admin_policy.go),
+[historical replay](../../../app/admin_history.go), and
+[PostgreSQL history](../../out/postgres/plan_history.go).

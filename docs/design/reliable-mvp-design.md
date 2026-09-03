@@ -1,5 +1,10 @@
 # Marum Reliable MVP - Technical Design v0.3.1
 
+> **Historical MVP proposal (2026-08-26).** Statements below describe their original baseline,
+> not the current deployed feature set or remaining release gates. Original
+> content is retained for traceability. See [current state](../current-state.md) for v2.0.3
+> and links to current acceptance and release evidence.
+
 **Status:** Proposed implementation target  
 **Product:** Marum / Մարում  
 **Date:** 26 August 2026  

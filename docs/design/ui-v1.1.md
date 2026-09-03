@@ -1,67 +1,80 @@
-# Interface v1.1: one identity, three surfaces
+# Interface: current v2.0.3 conventions
 
-The Mini App, the bot's messages and the admin share one visual language.
-This note records the rules, so a new screen or message can be written
-without re-deriving them.
+This file retains its original name for existing links. It describes the current
+Mini App, bot and admin, replacing the earlier v1.1 brass/green proposal.
 
-## Identity
+## Shared visual language
 
-Deep bottle green is the colour of the institutions Marum argues with.
-Brass marks only money that works for the borrower: the paid-off share, the
-safe extra, freed money, and the one commit button (Approve plan). Semantic
-colours (ok, warn, danger) are their own hues and never stand in for the
-accent. No emoji anywhere in the product; a title carries the meaning.
+[Shared tokens](../../internal/design/tokens.css) define neutral surfaces and green
+accents. Dark mode uses a near-black background, charcoal cards and muted green
+highlights. Light mode uses pale neutral backgrounds and white cards. Semantic
+warning/error colors retain their own purpose. Legacy token names such as brass
+are compatibility aliases, not a direction to restore the former palette.
 
-Light: green is a surface, the hero and the buttons. Dark: the ground is a
-neutral near-black, green becomes the accent, and the hero is a dark card
-with its figure in green. One green per theme.
+System fonts, bordered cards and 9/14/16px radii form the base. Mini App fields use
+16px text and bounded widths; large amounts use tabular numerals and must remain
+readable without splitting digits across lines. Both rendered applications use
+the shared tokens; Cloudflare's versioned asset build also includes them.
 
-## Tokens
+## Mini App navigation
 
-`internal/design/tokens.css` is the only place a colour is named.
-Both surfaces prepend it to their own stylesheet at serve time: the Mini App
-when it serves `styles.css`, the admin when it serves `/style.css`. Radii are
-9, 14 and 16 px; type weights are 400 and 600 only; cards are separated by
-borders, never shadows.
-
-## Mini App
-
-Every screen is an app bar, one hero, then cards. The hero holds the only
-large figure on the screen. Amounts sit in key/value rows, right-aligned,
-tabular numerals.
-
-| Screen | Answers | Sub-screen |
+| Root | Purpose | Child workflows |
 | --- | --- | --- |
-| Loans | how much, when next, how far along | Loan: the facts, Update balance, Edit terms, Remove |
-| Add | the terms, the dates, a live estimate | — |
-| Budget | the monthly amount and whether it covers what is required | Edit budget |
-| Plan | the debt-free date, the monthly amount, the saving; strategy as three rows | — |
+| Home | Next payment and shortcuts | Budget, Plan, individual loan |
+| Plan | Outcome and selected chart | Payments, milestones, strategies, calculation detail and history |
+| Loans | Scannable loan records | Add/edit terms, icon choice, balance/payment/statement workflows |
+| Activity | Recorded payments and plan comparison | Payment details and corrections |
+| More | Language and account actions | Edit budget, add loan, collapsed reminder settings |
 
-A sub-screen names a parent instead of a tab: it gets a back button
-(Telegram's own inside the client) and the dock hides. The app bar owns the
-title and one right-hand action per screen.
+Keep primary information in compact cards. Use child screens and disclosure
+sections for detail; the design aims to reduce scrolling, not force every form
+onto one physical screen. Loan icons are explicitly chosen, with the bank icon
+as default; the app does not guess an icon from a lender's name.
 
-States: skeletons take the shape of the hero and cards; the offline banner
-keeps the cached figures on screen and offers a retry; validation is
-field-level; an empty screen names the next step. The eye on the loans hero
-masks every amount on the device.
+Charts share a selector, visible series legends and a selected-month readout.
+Projected interest is a forecast; recorded interest belongs to payment activity
+and may be unknown when the bank allocation is absent. Required-only comparison
+is labeled as a comparison, not presented as paid history.
+
+The header language action opens More. English/Armenian selection is first;
+reminder preferences are collapsed below it. Budget and Money include the
+collapsed [budget explanation](../product/budgeting.md). Inputs for month/date/time
+must stay within their card on iOS; checkboxes and their labels have independent
+sizes. Retry actions must not shrink into broken words.
+
+## Loading and recovery
+
+Preserve readable cached figures with a visible stale state when refresh fails.
+Warnings follow resources used by the visible screen; hidden stale snapshots
+remain stale until reread. Empty, loading and failed states need distinct copy
+and an explicit action where appropriate. Plan strategy comparison loads on
+request and clears old figures when reopened.
+
+The API wrapper bounds fetch and response-body waits separately; this is not a
+single end-to-end request deadline. Financial writes are not automatically
+retried. A user's explicit retry must retain durable command identity.
 
 ## Bot
 
-Every message opens with a bold title. Every figure block goes through
-`figures` in `internal/app/advice.go`, which renders label/value rows as a
-padded monospace block, so amounts line up in both alphabets. Prose is for
-what a number cannot say; the tip is one italic line, last.
+Use short headings and clear action buttons. Native emoji may support recognition;
+there is no current blanket emoji ban. Language is available through the bot's
+language controls and `/language`. Existing keyboard labels remain compatible
+across deployments. Keep financial messages private and avoid presenting
+unconfirmed payments or projections as lender-confirmed facts.
 
-The persistent keyboard has four buttons: open the app, what to do, my
-loans, budget. Language and help live in the "/" command menu. Inline rows
-put the primary action alone on top, inspection second, changing the
-question last. Retired labels stay in `legacyButtons` so a keyboard drawn
-before a deploy still works.
+See [messaging](../architecture/07-messaging.md) for exact commands, delivery
+semantics and reminder behavior.
 
 ## Admin
 
-The admin maps its roles onto the shared tokens and adds only the sidebar,
-the zebra stripe and a spacing scale. The loan page opens with "What the
-borrower sees": the Mini App's hero and rows, from the same read model,
-before the record behind it.
+The operator surface shares tokens but has its own navigation and information
+density. Role, purpose, TOTP and independent review gates are part of the workflow;
+visual polish must not bypass them. See [admin](../architecture/06-admin-ui.md).
+
+## Verification and historical previews
+
+v2.0.3 includes Mini App behavior tests and synthetic 320px/390px English/Armenian
+browser checks. Those checks do not certify Telegram's physical iPhone webview.
+The HTML mockups and three-loan dataset in this directory are design/reference
+assets, not live account state or proof of supported lender behavior. See
+[current state](../current-state.md) and [release evidence](v3/release-checklist.md).

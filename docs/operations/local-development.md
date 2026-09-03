@@ -1,28 +1,34 @@
 # Local development
 
-Docker is the only prerequisite. There is no local Go toolchain requirement —
+Docker with Compose and GNU Make are required for the Make targets. There is no local Go toolchain requirement —
 every target runs in a container.
 
 ## First run
 
 ```bash
-cp .env.example .env             # add a Telegram bot token from @BotFather
+cp .env.example .env             # add a separate local Telegram bot token
+# Set MARUM_IDENTITY_KEY in .env to a base64-encoded random 32-byte key.
+# If OpenSSL is installed: openssl rand -base64 32
 make admin-password              # type a password; paste the hash into .env
+docker compose up -d --wait postgres
+make migrate                     # apply the schema before starting the app
 make up                          # app, database and the observability stack
-make migrate                     # apply the schema
 make seed                        # demo data, so the admin interface has content
 make test                        # unit tests, race detector on
 ```
 
 | What | Where |
 | --- | --- |
-| Health, readiness, status | <http://127.0.0.1:8080/healthz> |
+| Liveness | <http://127.0.0.1:8080/healthz> |
+| Database readiness / schema | <http://127.0.0.1:8080/readyz> |
+| Queue status | <http://127.0.0.1:8080/status> |
+| Mini App shell | <http://127.0.0.1:8080/app/> |
 | Admin interface | <http://127.0.0.1:8081> |
 | Grafana | <http://127.0.0.1:3000> |
 | Database | `127.0.0.1:5432`, user `marum` |
 
 The bot runs in **long-polling** mode locally, so no public URL or tunnel is
-needed. Production uses webhooks; everything below the transport is the same
+needed. Deployed dev uses webhooks; everything below the transport is the same
 code.
 
 ### The admin password
@@ -32,7 +38,8 @@ stdout, so it can be piped:
 
 ```bash
 make admin-password                          # prompts
-MARUM_ADMIN_PASSWORD=... make admin-password # unattended, for scripts
+# For automation, inject MARUM_ADMIN_PASSWORD through the environment.
+# Do not type a literal password into shell history.
 ```
 
 The password itself never appears on a command line, where it would land in
@@ -42,14 +49,15 @@ shell history and in the process table.
 
 ```bash
 make up            # everything
-make up-core       # just the app and the database
+make up-core       # app/database plus their Compose dependencies
 make down          # stop, keep the volume
-make reset         # stop and destroy the database volume
+make reset         # stop and destroy all Compose volumes
 make logs          # follow the application log
 
 make test          # go test ./... -race
 make test-short    # without the race detector
-make lint          # gofumpt and golangci-lint
+make test-store    # migrated Compose Postgres; store tests, without -race
+make lint          # golangci-lint (make fmt applies gofumpt)
 make vet           # go vet
 make fmt           # format in place
 
@@ -79,14 +87,29 @@ The third is the important one: reminders continue, projections stop.
 
 ## Running tests against real Postgres
 
-Integration tests use `testcontainers-go`, so they start their own database and
-need nothing running.
+Run `make test-store`: it starts/waits for Compose `postgres`, applies goose
+migrations, and runs `./internal/adapter/out/postgres/` with `TEST_DATABASE_URL`
+on `marum_default`. It uses the local `marum` database, so use disposable local
+data. There is no testcontainers setup. `make test` uses the race detector but
+skips these store tests because it does not supply `TEST_DATABASE_URL`; CI's
+separate store job supplies the URL and runs with `-race`.
+
+`make up-core` also starts `otel-collector` and its dependencies (`tempo`,
+`loki`, `prometheus`) because `marum` depends on the collector. It does not
+start Grafana or Pyroscope. Compose overrides the app's database and OTLP URLs
+and supplies a local Pyroscope URL. An empty OTLP value in `.env` therefore
+does not disable telemetry in this Compose setup.
+
+The local Mini App shell is viewable in a browser, but authenticated API calls
+need Telegram-signed initData. Telegram launch buttons need a reachable HTTPS
+`MARUM_MINIAPP_URL`; loopback is only useful for local shell inspection.
+`MARUM_TICK_INTERVAL` accepts seconds (`60`) or a duration (`60s`).
 
 ## Common problems
 
 | Symptom | Cause |
 | --- | --- |
 | `admin interface disabled` in the log | `MARUM_ADMIN_PASSWORD_HASH` is unset. That is the intended fail-closed behaviour. |
-| `TELEMETRY DEGRADED` | The OTLP endpoint is unreachable. The service still runs; it just reports nothing. |
+| `TELEMETRY DEGRADED` | Telemetry initialization failed. The service still runs; inspect the accompanying error. Export failures after startup may appear differently. |
 | Compose warns about undefined variables | A `$` in a value in `.env`. The admin hash uses `:` separators for exactly this reason. |
-| Migrations fail on a dirty database | `make reset` and start again — local data is disposable by design. |
+| Migrations fail on a dirty database | Inspect the migration error first. Only reset disposable local data; `make reset` deletes every Compose volume, including observability history. |

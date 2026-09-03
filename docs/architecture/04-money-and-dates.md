@@ -47,10 +47,9 @@ interest is 73,018.20, and not one figure in its 60 rows is a whole dram. The
 coin is gone; the accounting unit is not. Ten minor units is the only unit that
 reproduces the schedule, so that is what AMD now settles to.
 
-It remains a default rather than a rule. No Armenian regulation prescribes a
-rounding unit, which makes it a property of each lender's system: a contract
-carries its own `Rounding` policy, and each fixture records the one that
-reproduces it.
+It remains a fixture-backed default, not a lender-wide rule. A contract
+carries its own `Rounding` policy; the corpus records the tested policy per
+fixture. The source does not establish every lender’s settlement behavior.
 
 Display follows the settlement unit: a whole-dram amount prints as
 `1,740,927 AMD` rather than `1740927.00 AMD`, and an amount that is not a whole
@@ -84,12 +83,19 @@ one rounding step, so the result matches the mathematical definition.
 Reordering into `(principal × days) / denominator × rate` would dodge the range
 problem by rounding twice, and silently change the schedule. Don't.
 
-Overflow is a typed error, never a wrap. `marum_accrual_overflow_total` must
-stay at zero; any increment means this path was bypassed.
+Overflow is a typed error, never a wrap. `marum_accrual_overflow_total` is
+declared but has no current application increment call; a zero or absent series
+does not prove that accrual cannot fail. Inspect returned errors and reproduce
+the affected operation. See [runbooks](../operations/runbooks.md).
 
 ## Day count is a contract term
 
-`Actual365`, `Actual360`, `Thirty360`. A 31-day month accrues more than a
+`Actual365`, `Actual360`, `Thirty360`, and `ActualActual` are declared.
+The money package has an `AccrueBetween` helper for year-specific spans, but
+current amortisation and ledger paths call day-count-only `Accrue`; the enum
+alone does not prove calendar-year-aware Actual/Actual support. See
+[accrual](../../pkg/core/money/accrual.go) and
+[schedule construction](../../pkg/core/amortisation/schedule.go). A 31-day month accrues more than a
 30-day month under Actual/365 — visible on a real statement, and the reason
 naive `rate/12` calculators disagree with banks.
 
@@ -115,13 +121,10 @@ report that as a rounding difference. They report that the app is wrong.
 
 ## Interest is quantised, and the unit is inferred
 
-On that contract interest is rounded to **0.10 AMD, half-up**, before the
-instalment is split into interest and principal. Nothing prescribes the unit:
-neither the Civil Code, the Consumer Lending Law, the Mortgage Law nor CBA
-Regulations 8/01 and 8/05 says what a payment rounds to. It was inferred, from
-two facts — every figure the bank publishes ends in a zero luma, and 0.10 is
-the only unit that reproduces the rows. Quantising to the whole dram or to the
-luma both miss.
+The tested agreement uses **0.10 AMD, half-up** before splitting the
+instalment into interest and principal. This policy was inferred from the
+published figures and row comparisons; it is evidence for this fixture, not
+a legal conclusion or a default that proves support for another lender.
 
 That is why `money.Policy` carries the mode and the unit per contract instead
 of per currency. The currency's settlement unit is only the default a loan
@@ -129,36 +132,29 @@ starts from, and it is a guess until a real schedule confirms it.
 
 ## The corpus, and what it currently proves
 
-`internal/corpus` replays every fixture in `testdata/golden` row by row and
-fails on a single minor unit of disagreement. It lives outside `pkg/core`
-because it reads files and the engine performs no I/O — `depguard` enforces
-that boundary, and the evidence that the engine is right is not part of the
-engine.
+[internal/corpus](../../internal/corpus) compares lender fixtures row by row.
+It lives outside `pkg/core` because reading fixtures is I/O. The committed
+[manifest](../../testdata/golden/MANIFEST.json) ratchets fixture hashes and exact
+row counts; discrepancies are recorded rather than presented as exact coverage.
 
-| Fixture | Rows | Reproduced exactly |
-| --- | --- | --- |
-| Inecobank M26/029210, loan agreement | 60 | 59 of the 59 non-final rows |
-| Inecobank M26/029210, schedule re-issued five months later | 55 | 52 of the 54 non-final rows |
+| Fixture | Total rows | Exact rows | Recorded support |
+| --- | ---: | ---: | --- |
+| Inecobank M26/029210 agreement | 60 | 59 | provisional |
+| Inecobank M26/029210 reissued schedule | 55 | 52 | experimental |
+| Unibank annuity worked example | 12 | 8 | experimental |
+| CBA Regulation 8/01 example | 0 | 0 | regulatory example, not a repayment-row proof |
 
-Exactly means to the luma, on interest and on principal. The final row is
-counted separately because a lender puts the drift accumulated by rounding
-every earlier row there: this agreement's last instalment is 125,081.80 against
-a level 125,079.60, and 2.20 is precisely that difference. The two rows the
-re-issued schedule does not reproduce land within 0.011 of the half-way point
-of the 0.10 quantum and tip the other way, which is the bank resolving a tie
-from more internal precision than it publishes rather than a different
-convention.
+The agreement’s 59 non-final rows match; the last absorbs lender drift. The
+reissue differs on two non-final rows and the final row. Those differences do
+not establish an undocumented internal rounding rule. One profile matching
+one agreement is not lender-wide support; the agreement remains provisional
+pending its boundary matrix. Unknown allocation remains `unknown/v0` and
+unverified clauses, posting calendars and fee maxima remain unknown/refused.
 
-The two documents are the same loan and they disagree with each other. The
-agreement prints 69,045.40 of interest for 24/09/2026; the schedule the bank
-re-issued five months later prints 69,045.30. The engine matches the agreement.
-That disagreement is the whole argument for measuring against paperwork instead
-of against a formula: no amount of reasoning about conventions predicts a tenth
-of a dram between two documents from one bank.
-
-This is one lender, one loan, two documents. Phase 1 does not close until ten
-schedules from four lenders reproduce, so the corpus proves that the engine
-matches this contract — and nothing yet about any other.
+The [development acceptance bounds](../design/v3/development-acceptance.md)
+separate fixture evidence, reduced-domain planner proofs and remaining physical
+Telegram/usability/bank-reconciliation validation. The corpus is not a general
+optimality certificate or production acceptance claim.
 
 ## Showing the arithmetic
 

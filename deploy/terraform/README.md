@@ -6,24 +6,21 @@ Worker binds to.
 
 ## Where the database actually lives
 
-**Cloudflare does not sell a managed PostgreSQL.** Its own database product is
-D1, which is SQLite. The design rejected D1 because the ledger's arithmetic has
-to be identical in development and production, and there is no faithful local
-twin of D1 to test against.
-
-So Postgres is hosted elsewhere — Neon by default — and **Hyperdrive** sits in
-front of it. Hyperdrive is a connection pooler and query cache, not a database.
-It exists because a Worker has no persistent connections and can start in any
-Cloudflare location, so without it every isolate would open its own TCP and TLS
-handshake to a database sitting in one region.
+Postgres is hosted at Neon. The Go container connects directly using
+`MARUM_DATABASE_URL`; the migration runner uses `DATABASE_URL`. Hyperdrive is
+still provisioned and bound to the Worker, but its connection string does not
+resolve inside the container sandbox and is not used by the application.
 
 ```mermaid
 flowchart LR
-  w["Worker<br/><i>marum / marum-dev</i>"] --> h["Hyperdrive<br/><i>pool + cache</i>"]
-  h --> pg[("PostgreSQL<br/><i>Neon</i>")]
-  w --> c["Container<br/><i>the Go binary</i>"]
-  c --> h
+  w[Worker marum-dev] --> c[Go container]
+  c --> pg[(Neon Postgres)]
+  tf[Terraform] -. provisions unused binding .-> h[Hyperdrive]
+  h -. configured origin .-> pg
 ```
+
+Only **dev** has committed environment files and deployed infrastructure. No
+production exists; the dormant `prod` workflow/config is incomplete.
 
 ## Who owns what
 
@@ -40,28 +37,29 @@ Two of those boundaries are load-bearing:
 Domain on a hostname that already carries a CNAME. A record made here would
 break the deploy it was meant to enable.
 
-**Terraform does not create the database.** There is no first-party Neon
-provider, and the database is the only resource here whose accidental
-destruction cannot be undone by running `apply` again. It is made once by hand
-and passed in as a variable.
+**Terraform does not create the database.** Keeping database lifecycle separate
+avoids making data destruction an ordinary infrastructure apply. Create the
+database by hand and pass its connection details as a variable.
 
 ## Bootstrap
 
-Four things exist before the first `apply`. Each is done once per account.
+Four things must exist before the first dev `apply`. Database setup is per
+environment; state bucket and tokens are account-level setup.
 
 ### 1. The database
 
-Create a Neon project in a region close to your users — `eu-central-1` for
-Armenia. Create a database named `marum` and a role named `marum`. Keep the
-**direct** connection string, not the pooled one: Hyperdrive is the pooler, and
-pooling twice is how you run out of connections while both pools look idle.
+Create a Neon project in the intended region, with a database and role named
+`marum`. Keep the
+**direct** origin details for `TF_VAR_database` and the migration connection.
+Configure the container connection separately as `MARUM_DATABASE_URL`;
+Hyperdrive does not pool the container's connections.
 
 ### 2. The state bucket
 
 Terraform cannot create the bucket that holds its own state.
 
 ```bash
-wrangler r2 bucket create marum-terraform-state
+(cd deploy/cloudflare && npm ci && npx wrangler r2 bucket create marum-terraform-state)
 ```
 
 ### 3. Credentials for the state bucket
@@ -89,31 +87,30 @@ Nothing more. This token cannot deploy a Worker, and it should not be able to.
 Credentials come from the environment. They never go in a `.tfvars` file — the
 files under `envs/` are committed, and everything in them is public anyway.
 
+Inject these names from your credential store into the shell environment:
+
+| Local environment variable | Value |
+| --- | --- |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | R2 state token |
+| `TF_VAR_cloudflare_api_token` | Infrastructure API token |
+| `TF_VAR_cloudflare_account_id`, `TF_VAR_cloudflare_zone_id` | Account and zone IDs |
+| `TF_VAR_database` | JSON object with `host`, `name`, `user`, `password`; optional `port` defaults to 5432 |
+
+From the repository root:
+
 ```bash
-cd deploy/terraform
-
-export AWS_ACCESS_KEY_ID=…            # the R2 token from step 3
-export AWS_SECRET_ACCESS_KEY=…
-export TF_VAR_cloudflare_api_token=…  # the token from step 4
-export TF_VAR_cloudflare_account_id=…
-export TF_VAR_cloudflare_zone_id=…
-export TF_VAR_database='{"host":"ep-….eu-central-1.aws.neon.tech","name":"marum","user":"marum","password":"…"}'
-
-ENV=dev
-terraform init \
-  -backend-config=envs/$ENV.backend.hcl \
-  -backend-config="endpoints={\"s3\":\"https://$TF_VAR_cloudflare_account_id.r2.cloudflarestorage.com\"}"
-
-terraform plan  -var-file=envs/$ENV.tfvars
-terraform apply -var-file=envs/$ENV.tfvars
+make tf-init ENV=dev
+make tf-plan ENV=dev
+make tf-apply ENV=dev
+make tf-output ENV=dev
 ```
 
-`make tf-plan ENV=dev` and `make tf-apply ENV=dev` wrap this in a container, so
-no local Terraform install is needed.
-
-Switching environments **requires re-running `init`** with the other backend
-config. Terraform will otherwise keep using the state file it initialised with,
-and a `dev` apply against `production` state is a bad afternoon.
+These targets run Terraform 1.13.3 in Docker. `tf-init` uses `-reconfigure`, the
+committed `envs/dev.backend.hcl`, and an R2 endpoint derived from the account ID.
+State is `marum-terraform-state/dev/terraform.tfstate`. `tf-output` reads the
+currently initialized backend; `ENV=dev` alone does not switch it. Always run
+`tf-init` first. Although Make help mentions production, no production backend
+or tfvars exists, so `ENV=production` is not a supported setup.
 
 ### The Hyperdrive binding is never pasted by hand
 
@@ -134,17 +131,24 @@ make tf-output ENV=dev
 Two paths, on purpose.
 
 **Every deploy applies.** `deploy.yml` runs `terraform apply` for its
-environment before it touches the Worker, so infrastructure and code can never
-drift apart and no deploy can reach for a Hyperdrive config that does not exist.
-The approval gate has not gone anywhere: it sits on the GitHub environment that
-wraps the whole deploy job, so production still waits for a reviewer and dev
-deliberately does not.
+environment before it touches the Worker, then reads the Hyperdrive binding ID
+from the applied state.
+The job uses the dev GitHub environment and its ref protection. Dev does not
+require a reviewer. The reusable deploy currently reads `TF_DATABASE_DEV`.
 
-**Every pull request plans.** The `Infrastructure` workflow plans both
-environments on any change under this directory and comments the result, which
-is where an infrastructure change should actually be read. It can also apply on
-a manual run — **Actions → Infrastructure → Run workflow** — as an escape hatch
-for changing infrastructure without shipping code.
+**Infrastructure pull requests plan dev.** Changes under `deploy/terraform/**`
+or to `.github/workflows/infra.yml` trigger formatting, validation and, when
+secrets are configured, a dev plan posted to the PR. Without the required
+secrets, the real plan is skipped explicitly. Manual **Infrastructure** dispatch
+accepts only `environment=dev`, with `action=plan` (default) or `apply`. It
+creates a fresh saved plan and applies that file for `action=apply`; this is
+separate from the automatic apply inside CD.
+
+```bash
+gh workflow run infra.yml --ref main -f environment=dev -f action=plan
+# After reviewing the infrastructure change:
+gh workflow run infra.yml --ref main -f environment=dev -f action=apply
+```
 
 These are **repository** secrets, not environment ones, and every name is
 prefixed `TF_`:
@@ -157,10 +161,9 @@ prefixed `TF_`:
 | `TF_R2_ACCESS_KEY_ID` | Step 3 |
 | `TF_R2_SECRET_ACCESS_KEY` | Step 3 |
 | `TF_DATABASE_DEV` | The `TF_VAR_database` JSON object for dev |
-| `TF_DATABASE_PRODUCTION` | The same, for production |
 
 Repository rather than environment, because a GitHub environment is a **deploy
-gate**: both of Marum's gates restrict which refs may deploy, so a plan job that
+gate**: dev restricts which refs may deploy, so a plan job that
 declared one would be refused on every pull request and the plan that exists to
 inform the review could never be produced. The gate belongs on `apply`, which is
 where it is.
@@ -172,15 +175,18 @@ used.
 
 ## Two settings worth understanding
 
-**`query_cache_max_age` is zero in production, and stays zero.** Marum's whole
-claim is that the number it shows is the number its inputs produce. A cached
-read served after a payment was recorded breaks that claim in the way least
-likely to be noticed. Dev sets five seconds only so the path is exercised
-somewhere.
+**Dev's Hyperdrive cache max age is 5 seconds, with an origin connection limit
+of 5.** The default cache max age is zero (disabled). These settings affect the
+Hyperdrive resource, not the application's direct Postgres connection. Size
+origin and application connection pools against the database's actual limit.
 
-**`origin_connection_limit` must stay below what the origin allows.** Neon's
-free tier permits far fewer connections than a paid instance. Exhausting them
-does not slow queries down, it fails migrations.
+**Dev owns zone TLS/HSTS settings** through `local.manages_zone`. There is no
+production state owning them. A future environment must not manage those same
+zone-wide resources concurrently.
+
+Terraform creates `marum-dev-backups` with seven-day expiry under `dumps/`
+and aborts incomplete multipart uploads after one day. Creating the bucket does
+not create a backup schedule: no dump/upload job is implemented here.
 
 ## The lock file
 
@@ -188,6 +194,9 @@ does not slow queries down, it fails migrations.
 architectures. CI runs `init -lockfile=readonly`, so a provider upgrade has to
 be a deliberate commit rather than something that happens on whichever machine
 ran `init` last.
+
+With a local Terraform install, run these from `deploy/terraform` after backend
+initialization; alternatively use the pinned container:
 
 ```bash
 terraform init -upgrade

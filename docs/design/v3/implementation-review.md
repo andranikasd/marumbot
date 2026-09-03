@@ -1,5 +1,10 @@
 # Marum v3 implementation review
 
+> **Historical implementation audit and follow-up design record.** Statements below describe their original baseline,
+> not the current deployed feature set or remaining release gates. Original
+> content is retained for traceability. See [current state](../../current-state.md) for v2.0.3
+> and links to current acceptance and release evidence.
+
 Status: implementation in progress on `feature/v1.1.0-complete-ui-redesign`.
 Release target: v2.0.0 on development only; no production deployment.
 See `release-checklist.md` for remaining acceptance work.

@@ -1,164 +1,127 @@
 # Deploying to Cloudflare
 
+Dev is live at `https://dev.marum.loan`; no production exists. Current verified
+release evidence is in [releases.md](releases.md). Configuration and secret names
+are listed in [environments.md](environments.md).
+
 ```mermaid
 flowchart LR
-  tg["Telegram"] --> cf["Cloudflare edge<br/>DNS · TLS · WAF"]
-  cf --> w["Worker<br/><i>authenticate · throttle · route</i>"]
-  w --> c["Container<br/>marum, one Go binary"]
-  cron["Cron trigger<br/>*/5"] --> w
-  c --> hd["Hyperdrive"] --> pg[("Managed Postgres")]
-  c --> tgapi["Telegram API"]
-  c -.->|OTLP| gc["Grafana Cloud"]
-  bk["Backup job"] --> pg
-  bk --> obj[("Object storage")]
+  tg[Telegram] --> w[Worker: authenticate, route]
+  browser[Mini App browser] --> w
+  w --> assets[Edge assets]
+  w --> c[Go container]
+  cron[5-minute cron] --> w
+  c --> pg[(Neon Postgres)]
+  c --> api[Telegram API]
+  c -. OTLP / profiles .-> gc[Grafana Cloud]
 ```
 
-The Worker is deliberately thin: it verifies the secret token, throttles a
-noisy chat, and routes. It holds **no business logic and no database access**,
-because a rule that needs loan data to evaluate belongs in Go where it can be
-tested without a socket.
+The Worker holds no loan business logic or database access. Terraform still
+creates and binds Hyperdrive, but its connection string cannot resolve inside
+the container sandbox. The container uses the `MARUM_DATABASE_URL` secret
+instead. Local Compose and Cloudflare build from `deploy/Dockerfile`; Cloudflare
+also passes the runtime version to the container.
 
-The container runs the same image as `make up`. Nothing about the application
-is Cloudflare-shaped, so the self-hosting path stays real.
+## Setup and deployment
 
-## Two environments
+Create the database, state bucket and infrastructure credentials following
+[Terraform bootstrap](../../deploy/terraform/README.md). Configure the GitHub
+dev environment's secrets and variables before dispatching CD. The deployment
+installs Worker dependencies with `npm ci`; manual Worker tooling runs from
+`deploy/cloudflare` after the same install.
 
-Everything below is done **twice**, once per environment, with different values:
-
-| | dev | production |
-| --- | --- | --- |
-| Worker | `marum-dev` | `marum` |
-| Domain | `dev.marum.loan` | `marum.loan` |
-| Bot | a separate @BotFather bot | the real one |
-| Database | its own Neon project | its own Neon project |
-| Hyperdrive | `marum-dev-postgres` | `marum-postgres` |
-| Query cache | 5 s, to exercise the path | **off** — a stale balance is a correctness bug |
-
-Nothing is deployed to the top-level wrangler config: every deploy names an
-environment explicitly, so a stray `wrangler deploy` cannot reach production.
-
-## One-time setup
+Main pushes deploy automatically except documentation-only and other ignored
+paths. For the verified release stamp, when `main` and `v2.0.3` still resolve to
+the same commit:
 
 ```bash
-cd deploy/cloudflare
-npm install
-npx wrangler login
+gh workflow run cd-dev.yml --ref main -f version=2.0.3
 ```
 
-**1. The database and Hyperdrive.**
+Do not dispatch dev with `--ref v2.0.3`: environment protection rejects tag
+refs. Do not weaken that protection. `deploy.yml` is reusable (`workflow_call`),
+not directly dispatchable. Tags trigger Release builds and artifacts only.
+`cd-prod.yml` is a dormant manual workflow for a future `prod` environment.
 
-Cloudflare does not sell a managed PostgreSQL — D1 is SQLite, and the design
-rejected it because the ledger's arithmetic must be identical everywhere and
-there is no faithful local twin of D1. So Postgres is hosted at Neon and
-**Hyperdrive** pools in front of it, which is what makes Postgres usable from a
-Worker that has no persistent connections and can start anywhere.
+The reusable deploy runs in this order:
 
-Create the Neon project by hand. Everything after that is automatic: the deploy
-workflow applies Terraform, which creates the Hyperdrive config, and writes its
-ID into `wrangler.toml` before deploying. Nothing is pasted.
+1. Apply dev Terraform and substitute its Hyperdrive ID in the runner checkout.
+2. Apply expand-only migrations using `DATABASE_URL` (default `run_migrations=true`).
+3. Install Worker dependencies and **capture the deployed Worker version ID**
+   before deploying or syncing secrets; both operations create revisions.
+4. Deploy Worker/container with the requested version, then bulk-sync runtime
+   secrets once. `MARUM_MINIAPP_URL` must be nonempty.
+5. Run the smoke test with the expected version and bot token.
+6. If smoke fails and a prior version ID exists, roll back to that **explicit
+   pre-release Worker version**. The expanded schema stays in place. Other
+   failures do not trigger this smoke-specific rollback step.
+7. Attempt a Grafana annotation on success; annotation failure is nonfatal.
 
-To inspect or change infrastructure outside a deploy:
+Do not move secret sync before deployment. After a rollback Cloudflare can
+reject edits to an undeployed latest version with error `10215`. Deployment
+before secret sync avoids that ordering problem.
+
+## Registering the webhook
+
+Webhook registration is an operator step; CD does not call `setWebhook`. Use
+`MARUM_BOT_TOKEN`, `MARUM_WEBHOOK_SECRET`, `WEBHOOK_PATH`, and `PUBLIC_URL` from
+the same dev configuration. Register the URL
+`${PUBLIC_URL}/tg/${WEBHOOK_PATH}` with `secret_token` equal to
+`MARUM_WEBHOOK_SECRET` and allowed updates `message`, `callback_query`,
+`pre_checkout_query`. The Worker checks the exact path and secret header, then
+forwards to `/tg/update` with `X-Marum-Service-Token`.
+
+Use a credential-aware client for the Telegram API request; keep tokens and
+request data out of shell history and shared output. Verify registration via
+Telegram's `getWebhookInfo` separately from application smoke.
+
+## Proving the new version is live
+
+From the repository root, with Bash, curl and jq installed and `PUBLIC_URL` set:
 
 ```bash
-make tf-init  ENV=dev     # once per environment; re-run when switching
-make tf-plan  ENV=dev
-make tf-apply ENV=dev
+./deploy/cloudflare/smoke.sh "$PUBLIC_URL" 2.0.3
 ```
 
-Terraform also owns the backup bucket and the zone's TLS settings. Full
-bootstrap, including the API token scopes: [deploy/terraform/README.md](../../deploy/terraform/README.md).
+Supply `MARUM_BOT_TOKEN` through the environment to include the bot menu check;
+CD does this. Without it, that check is skipped. `SMOKE_DEADLINE_S` defaults to
+240 seconds for liveness and, separately, menu publication.
 
-**2. Secrets.** Never committed, never on a command line:
+Smoke checks the exact `/healthz` version, database readiness and schema at
+least 22, `/status`, the versioned Mini App shell, `/app/version`, modules,
+styles, unsigned API rejection, and the Telegram global menu URL's
+`v=2.0.3` query parameter. GET/HEAD probes send **no request body**; mutation
+probes send JSON. Requests retry across deployment/secret-sync restarts.
 
-```bash
-for s in MARUM_BOT_TOKEN MARUM_WEBHOOK_SECRET MARUM_SERVICE_TOKEN \
-         MARUM_ADMIN_PASSWORD_HASH MARUM_IDENTITY_KEY OTEL_EXPORTER_OTLP_HEADERS; do
-  npx wrangler secret put "$s" --env dev
-  npx wrangler secret put "$s" --env production
-done
-```
+The final wake measurement pauses 20 seconds and retries health. It does not
+force the 10-minute container idle timeout, and a slow response only warns.
+It is not proof of a forced cold start.
 
-`MARUM_WEBHOOK_SECRET` and the bot token are the same class of credential:
-leaking either lets an attacker impersonate Telegram or the bot.
-
-**3. Register the webhook** with a high-entropy path *and* the secret token —
-both are checked before anything is parsed:
-
-```bash
-curl -X POST "https://api.telegram.org/bot$TOKEN/setWebhook" \
-  -d "url=https://$DOMAIN/tg/$WEBHOOK_PATH" \
-  -d "secret_token=$WEBHOOK_SECRET" \
-  -d "allowed_updates=[\"message\",\"callback_query\",\"pre_checkout_query\"]"
-```
-
-**4. GitHub repository configuration**
-
-Secrets and variables are set **per environment**, so dev credentials can never
-reach production by accident.
-
-| Scope | Kind | Name |
-| --- | --- | --- |
-| `dev` and `production` | Secret | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL`, `GRAFANA_TOKEN` |
-| Repository, not per environment | Secret | `TF_CLOUDFLARE_API_TOKEN`, `TF_CLOUDFLARE_ACCOUNT_ID`, `TF_CLOUDFLARE_ZONE_ID`, `TF_R2_ACCESS_KEY_ID`, `TF_R2_SECRET_ACCESS_KEY`, `TF_DATABASE_DEV`, `TF_DATABASE_PRODUCTION` — infrastructure only |
-| `dev` and `production` | Variable | `PUBLIC_URL`, `GRAFANA_URL` |
-
-`production` carries a **required reviewer**; `dev` has none, because a dev
-deploy that needs a human is a dev deploy that stops happening.
-
-## Deploying
-
-Publishing a GitHub Release triggers it. For staging, run the **Deploy**
-workflow manually.
-
-The order is not negotiable:
-
-1. **Expand** the migration — additive, compatible with the binary still running
-2. **Deploy** code that reads both schemas
-3. **Smoke** — liveness, readiness, schema version, status, and a **cold
-   request after a forced idle**, because that is the path a borrower hits
-   first thing in the morning
-4. **Roll back the binary** if the smoke fails. The schema stays expanded,
-   which is safe precisely because it is backward compatible.
-
-### Proving the new version is live
-
-The workflow passes the expected release string to the smoke test. A rollout
-is successful only when both the Go container and the edge-served Mini App
-report that exact string; reaching any healthy older deployment is a failure.
-
-For a manual check, compare the workflow's stamped version with both surfaces:
+For a quick version comparison:
 
 ```bash
 curl -fsS "$PUBLIC_URL/healthz"
-curl -fsS "$PUBLIC_URL/app/" | grep "a/$VERSION/js/main.js"
+curl -fsS "$PUBLIC_URL/readyz"
+curl -fsS "$PUBLIC_URL/app/version"
+curl -fsS "$PUBLIC_URL/app/" | grep -F 'a/2.0.3/js/main.js'
 ```
 
-`healthz` returns a `version` field for the running binary. The Mini App also
-shows the asset version in its build badge. If those values differ, the Worker
-and container are from different rollouts; do not wait for caches to expire.
-The shell is served with `no-store`, and assets are immutable only under their
-versioned URL, so an exact-version mismatch is a deployment failure rather
-than an expected cache delay.
+Shell/version responses use `no-store`; versioned assets are immutable. A
+version mismatch is a rollout problem, not an expected cache delay. Menu
+publication is asynchronous, so a healthy container alone does not prove the
+bot opens the new app.
 
-## The admin interface is never public
+## Admin access
 
-The Worker returns 404 for `/admin`. Reach it over a private path — an SSH
-tunnel to the container, or Cloudflare Access in front of a separate hostname.
-A public admin login is an invitation regardless of how good the password is.
+Dev serves the authenticated admin UI at `https://admin-dev.marum.loan`,
+forwarded to container port 8081. The hostname is public; the application login
+and role/capability checks protect it. An unset `MARUM_ADMIN_PASSWORD_HASH`
+disables the listener. `/admin` on the main hostname returns 404. The dormant
+`prod` branch rejects admin-host requests; no production access path is active.
 
-## What this costs
+## Self-hosting
 
-Roughly **$5–8/month** at MVP scale: the Workers paid floor, a `basic`
-container that sleeps when idle, a free-tier managed Postgres, and object
-storage measured in pennies. Grafana Cloud's free tier covers observability.
-
-The database is the line that grows. Point-in-time recovery forces a paid tier
-from the moment beta holds real financial history — budget it at Phase 2 rather
-than discovering it at Phase 4.
-
-## Self-hosting instead
-
-Nothing here is required. `docker compose up` with a Postgres and a bot token
-is a complete Marum. The Cloudflare path buys free DDoS protection, no servers
-to patch, and scale-to-zero; a small VPS with the same compose file is cheaper
-and equally correct.
+Use [local-development.md](local-development.md) for Compose, identity-key
+setup, migrations and polling. A bot token alone is insufficient. Terraform
+creates a backup bucket, but this repository has no scheduled dump/upload job;
+see [runbooks.md](runbooks.md) before treating the bucket as a backup system.

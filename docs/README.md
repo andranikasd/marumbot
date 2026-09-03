@@ -2,6 +2,11 @@
 
 ## Start here
 
+**Current release: v2.0.3, development only** (verified 2026-09-03).
+Start with [current state](current-state.md), [budgeting](product/budgeting.md),
+[development acceptance](design/v3/development-acceptance.md) and
+[release evidence](design/v3/release-checklist.md). There is no production environment.
+
 New to the codebase? Read [architecture/01-overview.md](architecture/01-overview.md),
 then [02-domain-model.md](architecture/02-domain-model.md). Between them they
 explain why the code is shaped the way it is.
@@ -24,7 +29,7 @@ explain why the code is shaped the way it is.
 | Document | Covers |
 | --- | --- |
 | [Local development](operations/local-development.md) | Getting running, every make target, the demo data |
-| [Environments](operations/environments.md) | dev and production: what differs, what is enforced, what to set |
+| [Environments](operations/environments.md) | Live development, inactive production configuration and required settings |
 | [Releasing](operations/releases.md) | Versioning, tags, the release pipeline |
 | [Deployment](operations/deployment.md) | Cloudflare setup, secrets, the deploy order |
 | [Infrastructure](../deploy/terraform/README.md) | Terraform: where the database lives, Hyperdrive, who owns which resource |
@@ -37,20 +42,29 @@ explain why the code is shaped the way it is.
 | --- | --- |
 | [Correctness corpus](../testdata/golden/README.md) | The real lender schedules the engine is measured against, and what each one currently proves |
 | [Engineering guide](engineering-guide.md) | How code is written: structure, style, testing, the five invariants |
-| [Interface v1.1](design/ui-v1.1.md) | The shared visual language of the Mini App, the bot and the admin |
-| [MVP system and architecture design](design/Marum-MVP-System-and-Architecture-Design.pdf) | The formal design document |
-| [Reliable MVP design v0.3.1](design/reliable-mvp-design.md) | Long-form reference: full DDL, reliability invariants, failure analysis |
-| [Diagrams](diagrams/) | Editable draw.io sources for the design document's figures |
+| [Current interface conventions](design/ui-v1.1.md) | v2.0.3 navigation, tokens, localization and recovery; legacy filename |
+| [MVP system and architecture design](design/Marum-MVP-System-and-Architecture-Design.pdf) | Archived original design; not current deployment evidence |
+| [Reliable MVP design v0.3.1](design/reliable-mvp-design.md) | Historical proposal; use migrations/current architecture for implemented behavior |
+| [Diagrams](diagrams/) | Archived draw.io figures and exports for the original design |
 
-## The short version
+## Historical design and review records
 
-If you read nothing else:
+These assets preserve original intent and review history. Their feature lists,
+schema examples, diagrams and screenshots do not certify current implementation.
 
-1. **Money is `int64` minor units.** Interest accrual runs through a 128-bit
-   intermediate, because the naive form overflows above ~16.5M AMD at 18% and
-   fails **silently**.
-2. **Facts are append-only.** A mistake is superseded or voided, never edited.
-3. **Derived state is disposable.** Delete `loan_state`; replay rebuilds it.
-4. **Delivery is at-least-once.** Reminder text must read correctly twice.
-5. **When Marum cannot reconstruct a balance it trusts, it says so** and asks
-   for the bank's figure rather than guessing.
+- [Original v3 specification](design/v3/specification.md)
+- [Historical implementation review](design/v3/implementation-review.md)
+- [Decision-engine review](design/Marum-Decision-Engine-Review-and-Definition-of-Done.md)
+- [Original PDF source HTML](design/marum-final.html) and the PDF linked above
+- [v3 visual preview](design/v3/preview.html), [three-loan preview](design/v3/three-loans.html)
+  and [synthetic reference data](design/v3/three-loans-data.json)
+- [v1.0.0 beta record](release/v1.0.0-beta.md)
+
+## Governing constraints
+
+[AGENTS.md](../AGENTS.md) retains the five invariants and human-review gates.
+The [engineering guide](engineering-guide.md) distinguishes conventions from
+actual automated enforcement. Financial facts are append-only, money is integer
+minor units, core calculations are deterministic, and unknown lender behavior
+must not be guessed. Original plan inputs and activation records are persisted
+for history; derived reports are recomputed from them.
