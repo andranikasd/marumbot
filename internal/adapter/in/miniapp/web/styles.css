@@ -114,9 +114,10 @@ input,select{
 input:focus,select:focus{border-color:var(--accent)}
 input[aria-invalid="true"]{border-color:var(--danger)}
 input::placeholder{color:var(--hint);opacity:1}
-.in{position:relative}
-.in .unit{position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--hint);font-size:13px;pointer-events:none}
-.in.unit-w input{padding-right:64px}
+.in{display:flex;align-items:center;gap:8px;min-width:0}
+.in .unit{position:static;flex:0 0 auto;max-width:40%;color:var(--hint);font-size:12px;line-height:1.3;pointer-events:none}
+.in input{min-width:0;flex:1 1 0}
+.in.unit-w input{padding-right:13px}
 .pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 .row{display:flex;gap:10px}
 .row>*{min-width:0}
@@ -280,5 +281,26 @@ body:has(input:focus,select:focus,textarea:focus) .pin-space{display:none}
 #chart-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 #chart-values>div{display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:0;padding:4px 0;min-width:0}
 #chart-values span{font-size:12px}
-#chart-values b{font-size:14px;overflow-wrap:anywhere}
+#chart-values b{font-size:14px;max-width:none;width:100%;white-space:nowrap;overflow-wrap:normal;text-align:left;font-variant-numeric:tabular-nums}
 #chart-month{width:100%;min-height:44px;padding:0}
+
+/* Stable reading columns on phone-sized Telegram webviews. */
+.appbar{grid-template-columns:36px minmax(0,1fr) auto auto}
+.appbar .language{grid-column:4;grid-row:1;font-size:12px;padding:0 8px;color:var(--accent);white-space:nowrap}
+.appbar h1,.appbar .txt,.appbar .back{grid-row:1}
+.home-loan{display:grid;grid-template-columns:28px minmax(0,1fr);gap:4px 10px;align-items:center;width:100%;padding:10px 0;border:0;border-bottom:1px solid var(--line);background:transparent;text-align:left}
+.home-loan svg{grid-column:1;grid-row:1/3;width:24px;height:24px;color:var(--accent)}
+.home-loan span{grid-column:2;overflow-wrap:anywhere}
+.home-loan b{grid-column:2;white-space:nowrap;font-variant-numeric:tabular-nums;font-size:14px}
+.shortcut{display:flex;align-items:center;justify-content:center;gap:10px}
+.shortcut svg{width:24px;height:24px;flex:none}
+.loan{grid-template-columns:32px minmax(0,1fr);gap:4px 10px}
+.loan .tile{grid-row:1/3}
+.loan .nm{grid-column:2}
+.loan .bal{grid-column:2;text-align:left;white-space:nowrap;font-size:16px}
+.loan .two{grid-column:1/3;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 12px}
+.loan .two b{white-space:nowrap;font-size:12px}
+#chart-values{gap:10px 14px}
+.chart-legend{margin:10px 0 0;line-height:1.4}
+.chart-legend i{flex:none}
+@media(max-width:360px){#chart-values{grid-template-columns:minmax(0,1fr)}.loan .two{grid-template-columns:minmax(0,1fr) 12px}.loan .two>span:nth-child(2){grid-column:1}.loan .chev{grid-column:2;grid-row:1/3}}

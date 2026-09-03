@@ -84,6 +84,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/plan/approve", s.approvePlan())
 	mux.Handle("GET /api/budget", s.getBudget())
 	mux.Handle("GET /api/activity", s.activity())
+	mux.Handle("GET /api/settings", s.settings())
+	mux.Handle("POST /api/settings", s.settings())
 	mux.Handle("GET /api/loans/{id}/payments", s.paymentContext())
 	mux.Handle("POST /api/loans/{id}/payments", s.recordPayment())
 	mux.Handle("GET /api/loans", s.listLoans())

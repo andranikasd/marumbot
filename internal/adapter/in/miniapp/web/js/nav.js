@@ -97,3 +97,17 @@ export function buildTabs() {
     go(s?.parent || "loans");
   });
 }
+
+// Update labels without resetting unsaved child-screen forms.
+export function refreshLanguage(){
+ $('tabs').setAttribute('aria-label',T('nav.label'));
+ $('offline-text').textContent=T('offline');
+ $('offline-retry').textContent=T('offline.retry');
+ for(const s of screens.values())if(s.el)applyI18n(s.el);
+ for(const b of document.querySelectorAll('nav.tabs button')){
+  const s=screens.get(b.dataset.go);if(s)b.querySelector('span').textContent=T(s.labelKey);
+ }
+ const s=screens.get(current);if(!s)return;
+ setTitle(T(s.titleKey||s.labelKey));
+ if(!s.parent)s.onShow?.(s.el,params);
+}

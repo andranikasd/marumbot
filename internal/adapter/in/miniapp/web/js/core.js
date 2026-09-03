@@ -26,12 +26,17 @@ export const haptic = {
   bad: () => tg?.HapticFeedback?.notificationOccurred?.("error"),
 };
 
-export const lang = (tg?.initDataUnsafe?.user?.language_code || "hy").slice(0, 2) === "en" ? "en" : "hy";
+export let lang = (tg?.initDataUnsafe?.user?.language_code || "hy").slice(0, 2) === "en" ? "en" : "hy";
 document.documentElement.lang = lang;
-const locale = lang === "en" ? "en-GB" : "hy-AM";
+let locale = lang === "en" ? "en-GB" : "hy-AM";
+
+export function setLanguage(value){
+ if(value!=="hy"&&value!=="en")return;
+ lang=value;locale=lang==="en"?"en-GB":"hy-AM";document.documentElement.lang=lang;
+}
 
 export const fmtMoney = (n, cur) => new Intl.NumberFormat(lang === "en" ? "en-US" : "hy-AM",
-  { style: "currency", currency: cur, minimumFractionDigits: 0 }).format(n);
+  { style: "currency", currency: cur }).format(n);
 const parseISO = (iso) => { const d = new Date(iso + "T00:00:00"); return Number.isNaN(d.getTime()) ? null : d; };
 // fmtDate is day + short month, for dates inside the running year.
 export const fmtDate = (iso) => {

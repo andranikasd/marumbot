@@ -12,10 +12,13 @@ import "./screens/loan.js";
 import "./screens/add.js";
 import "./screens/budget.js";
 import "./screens/budget-edit.js";
-import { buildTabs, go } from "./nav.js";
-import { prefetch, watchOffline } from "./api.js";
+import { buildTabs, go, refreshLanguage } from "./nav.js";
+import { api, prefetch, watchOffline } from "./api.js";
+
+import {lang,setLanguage} from "./core.js";
 
 buildTabs();
+document.getElementById("appbar-language").onclick=()=>go("more");
 watchOffline();
 
 // The build badge: the one honest answer to "which version am I looking
@@ -50,12 +53,22 @@ document.addEventListener("visibilitychange", () => {
 });
 window.Telegram?.WebApp?.onEvent?.("activated", checkBuild);
 
-// Warm every screen's data in parallel while the first one renders, so a
-// tab switch lands on a ready screen instead of a spinner.
-prefetch(["api/loans", "api/budget", "api/plan"]);
+// Share the initial loan request with Home; calculate plans only when opened.
+prefetch(["api/loans"]);
 
 // The bot deep-links by screen name; an unknown name lands on the loans.
 // A loan id beside the name opens that loan.
 const query = new URLSearchParams(location.search);
 const requested = query.get("screen") || "home";
-go(requested, query.get("id") ? { id: query.get("id") } : null);
+
+let languageSync=null;
+function syncLanguage(){
+ if(languageSync)return languageSync;
+ languageSync=(async()=>{try{const res=await api('api/settings');if(!res.ok)return;const settings=await res.json();if(settings.locale!==lang){setLanguage(settings.locale);refreshLanguage();}}catch{}finally{languageSync=null;}})();
+ return languageSync;
+}
+// Resolve the account language before mounting deep-linked forms, whose
+// dynamic labels otherwise retain Telegram's language until reopened.
+syncLanguage().finally(()=>go(requested, query.get("id") ? { id: query.get("id") } : null));
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')syncLanguage();});
+window.Telegram?.WebApp?.onEvent?.('activated',syncLanguage);

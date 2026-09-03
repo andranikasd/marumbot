@@ -191,3 +191,25 @@ admin or release checkboxes complete from this checkpoint.
 The next development build must use a distinct version for changed immutable
 assets; do not publish different application bytes under the existing `2.0.0`
 asset paths. No production promotion or release tag is part of this checkpoint.
+
+## UI corrections — 3 September, screenshot review
+
+Not deployed. The screenshot fixes remain on the same feature branch:
+
+- Chart values no longer inherit the narrow summary-value column. Currency
+  precision is consistent, and solid/dashed legends identify the plotted series.
+- Home and Loans separate icons, names, balances and payment details. Input
+  units participate in layout rather than overlapping fields.
+- A visible `Հայ / EN` header button opens language settings. Authenticated
+  Mini App settings share the bot's stored locale, including on reopening;
+  the bot keyboard also exposes its language action. Deep-linked forms resolve
+  that setting before mounting.
+- Concurrent reads share one request; opening Home no longer eagerly computes
+  a plan. This removes redundant work, not a measured end-to-end latency claim.
+
+Local evidence: app and Mini App race tests, lint, transport invalidation and
+payment retry regressions pass. A synthetic three-loan preview at 390×844
+verified chart labels, unbroken amounts, cleaner loan cards and Armenian/English
+switching with persistence on reopening. A physical Telegram/iOS check remains.
+Live readiness still reports `2.0.0`, schema 11. These corrections do not close
+the payment reconciliation or broader full-v3 release gates above.

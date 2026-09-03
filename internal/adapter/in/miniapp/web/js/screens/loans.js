@@ -56,11 +56,10 @@ function loanCard(loan) {
   const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = loan.name;
   const meta = document.createElement("small");
   const bits = [];
-  if (loan.rate_percent != null) bits.push(loan.rate_percent + "%");
-  bits.push(T(loan.method === "declining" ? "method.declining" : "method.annuity").toLowerCase());
-  bits.push(fmtDate(loan.balance_as_of));
-  if (loan.optional_excluded) bits.push(T("loan.noextra"));
-  if (mainCurrency && loan.currency !== mainCurrency && loan.balance_major > 0) bits.push(loan.currency + " · " + T("manage.excluded"));
+  if(loan.needs_reconciliation)bits.push(T('payment.review'));
+  else if(loan.balance_as_of)bits.push(fmtDate(loan.balance_as_of));
+  if(loan.optional_excluded)bits.push(T('loan.noextra'));
+  if(mainCurrency&&loan.currency!==mainCurrency)bits.push(T('manage.excluded'));
   meta.textContent = bits.join(" · ");
   nm.append(meta);
   const bal = document.createElement("span"); bal.className = "bal num"; bal.textContent = fmtMoney(loan.balance_major, loan.currency);
@@ -80,13 +79,6 @@ function loanCard(loan) {
   two.append(due, pay, chev);
   el.append(two);
 
-  if (loan.original_major) {
-    const bar = document.createElement("span"); bar.className = "pb";
-    const fill = document.createElement("i");
-    fill.style.width = Math.max(2, Math.min(98, Math.round((1 - loan.balance_major / loan.original_major) * 100))) + "%";
-    bar.append(fill);
-    el.append(bar);
-  }
   return el;
 }
 

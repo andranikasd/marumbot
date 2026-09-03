@@ -1,7 +1,4 @@
-// Transport with a small read cache. GETs are stale-while-revalidate: the
-// screen renders the cached body at once and re-renders when the fresh one
-// lands, so tab switches feel instant while every figure still ends up
-// current. Writes invalidate whatever they touched.
+// Fresh financial reads share concurrent requests. Offline fallback stays explicitly marked.
 "use strict";
 import { tg } from "./core.js";
 import { T } from "./i18n.js";
@@ -17,19 +14,23 @@ export const api = (path, init = {}) => fetch(path, {
 
 const cache = new Map(); // path -> { body, at }
 const TTL = 30_000;
+const inFlight=new Map();
+let generation=0;
+function fresh(path){
+ if(inFlight.has(path))return inFlight.get(path);
+ const stamp=generation;
+ const pending=(async()=>{const res=await api(path);if(!res.ok)throw new Error("http "+res.status);const body=await res.json();if(stamp===generation)cache.set(path,{body,at:Date.now()});return body;})();
+ inFlight.set(path,pending);pending.finally(()=>{if(inFlight.get(path)===pending)inFlight.delete(path);}).catch(()=>{});
+ return pending;
+}
 
-// getJSON(path, onData): calls onData with the cached body immediately when
-// one exists, then with the fresh body when it arrives (skipped if equal).
-// Returns the fresh body, or throws when there is no cache to fall back on.
+// Return current data, or a labeled recent offline fallback.
 export async function getJSON(path, onData) {
   const hit = cache.get(path);
   // Financial values are rendered only after a fresh response.
   try {
-    const res = await api(path);
-    if (!res.ok) throw new Error("http " + res.status);
-    const body = await res.json();
+    const body = await fresh(path);
     offline(false);
-    cache.set(path, { body, at: Date.now() });
     if (onData) onData(body, { stale: false });
     return body;
   } catch (err) {
@@ -64,6 +65,8 @@ export function watchOffline() {
 }
 
 export function invalidate(prefix) {
+ generation++;
+ for(const k of inFlight.keys())if(k.startsWith(prefix))inFlight.delete(k);
   for (const k of cache.keys()) if (k.startsWith(prefix)) cache.delete(k);
 }
 

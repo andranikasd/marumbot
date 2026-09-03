@@ -630,6 +630,7 @@ func (w *Worker) mainMenu(l i18n.Locale) any {
 	}
 	rows = append(rows,
 		[]map[string]any{button(i18n.Button(l, KindLoans)), button(i18n.Button(l, KindBudget))},
+		[]map[string]any{button(i18n.Button(l, KindLanguage))},
 	)
 	return map[string]any{
 		"keyboard":                rows,
