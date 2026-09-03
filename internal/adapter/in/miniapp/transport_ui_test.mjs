@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import vm from 'node:vm';
+const source=(await readFile(new URL('./web/js/api.js',import.meta.url),'utf8')).replace(/^import .*;$/gm,'').replaceAll('export ','');
+let requests=0;
+const replies=[];
+const env={AbortController,setTimeout,clearTimeout,Map,Date,Error,TypeError,Event,document:{getElementById:()=>null},addStrings(){},tg:null,T:x=>x,fetch:()=>{requests++;return new Promise(resolve=>replies.push(resolve));}};
+env.Set=Set;
+vm.createContext(env);vm.runInContext(source,env);
+const a=env.getJSON('api/loans'), b=env.getJSON('api/loans');
+assert.equal(requests,1,'concurrent screen and prefetch must share transport');
+replies.shift()({ok:true,json:async()=>({version:1})});
+assert.deepEqual(await a,{version:1});assert.deepEqual(await b,{version:1});
+const older=env.getJSON('api/loans');env.invalidate('api/');const newer=env.getJSON('api/loans');
+assert.equal(requests,3,'a mutation must detach old in-flight reads');
+replies.pop()({ok:true,json:async()=>({version:3})});await newer;
+replies.shift()({ok:true,json:async()=>({version:2})});await assert.rejects(older,/inputs changed/);
+const offlineRead=env.getJSON('api/loans');
+replies.shift()(Promise.reject(new TypeError('offline')));
+assert.deepEqual(await offlineRead,{version:3},'late pre-mutation replies must not replace the offline snapshot');
+console.log('Concurrent reads coalesce; mutations start a fresh request');
+
+// A stalled connection or response body must release the screen for retry.
+let timeout;
+const timed={...env,fetch:()=>new Promise(()=>{}),setTimeout:fn=>{timeout=fn;return 1;},clearTimeout(){}};
+vm.createContext(timed);vm.runInContext(source,timed);
+let stuck=timed.getJSON('api/plan');timeout();
+await assert.rejects(stuck,/timed out/);
+timed.fetch=async()=>({ok:true,json:async()=>({recovered:true})});
+assert.deepEqual(await timed.getJSON('api/plan'),{recovered:true},'timed-out request must leave the coalescing map');
+timed.fetch=async()=>({ok:true,json:()=>new Promise(()=>{})});
+const bodyResponse=await timed.api('api/budget');
+stuck=bodyResponse.json();timeout();await assert.rejects(stuck,/timed out/);
+let writes=0;
+timed.fetch=()=>{writes++;return new Promise(()=>{});};
+stuck=timed.api('api/budget',{method:'POST',body:'{"idempotency_key":"same"}'});timeout();
+await assert.rejects(stuck,/timed out/);assert.equal(writes,1,'transport must never retry a financial write');
+console.log('Stalled connections and bodies time out; reads recover and writes are not duplicated.');

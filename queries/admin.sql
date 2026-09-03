@@ -57,7 +57,7 @@ SELECT id, as_of, captured_at, trust, principal_minor, accrued_interest_minor,
 FROM loan_snapshots WHERE loan_id = $1 ORDER BY as_of DESC, captured_at DESC;
 
 -- name: ListEventsForLoan
-SELECT e.id, e.recorded_seq, e.kind, e.value_date, e.recorded_at, e.amount_minor,
+SELECT e.id, e.recorded_seq, e.kind, COALESCE(e.value_date, DATE '0001-01-01'), e.recorded_at, e.amount_minor,
        e.bank_order, e.bank_reference, e.voids_event_id, e.contract_version_id,
        (SELECT count(*) FROM snapshot_event_coverage c WHERE c.event_id = e.id) > 0 AS covered
 FROM loan_events e WHERE e.loan_id = $1
@@ -123,11 +123,11 @@ RETURNING id;
 -- and everything else keyed to the account.
 WITH tombstone AS (
     INSERT INTO deletion_tombstones (subject_hmac)
-    SELECT encode(sha256(id::text::bytea), 'hex') FROM users WHERE id = $1
+    SELECT encode(sha256(id::text::bytea), 'hex') FROM users WHERE id = $1 AND deletion_requested_at IS NOT NULL
     ON CONFLICT DO NOTHING
     RETURNING subject_hmac
 )
-DELETE FROM users WHERE id = $1 RETURNING id;
+DELETE FROM users WHERE id = $1 AND deletion_requested_at IS NOT NULL RETURNING id;
 
 -- name: ArchiveLoan
 -- Hides a loan without destroying its ledger. A loan whose events are gone

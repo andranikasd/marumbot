@@ -148,3 +148,30 @@ func TestSetBudgetReportsPersistenceFailure(t *testing.T) {
 		t.Fatalf("configuration writes = %d, want 1", store.calls)
 	}
 }
+
+func TestBudgetFundingValidationAndConflict(t *testing.T) {
+	for _, body := range []string{
+		`{"monthly_major":100,"currency":"AMD","pay_day":0,"funding":{"monthly_minor":10000}}`,
+		`{"monthly_major":100,"currency":"AMD","pay_day":1,"funding":{"monthly_minor":-1}}`,
+		`{"monthly_major":100,"currency":"AMD","pay_day":1,"funding":{"monthly_minor":10000,"events":[{"on":"2025-12-01","minor":10000}]}}`,
+	} {
+		store := &budgetTestConfigurator{}
+		result := postBudget(t, budgetTestServer(store), body)
+		if result.Code != http.StatusUnprocessableEntity || store.calls != 0 {
+			t.Fatalf("invalid funding accepted: %d", result.Code)
+		}
+	}
+	store := &budgetTestConfigurator{err: app.ErrConflict}
+	result := postBudget(t, budgetTestServer(store), `{"monthly_major":100,"currency":"AMD","pay_day":1,"expected_version":4,"funding":{"monthly_minor":10000,"events":[{"on":"2026-02-01","minor":1000,"expected":true}]}}`)
+	if result.Code != http.StatusConflict || store.configuration.ExpectedVersion == nil || *store.configuration.ExpectedVersion != 4 {
+		t.Fatalf("conflict not preserved: %d", result.Code)
+	}
+}
+
+func TestBudgetRetryKeyRequiresExplicitStatementDate(t *testing.T) {
+	store := &budgetTestConfigurator{}
+	result := postBudget(t, budgetTestServer(store), `{"idempotency_key":"a-stable-retry-key","monthly_major":100,"currency":"AMD","pay_day":1,"expected_version":0}`)
+	if result.Code != http.StatusUnprocessableEntity || store.calls != 0 {
+		t.Fatal("retryable statement accepted without a stable date")
+	}
+}

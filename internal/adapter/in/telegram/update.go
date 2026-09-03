@@ -20,18 +20,28 @@ import (
 type Update struct {
 	UpdateID int64 `json:"update_id"`
 	Message  *struct {
-		MessageID int64  `json:"message_id"`
-		From      *User  `json:"from"`
-		Chat      *Chat  `json:"chat"`
-		Date      int64  `json:"date"`
-		Text      string `json:"text"`
+		MessageID     int64  `json:"message_id"`
+		From          *User  `json:"from"`
+		Chat          *Chat  `json:"chat"`
+		Date          int64  `json:"date"`
+		Text          string `json:"text"`
+		ForwardOrigin *struct {
+			Type string `json:"type"`
+		} `json:"forward_origin"`
+		ForwardFromChat    *Chat `json:"forward_from_chat"`
+		IsAutomaticForward bool  `json:"is_automatic_forward"`
 	} `json:"message"`
 	CallbackQuery *struct {
 		ID      string `json:"id"`
 		From    *User  `json:"from"`
 		Data    string `json:"data"`
 		Message *struct {
-			Chat *Chat `json:"chat"`
+			Chat          *Chat `json:"chat"`
+			ForwardOrigin *struct {
+				Type string `json:"type"`
+			} `json:"forward_origin"`
+			ForwardFromChat    *Chat `json:"forward_from_chat"`
+			IsAutomaticForward bool  `json:"is_automatic_forward"`
 		} `json:"message"`
 	} `json:"callback_query"`
 }
@@ -88,21 +98,26 @@ type payload struct {
 // error: an unrecognised update is Telegram doing its job, not a fault.
 func Normalise(u Update) (Normalised, bool) {
 	switch {
-	case u.CallbackQuery != nil && u.CallbackQuery.From != nil:
-		var chat int64
-		if m := u.CallbackQuery.Message; m != nil && m.Chat != nil {
-			chat = m.Chat.ID
+	case u.CallbackQuery != nil:
+		q := u.CallbackQuery
+		m := q.Message
+		if q.From == nil || q.From.IsBot || q.From.ID <= 0 || m == nil || m.Chat == nil ||
+			m.Chat.Type != "private" || m.Chat.ID != q.From.ID ||
+			m.ForwardFromChat != nil || m.IsAutomaticForward ||
+			(m.ForwardOrigin != nil && m.ForwardOrigin.Type != "user" && m.ForwardOrigin.Type != "hidden_user") {
+			return Normalised{}, false
 		}
 		p, _ := json.Marshal(payload{Data: u.CallbackQuery.Data})
 		return Normalised{
-			Kind: KindCallback, UserID: u.CallbackQuery.From.ID, ChatID: chat,
+			Kind: KindCallback, UserID: u.CallbackQuery.From.ID, ChatID: m.Chat.ID,
 			Language: u.CallbackQuery.From.LanguageCode, Payload: p,
 		}, true
 
 	case u.Message != nil && u.Message.From != nil && u.Message.Chat != nil:
 		m := u.Message
-		if m.From.IsBot {
-			// Bots talking to bots is not a conversation Marum takes part in.
+		if m.From.IsBot || m.From.ID <= 0 || m.Chat.Type != "private" || m.Chat.ID != m.From.ID ||
+			m.ForwardFromChat != nil || m.IsAutomaticForward ||
+			(m.ForwardOrigin != nil && m.ForwardOrigin.Type != "user" && m.ForwardOrigin.Type != "hidden_user") {
 			return Normalised{}, false
 		}
 		kind, arg := classify(m.Text)

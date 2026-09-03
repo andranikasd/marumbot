@@ -36,11 +36,13 @@ func (e *UnsupportedError) Error() string {
 // the first failing date and the exact gap so the borrower can be told what
 // would have to change.
 type InfeasibleError struct {
-	On        date.Date
-	LoanID    string
-	Required  money.Amount
-	Available money.Amount
-	Shortfall money.Amount
+	// Constraint is spending_limit for a permission failure; empty means cash.
+	Constraint string
+	On         date.Date
+	LoanID     string
+	Required   money.Amount
+	Available  money.Amount
+	Shortfall  money.Amount
 }
 
 func (e *InfeasibleError) Error() string {

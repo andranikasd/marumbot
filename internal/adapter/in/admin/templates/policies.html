@@ -26,48 +26,6 @@
   {{else}}<div class="empty">No policies yet. Every contract needs one before the engine can replay it.<a class="next" href="#record">Record the first one below ↓</a></div>{{end}}
 </div>
 
-<div class="panel" id="record">
-  <div class="hd">Record a policy</div>
-  <div class="bd">
-    {{if .Error}}<div class="note bad" role="alert">{{.Error}}</div>{{end}}
-    <form method="post" action="/policies" class="stack">
-      <div>
-        <label for="policy_key">Key</label>
-        <input id="policy_key" name="policy_key" type="text" placeholder="ineco-consumer" required>
-        <div class="hint">Lender and product, lowercase. One key may have several versions.</div>
-      </div>
-      <div><label for="version">Version</label><input id="version" name="version" type="number" value="1" min="1"></div>
-      <fieldset style="border:0;padding:0;margin:0">
-        <legend><label>Settlement order</label></legend>
-        <div class="checks">
-          <label><input type="checkbox" name="order" value="penalties" checked> penalties</label>
-          <label><input type="checkbox" name="order" value="overdue_fees" checked> overdue fees</label>
-          <label><input type="checkbox" name="order" value="unpaid_interest" checked> unpaid interest</label>
-          <label><input type="checkbox" name="order" value="current_fees" checked> current fees</label>
-          <label><input type="checkbox" name="order" value="accrued_interest" checked> accrued interest</label>
-          <label><input type="checkbox" name="order" value="overdue_principal" checked> overdue principal</label>
-          <label><input type="checkbox" name="order" value="principal" checked> principal</label>
-        </div>
-        <div class="hint">The order buckets are settled in. Ticked boxes are read top to bottom.</div>
-      </fieldset>
-      <div>
-        <label for="excess_rule">Money beyond what is owed</label>
-        <select id="excess_rule" name="excess_rule">
-          <option value="reduce_principal">reduces principal on the day of payment</option>
-          <option value="hold_as_advance">is held as a future instalment</option>
-          <option value="requires_bank_request">does nothing until a request is filed</option>
-          <option value="unknown">unknown — do not derive a balance</option>
-        </select>
-        <div class="hint">Choosing the wrong one invents an interest saving that never happened.</div>
-      </div>
-      <div>
-        <label for="source">Read from</label>
-        <input id="source" name="source" type="text" placeholder="clause 4.3 of the 2026 consumer agreement, or a URL" required>
-        <div class="hint">A policy with no source is a guess, and guesses do not belong here.</div>
-      </div>
-      <div><button type="submit">Record policy</button></div>
-    </form>
-  </div>
-</div>
+<p><a href="/policies/new">Create a sourced draft for independent review</a></p>
 {{end}}
 {{template "layout" .}}

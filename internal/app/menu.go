@@ -94,10 +94,14 @@ func (m *MenuPublication) Publish(ctx context.Context, p MenuPublisher, miniAppU
 // to use but still works; a bot that refuses to start because Telegram was busy
 // is worse than that.
 func PublishMenus(ctx context.Context, p MenuPublisher, miniAppURL string) error {
-	for _, l := range i18n.Supported() {
-		if err := publishProfile(ctx, p, l); err != nil {
-			return err
+	// The launch URL is release-critical. Profile changes have a separate,
+	// much stricter Telegram rate limit and must never prevent this update.
+	if miniAppURL != "" {
+		if err := p.SetChatMenuButton(ctx, i18n.DashboardButton(i18n.Default), miniAppURL); err != nil {
+			return fmt.Errorf("setting the menu button: %w", err)
 		}
+	}
+	for _, l := range i18n.Supported() {
 		cmds := make([]BotCommand, 0, len(commandKeys))
 		for _, c := range commandKeys {
 			cmds = append(cmds, BotCommand{Command: c.cmd, Description: i18n.T(l, c.key)})
@@ -115,10 +119,16 @@ func PublishMenus(ctx context.Context, p MenuPublisher, miniAppURL string) error
 		}
 	}
 
-	if miniAppURL != "" {
-		// Armenian, because the button is global and cannot be per-user.
-		if err := p.SetChatMenuButton(ctx, i18n.DashboardButton(i18n.Default), miniAppURL); err != nil {
-			return fmt.Errorf("setting the menu button: %w", err)
+	return nil
+}
+
+// PublishProfile updates discovery copy separately from the launch button and
+// command menus. Call only at startup, not on every tick or command retry:
+// Telegram can rate-limit a name update for hours even when menus work.
+func PublishProfile(ctx context.Context, p MenuPublisher) error {
+	for _, l := range i18n.Supported() {
+		if err := publishProfile(ctx, p, l); err != nil {
+			return err
 		}
 	}
 	return nil

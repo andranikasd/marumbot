@@ -60,14 +60,18 @@ type Clock interface{ Now() time.Time }
 
 // Worker drains the command inbox.
 type Worker struct {
-	Inbox     InboxStore
-	Users     UserStore
-	Loans     LoanReader
-	Editor    LoanEditor
-	Budgets   BudgetStore
-	Convos    ConversationStore
-	Reminders ReminderStore
-	Plans     PlanStore
+	ProfileFlags AdminFlagReader
+	Environment  string
+	Inbox        InboxStore
+	Users        UserStore
+	Loans        LoanReader
+	Editor       LoanEditor
+	Budgets      BudgetStore
+	Convos       ConversationStore
+	Reminders    ReminderStore
+	Plans        PlanStore
+	History      PlanHistoryStore
+	proposals    planProposals
 	// plans caches the pure search by a fingerprint of its inputs; see
 	// plancache.go. Zero value ready.
 	plans searchCache
@@ -388,7 +392,7 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 		if ln.Description != "" {
 			b.WriteString("<i>" + html.EscapeString(ln.Description) + "</i>\n")
 		}
-		if s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf); err == nil && len(s.Rows) > 0 {
+		if s, err := ln.Schedule(); err == nil && len(s.Rows) > 0 {
 			b.WriteString(i18n.T(l, "loan.line", bare(ln.Balance), percent(ln.Contract.NominalRate), shortDate(l, s.Rows[0].Due, today)) + "\n")
 		} else {
 			// Say the schedule is unavailable rather than omitting the line: a
@@ -428,7 +432,7 @@ func (w *Worker) nextInstalment(loans []UserLoan) (date.Date, money.Amount, bool
 		if ln.Balance.Sign() <= 0 {
 			continue
 		}
-		s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
+		s, err := ln.Schedule()
 		if err != nil || len(s.Rows) == 0 {
 			continue
 		}
@@ -548,7 +552,7 @@ func (w *Worker) showWorking(ctx context.Context, userID string, chat int64, l i
 	if err != nil {
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "error.generic"), w.mainMenu(l))
 	}
-	s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
+	s, err := ln.Schedule()
 	if err != nil || len(s.Rows) == 0 {
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "loan.no_schedule"), w.mainMenu(l))
 	}
@@ -630,6 +634,7 @@ func (w *Worker) mainMenu(l i18n.Locale) any {
 	}
 	rows = append(rows,
 		[]map[string]any{button(i18n.Button(l, KindLoans)), button(i18n.Button(l, KindBudget))},
+		[]map[string]any{button(i18n.Button(l, KindLanguage))},
 	)
 	return map[string]any{
 		"keyboard":                rows,
@@ -646,7 +651,7 @@ func (w *Worker) addMarkup(l i18n.Locale) any {
 		return w.mainMenu(l)
 	}
 	return map[string]any{keyInline: [][]map[string]any{{
-		webAppButton(i18n.T(l, "add.button"), w.miniURL("")),
+		webAppButton(i18n.T(l, "add.button"), w.miniURL("add")),
 	}}}
 }
 

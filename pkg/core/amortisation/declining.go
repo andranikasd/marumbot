@@ -73,6 +73,9 @@ func ProjectDeclining(c model.Contract, principal money.Amount, from date.Date) 
 		if err != nil {
 			return Schedule{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
 		}
+		if c.HasScheduled && !c.NotBeforeDue.IsZero() && due.Equal(c.NotBeforeDue) && payment.Cmp(c.ScheduledPayment) != 0 {
+			return Schedule{}, fmt.Errorf("%w: bank instalment differs from the declining schedule", ErrUnsolvable)
+		}
 		closing, err := balance.Sub(principalPart)
 		if err != nil {
 			return Schedule{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)

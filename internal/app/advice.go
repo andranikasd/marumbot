@@ -10,7 +10,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/andranikasd/marumbot/internal/i18n"
-	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
@@ -38,6 +37,9 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 	}
 
 	positions, owed, required, cur, err := w.positions(ctx, loans)
+	if errors.Is(err, ErrPaymentReconciliation) {
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "payment.reconcile"), w.mainMenu(l))
+	}
 	if err != nil {
 		return err
 	}
@@ -64,9 +66,13 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 			i18n.T(l, "budget.too_low", bare(budget.Monthly), bare(required)), w.budgetMarkup(l))
 	}
 
+	asOf, err := (PaymentService{Clock: w.Clock, Users: w.Users}).BusinessDate(ctx, userID)
+	if err != nil {
+		return err
+	}
 	in := plan.Input{
-		ValuationDate: date.From(w.Clock.Now(), time.UTC),
-		Cash:          budget.CashPlan(date.From(w.Clock.Now(), time.UTC)),
+		ValuationDate: asOf,
+		Cash:          budget.CashPlan(asOf),
 		Loans:         positions,
 	}
 	u, err := plan.Explore(in)
@@ -111,7 +117,7 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 	b.WriteString(footer + "\n")
 
 	approvedNow := false
-	if w.Plans != nil {
+	if w.Plans != nil && w.History == nil {
 		if ap, err := w.Plans.ApprovedPlan(ctx, userID); err == nil && ap != nil &&
 			ap.Goal == goal.Kind.String() && ap.CapMinor == goal.Cap.Minor() {
 			approvedNow = true
@@ -138,9 +144,13 @@ func (w *Worker) explainPlan(ctx context.Context, userID string, chat int64, l i
 	if err != nil || !budget.Set || budget.Currency != cur.Code {
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "advice.set_budget"), w.budgetMarkup(l))
 	}
+	asOf, err := (PaymentService{Clock: w.Clock, Users: w.Users}).BusinessDate(ctx, userID)
+	if err != nil {
+		return err
+	}
 	in := plan.Input{
-		ValuationDate: date.From(w.Clock.Now(), time.UTC),
-		Cash:          budget.CashPlan(date.From(w.Clock.Now(), time.UTC)),
+		ValuationDate: asOf,
+		Cash:          budget.CashPlan(asOf),
 		Loans:         positions,
 	}
 	u, err := plan.Explore(in)
@@ -504,6 +514,18 @@ func (w *Worker) positions(ctx context.Context, loans []UserLoan) ([]plan.Positi
 		started  bool
 	)
 	for _, ln := range loans {
+		if w.ProfileFlags != nil && ln.Contract.AllocationPolicy.Key != "" {
+			flag, err := w.ProfileFlags.AdminProfileFlag(ctx, w.Environment, ln.Contract.AllocationPolicy.Key)
+			if err != nil && !errors.Is(err, ErrNotFound) {
+				return nil, owed, required, cur, err
+			}
+			if err == nil && !flag.PlanningEnabled {
+				return nil, owed, required, cur, &plan.UnsupportedError{Feature: "lender profile temporarily disabled"}
+			}
+		}
+		if ln.UnreconciledPayments {
+			return nil, owed, required, cur, ErrPaymentReconciliation
+		}
 		if ln.Balance.Sign() <= 0 {
 			continue
 		}
@@ -516,10 +538,12 @@ func (w *Worker) positions(ctx context.Context, loans []UserLoan) ([]plan.Positi
 			w.Log.WarnContext(ctx, "skipping a loan in another currency", "currency", ln.Contract.Currency.Code)
 			continue
 		}
-		s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
-		if err != nil || len(s.Rows) == 0 {
-			w.Log.WarnContext(ctx, "cannot project a loan", "error", err)
-			continue
+		s, err := ln.Schedule()
+		if err != nil {
+			return nil, owed, required, cur, err
+		}
+		if len(s.Rows) == 0 {
+			return nil, owed, required, cur, ErrPaymentReconciliation
 		}
 		if owed, err = owed.Add(ln.Balance); err != nil {
 			return nil, owed, required, cur, err
@@ -529,7 +553,7 @@ func (w *Worker) positions(ctx context.Context, loans []UserLoan) ([]plan.Positi
 		}
 		out = append(out, plan.Position{
 			ID: ln.ID, Name: ln.Name, Contract: ln.Contract,
-			Balance: ln.Balance, From: ln.AsOf, Excess: ln.Excess, Trust: ln.Trust,
+			Balance: ln.Balance, From: ln.AsOf, Excess: ln.Excess, Trust: ln.Trust, OptionalExcluded: ln.OptionalExcluded,
 		})
 	}
 	return out, owed, required, cur, nil

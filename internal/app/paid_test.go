@@ -170,3 +170,18 @@ func TestPaidFlowZeroMeansSettled(t *testing.T) {
 		t.Fatalf("a zero balance was not recorded as stated: %+v", f.recorded)
 	}
 }
+
+func TestPaidOpensQuickRecordWithoutInventingPayment(t *testing.T) {
+	f := &paidFakes{loan: paidLoan(t)}
+	w := paidWorker(t, f)
+	w.MiniApp = "https://dev.example/app/"
+	if err := w.askPaidBalance(t.Context(), "owner", 1, i18n.Locale("en"), "loan-a"); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.recorded) != 0 || f.state != "" {
+		t.Fatal("acknowledgement created a fact or balance prompt")
+	}
+	if len(f.messages) != 1 || !strings.Contains(f.messages[0], "posting status") {
+		t.Fatal("payment prompt missing")
+	}
+}

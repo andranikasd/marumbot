@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import vm from 'node:vm';
+const source=(await readFile(new URL('./web/js/api.js',import.meta.url),'utf8')).replace(/^import .*;$/gm,'').replaceAll('export ','');
+const fields=new Map(),events=new Map();
+const field=id=>{if(!fields.has(id))fields.set(id,{hidden:true,addEventListener:(name,fn)=>events.set(id+':'+name,fn)});return fields.get(id);};
+let fail=false;let version=1;
+const env={AbortController,setTimeout,clearTimeout,Map,Set,Date,Error,TypeError,Event,addStrings(){},tg:null,T:x=>x,
+ document:{getElementById:field,dispatchEvent(){}},window:{addEventListener:(name,fn)=>events.set(name,fn)},
+ fetch:async()=>{if(fail)throw new TypeError('offline');return {ok:true,json:async()=>({version})};}};
+vm.createContext(env);vm.runInContext(source,env);env.watchOffline();
+await env.getJSON('api/plan');assert.equal(field('offline').hidden,true);
+fail=true;assert.deepEqual(await env.getJSON('api/plan'),{version:1});assert.equal(field('offline').hidden,false);
+events.get('online')();assert.equal(field('offline').hidden,false,'reconnection does not refresh displayed values');
+events.get('offline-retry:click')();assert.equal(field('offline').hidden,false,'clicking retry is not proof of freshness');
+fail=false;await env.getJSON('api/settings');assert.equal(field('offline').hidden,false,'unrelated success cannot clear plan staleness');
+env.prefetch(['api/plan']);await new Promise(resolve=>setImmediate(resolve));assert.equal(field('offline').hidden,false,'background prefetch does not replace displayed data');
+version=2;await env.getJSON('api/plan');assert.equal(field('offline').hidden,true,'fresh displayed plan clears its own stale state');
+events.get('offline')();events.get('online')();assert.equal(field('offline').hidden,false,'offline/online cycle keeps previously displayed figures marked');
+await env.getJSON('api/plan');assert.equal(field('offline').hidden,false,'other previously displayed stale data remains labelled');
+await env.getJSON('api/settings');assert.equal(field('offline').hidden,true);
+console.log('Stale labels survive unrelated requests, reconnect, retry and prefetch until affected data refreshes.');
+env.fetch=async()=>({ok:false,status:503});
+await assert.rejects(env.getJSON('api/plan'),/http 503/);assert.equal(field('offline').hidden,false,'server failure cannot leave an old visible plan unlabelled');
+assert.equal(field('offline-text').textContent,'offline.stale','connected but stale is not falsely labelled offline');
+env.fetch=async()=>({ok:true,json:async()=>({version:3})});await env.getJSON('api/plan');assert.equal(field('offline').hidden,true);
+env.invalidate('api/plan');assert.equal(field('offline').hidden,false,'a mutation invalidates the displayed financial snapshot immediately');
+env.beginView();assert.equal(field('offline').hidden,true,'hidden stale screens do not warn on another page');
+let finish;env.fetch=()=>new Promise(resolve=>finish=resolve);
+const returning=env.getJSON('api/plan');
+assert.equal(field('offline').hidden,false,'returning to stale figures labels them while refreshing');
+finish({ok:true,json:async()=>({version:4})});await returning;
+assert.equal(field('offline').hidden,true);

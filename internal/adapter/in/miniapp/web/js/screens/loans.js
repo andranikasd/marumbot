@@ -3,10 +3,13 @@
 // Tapping a card opens the loan, where the everyday act — restating the
 // balance after a payment — is the first button.
 "use strict";
-import { haptic, fmtMoney, fmtDate, initial, mask } from "../core.js";
-import { T, sub } from "../i18n.js";
+import {icon} from "../icons.js";
+import { haptic, fmtMoney, fmtDate, fmtFull, mask } from "../core.js";
+import { T, sub, addStrings } from "../i18n.js";
 import { getJSON } from "../api.js";
 import { register } from "../nav.js";
+
+addStrings({'balance.asof':'Մնացորդը՝ {d}','balance.undated':'Մնացորդի ամսաթիվը նշված չէ','balance.range':'Տարբեր ամսաթվերի մնացորդներ՝ {from}–{to}','balance.partial':'Որոշ մնացորդների ամսաթիվը նշված չէ'},{'balance.asof':'Balance as of {d}','balance.undated':'Balance date not supplied','balance.range':'Mixed statement dates: {from}–{to}','balance.partial':'Some balance dates are not supplied'});
 
 const EYE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>';
 
@@ -15,7 +18,7 @@ const HTML = `
     <div class="k"><span data-i18n="manage.owed">Ընդհանուր պարտք</span>
       <button type="button" class="eye" id="manage-mask" aria-pressed="false">${EYE}</button></div>
     <div class="v num" id="m-owed">—</div>
-    <div class="sub" id="m-across"></div>
+    <div class="sub" id="m-across"></div><small class="mute" id="m-asof"></small>
     <div class="kv">
       <div><span data-i18n="manage.required">Այս ամիս</span><b class="num" id="m-required">—</b></div>
       <div><span data-i18n="manage.next">Հաջորդ վճարումը</span><b id="m-next">—</b></div>
@@ -51,14 +54,14 @@ function loanCard(loan) {
   el.dataset.go = "loan";
   el.dataset.arg = loan.id;
 
-  const tile = document.createElement("span"); tile.className = "tile"; tile.textContent = initial(loan.name);
+  const tile = document.createElement("span"); tile.className = "tile"; tile.innerHTML = icon(loan.icon);
   const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = loan.name;
   const meta = document.createElement("small");
   const bits = [];
-  if (loan.rate_percent != null) bits.push(loan.rate_percent + "%");
-  bits.push(T(loan.method === "declining" ? "method.declining" : "method.annuity").toLowerCase());
-  if (!loan.confirmed) bits.push(T("manage.yours_figure"));
-  if (mainCurrency && loan.currency !== mainCurrency && loan.balance_major > 0) bits.push(loan.currency + " · " + T("manage.excluded"));
+  if(loan.needs_reconciliation)bits.push(T('payment.review'));
+  bits.push(loan.balance_as_of?sub('balance.asof',{d:fmtFull(loan.balance_as_of)}):T('balance.undated'));
+  if(loan.optional_excluded)bits.push(T('loan.noextra'));
+  if(mainCurrency&&loan.currency!==mainCurrency)bits.push(T('manage.excluded'));
   meta.textContent = bits.join(" · ");
   nm.append(meta);
   const bal = document.createElement("span"); bal.className = "bal num"; bal.textContent = fmtMoney(loan.balance_major, loan.currency);
@@ -78,13 +81,6 @@ function loanCard(loan) {
   two.append(due, pay, chev);
   el.append(two);
 
-  if (loan.original_major) {
-    const bar = document.createElement("span"); bar.className = "pb";
-    const fill = document.createElement("i");
-    fill.style.width = Math.max(2, Math.min(98, Math.round((1 - loan.balance_major / loan.original_major) * 100))) + "%";
-    bar.append(fill);
-    el.append(bar);
-  }
   return el;
 }
 
@@ -102,6 +98,8 @@ function summarise(loans) {
     if (l.next_due && (!next || l.next_due < next.next_due)) next = l;
     if (l.original_major) original += l.original_major; else original += l.balance_major;
   }
+  const dated = live.filter(l=>l.currency===cur), dates = dated.map(l=>l.balance_as_of).filter(Boolean).sort();
+  $('m-asof').textContent = dates.length!==dated.length?T('balance.partial'):dates[0]===dates.at(-1)?sub('balance.asof',{d:fmtFull(dates[0])}):sub('balance.range',{from:fmtFull(dates[0]),to:fmtFull(dates.at(-1))});
   $("m-owed").textContent = fmtMoney(owed, cur);
   const share = original > 0 ? Math.round((1 - owed / original) * 100) : 0;
   $("m-across").textContent = sub(counted === 1 ? "manage.across.one" : "manage.across", { n: counted, p: share });

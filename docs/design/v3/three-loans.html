@@ -1,0 +1,1291 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Marum · Mini App demo</title><style>
+:root{color-scheme:dark;--bg:#101113;--card:#191b1e;--raised:#22252a;--line:#373c43;--text:#f1f2f4;--muted:#a5aab3;--accent:#86bd9e;--button:#256345}body.light{color-scheme:light;--bg:#f2f3f5;--card:#fff;--raised:#eceff1;--line:#ccd2d8;--text:#1b2027;--muted:#58616c;--accent:#226342}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,sans-serif}a{color:var(--accent)}.review{max-width:430px;margin:20px auto 12px;display:flex;justify-content:space-between;align-items:center;font-size:14px;padding:0 10px}.phone{max-width:430px;margin:0 auto 32px;border:1px solid var(--line);border-radius:20px;overflow:hidden;background:var(--bg)}header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}header strong{font-size:18px}.demo{text-align:center;padding:6px;background:var(--raised);font-size:12px;color:var(--muted)}main{padding:16px;min-height:560px}.card{padding:18px;background:var(--card);border:1px solid var(--line);border-radius:14px;margin-bottom:12px}.label,small{font-size:13px;color:var(--muted)}h1{font-size:23px;letter-spacing:-.03em;margin:0 0 16px}h2{font-size:17px;margin:0 0 12px;font-weight:600}p{margin:8px 0}.amount{font-size:30px;letter-spacing:-.04em;font-weight:600;font-variant-numeric:tabular-nums;margin:6px 0}.subamount{font-size:21px;font-weight:600;margin:8px 0}.row{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding:9px 0;font-size:14px}.row:last-child{border:0}.row span{color:var(--muted)}.row b{font-weight:500;text-align:right}.primary,button{font:inherit;cursor:pointer;min-height:44px;background:transparent;border:1px solid var(--line);color:var(--text);border-radius:9px;padding:10px 12px}button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.primary{width:100%;background:var(--button);color:#fff;border-color:var(--button);font-weight:600;margin-top:14px}.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.tile{text-align:left;background:var(--card);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:6px}.tile strong{font-size:19px}.tile .icon{color:var(--accent);margin-bottom:4px}.title{display:flex;align-items:center;gap:12px}.badge{background:var(--raised);color:var(--accent);width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center}.icon{height:22px;width:22px;flex-shrink:0;vertical-align:middle}.loan-button{width:100%;text-align:left;padding:0;border:0;display:flex;align-items:center;justify-content:space-between;gap:12px}.loan-button small{display:block}.loan-button strong{font-size:16px}.pill{display:inline-block;color:var(--accent);font-size:12px;margin-top:10px}.bottom{display:flex;justify-content:space-around;background:var(--card);border-top:1px solid var(--line);padding:8px 0;position:sticky;bottom:0;z-index:2}.bottom button{font-size:11px;border:0;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--muted);padding:4px;min-width:55px}.bottom button[aria-current=page]{color:var(--accent)}.bar{display:flex;height:7px;border-radius:5px;overflow:hidden;background:var(--raised);margin:16px 0}.bar i{background:var(--accent)}.bar i:first-child{background:#89929f}.action{display:flex;justify-content:space-between;gap:8px;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px}.action small{display:block}.action b{font-weight:500}details{margin-top:12px}summary{font-size:14px;cursor:pointer;color:var(--muted);padding:10px 0;min-height:44px}details p{font-size:14px;color:var(--muted)}input[type=range]{width:100%;min-height:44px;accent-color:var(--accent)}.chart{width:100%;height:auto}.chart path{fill:none;stroke:var(--accent);stroke-width:2.5}.chart text{fill:var(--muted);font:12px system-ui}.empty{text-align:center;padding:28px 10px}.empty .icon{width:36px;height:36px;color:var(--muted)}.menu{display:grid;gap:10px}.menu button{text-align:left;background:var(--card);display:flex;gap:12px;align-items:center}.menu .icon{color:var(--accent)}@media(max-width:480px){.review{margin:8px auto}.phone{border:0;border-radius:0;margin-bottom:0}main{min-height:calc(100dvh - 195px)}}
+.chart{margin-top:14px}.chart .grid-line{stroke:var(--line);stroke-width:1}.chart .series-1{stroke:var(--muted);stroke-dasharray:5 4}.chart .point-0{fill:var(--accent)}.chart .point-1{fill:var(--muted)}.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted);margin:2px 0 16px}.legend span{display:flex;align-items:center;gap:6px}.legend i{width:16px;border-top:2px solid var(--accent)}.legend .key-1{border-color:var(--muted);border-top-style:dashed}.page-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}.page-title h1{margin:0}.edit-link{color:var(--accent);font-size:14px;white-space:nowrap}.balance-action{width:100%;color:var(--accent);margin-bottom:16px}.loan-tools{display:flex;gap:8px;margin-top:14px}.loan-tools button{font-size:13px;flex:1}.edit-field{margin-bottom:16px}.edit-field:last-child{margin-bottom:0}.edit-field label{display:block;font-size:14px;color:var(--muted);margin-bottom:7px}.edit-field input,.edit-field select{font:inherit;width:100%;min-height:48px;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px}.cancel-edit{width:100%;margin:10px 0 16px}.edit-error{color:#f4a29c}.stale{border:1px solid var(--line);border-left:3px solid #e6bc78;border-radius:10px;padding:12px;font-size:14px;margin-bottom:16px}.stale details{margin-top:0}.stale summary{font-size:13px}
+.phone{height:min(820px,calc(100dvh - 80px));display:flex;flex-direction:column}.phone header,.demo,.bottom{flex-shrink:0}.phone main{min-height:0;overflow-y:auto;flex:1;padding:14px}.phone .bottom{position:static}.phone .card{padding:14px;margin-bottom:10px}.phone h1{font-size:21px}.phone .amount{font-size:28px}.summary-links{display:grid;grid-template-columns:1fr 1fr;gap:8px}.summary-links button{display:flex;flex-direction:column;align-items:flex-start;border:0;padding:8px 0}.summary-links b{font-size:15px}.compact-loan{padding:10px 0;border-bottom:1px solid var(--line)}.compact-loan:last-child{border:0}.compact-loan .loan-button b{font-size:14px;font-weight:500;white-space:nowrap}.compact-loan .loan-button strong{font-size:14px}.compact-loan .loan-button small{font-size:11px}.small-edit{border:0;min-height:36px;padding:4px 0;font-size:13px;color:var(--accent)}.compact-loan .small-edit{margin-left:50px}.page-title{margin-bottom:10px}.page-title h2{margin:0}.plan-strip{display:flex;justify-content:space-between;gap:12px;margin:0 0 14px}.plan-strip span{display:flex;flex-direction:column}.plan-strip b{font-size:16px;font-weight:600}.chart-card select{width:100%;font:inherit;min-height:44px;color:var(--text);background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:8px}.chart-card .chart{margin-top:10px}.chart-card .row{padding:6px 0;font-size:13px}.cycle-label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}.layer-buttons{display:flex;gap:8px;margin-bottom:8px}.layer-buttons button{flex:1;padding:8px;font-size:13px}.form-tabs{display:flex;gap:8px;margin-bottom:14px}.form-tabs button{flex:1;font-size:13px}.form-tabs [aria-pressed=true]{background:var(--raised);color:var(--accent)}.compact-stale{padding:8px;font-size:12px;margin-bottom:10px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}[hidden]{display:none!important}@media(max-width:480px){.phone{height:calc(100dvh - 48px)}.phone main{min-height:0}.review{height:32px;margin:8px auto}.compact-loan .title{gap:8px}}
+.chart-card .chart{height:130px}.chart-card .legend{margin-bottom:8px}.chart-card input[type=range]{min-height:36px}.chart-card .row{padding:5px 0}.phone .chart-card{padding:12px}.plan-strip{margin-bottom:10px}.phone .layer-buttons{margin-bottom:4px}.phone .compact-loan{padding:7px 0}@media(max-height:760px){.chart-card .chart{height:100px}.phone main{padding:10px}.phone header{padding:8px 12px}.phone .row{padding:5px 0}.phone .plan-strip{margin-bottom:6px}.phone .page-title{margin-bottom:6px}}</style></head><body><div class="review"><a href="preview.html">Design previews</a><span>Interactive Mini App</span></div><div class="phone"><header><button id="back" aria-label="Go back">‹</button><strong>Մարում</strong><button id="theme" aria-label="Switch color theme">Light</button></header><div class="demo">3-loan demo · Sample data · No real payments</div><main id="view"></main><nav class="bottom" id="nav" aria-label="Mini App navigation"></nav></div><script>
+const d={
+  "actions": [
+    {
+      "amount": 13354840,
+      "fee": 0,
+      "kind": "extra",
+      "loan": "Phone",
+      "on": "2026-02-01"
+    },
+    {
+      "amount": 4519560,
+      "fee": 0,
+      "kind": "instalment",
+      "loan": "Car",
+      "on": "2026-02-15"
+    },
+    {
+      "amount": 5510270,
+      "fee": 0,
+      "kind": "instalment",
+      "loan": "Home",
+      "on": "2026-02-15"
+    },
+    {
+      "amount": 1615330,
+      "fee": 0,
+      "kind": "instalment",
+      "loan": "Phone",
+      "on": "2026-02-15"
+    }
+  ],
+  "as_of": "2026-01-15",
+  "budget": 25000000,
+  "eligibility": "fixed non-negative rates, one day-count basis, no fees or thresholds, required instalments always met, surplus credited to principal on payment: by exchange, money moved from a lower to a higher daily rate cannot increase interest, and paying earlier cannot increase it",
+  "engine": "plan/5",
+  "fees": 0,
+  "interest": 71370010,
+  "minimum_interest": 312703040,
+  "minimum_months": [
+    {
+      "interest": 6539730,
+      "on": "2026-02-01",
+      "required": 11645160
+    },
+    {
+      "interest": 5834550,
+      "on": "2026-03-01",
+      "required": 11645160
+    },
+    {
+      "interest": 6369900,
+      "on": "2026-04-01",
+      "required": 11645160
+    },
+    {
+      "interest": 6084150,
+      "on": "2026-05-01",
+      "required": 11645150
+    },
+    {
+      "interest": 6199880,
+      "on": "2026-06-01",
+      "required": 11645150
+    },
+    {
+      "interest": 5916790,
+      "on": "2026-07-01",
+      "required": 11645150
+    },
+    {
+      "interest": 6024060,
+      "on": "2026-08-01",
+      "required": 11645140
+    },
+    {
+      "interest": 5935160,
+      "on": "2026-09-01",
+      "required": 11645140
+    },
+    {
+      "interest": 5656170,
+      "on": "2026-10-01",
+      "required": 11645140
+    },
+    {
+      "interest": 5750280,
+      "on": "2026-11-01",
+      "required": 11645140
+    },
+    {
+      "interest": 5474160,
+      "on": "2026-12-01",
+      "required": 11645150
+    },
+    {
+      "interest": 5559030,
+      "on": "2027-01-01",
+      "required": 11645140
+    },
+    {
+      "interest": 5462060,
+      "on": "2027-02-01",
+      "required": 11645140
+    },
+    {
+      "interest": 4844380,
+      "on": "2027-03-01",
+      "required": 11645140
+    },
+    {
+      "interest": 5256540,
+      "on": "2027-04-01",
+      "required": 11645150
+    },
+    {
+      "interest": 4988070,
+      "on": "2027-05-01",
+      "required": 11645150
+    },
+    {
+      "interest": 5048290,
+      "on": "2027-06-01",
+      "required": 11645150
+    },
+    {
+      "interest": 4783020,
+      "on": "2027-07-01",
+      "required": 11645150
+    },
+    {
+      "interest": 4832840,
+      "on": "2027-08-01",
+      "required": 11645140
+    },
+    {
+      "interest": 4723240,
+      "on": "2027-09-01",
+      "required": 11645150
+    },
+    {
+      "interest": 4462960,
+      "on": "2027-10-01",
+      "required": 11645140
+    },
+    {
+      "interest": 4496520,
+      "on": "2027-11-01",
+      "required": 11645140
+    },
+    {
+      "interest": 4239690,
+      "on": "2027-12-01",
+      "required": 11645140
+    },
+    {
+      "interest": 4261900,
+      "on": "2028-01-01",
+      "required": 11645140
+    },
+    {
+      "interest": 4142280,
+      "on": "2028-02-01",
+      "required": 10029820
+    },
+    {
+      "interest": 3794560,
+      "on": "2028-03-01",
+      "required": 10029820
+    },
+    {
+      "interest": 3965970,
+      "on": "2028-04-01",
+      "required": 10029820
+    },
+    {
+      "interest": 3752100,
+      "on": "2028-05-01",
+      "required": 10029820
+    },
+    {
+      "interest": 3785600,
+      "on": "2028-06-01",
+      "required": 10029820
+    },
+    {
+      "interest": 3574790,
+      "on": "2028-07-01",
+      "required": 10029810
+    },
+    {
+      "interest": 3599590,
+      "on": "2028-08-01",
+      "required": 10029810
+    },
+    {
+      "interest": 3504990,
+      "on": "2028-09-01",
+      "required": 10029820
+    },
+    {
+      "interest": 3298940,
+      "on": "2028-10-01",
+      "required": 10029810
+    },
+    {
+      "interest": 3310160,
+      "on": "2028-11-01",
+      "required": 10029820
+    },
+    {
+      "interest": 3107410,
+      "on": "2028-12-01",
+      "required": 10029810
+    },
+    {
+      "interest": 3109230,
+      "on": "2029-01-01",
+      "required": 10029810
+    },
+    {
+      "interest": 3006850,
+      "on": "2029-02-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2694740,
+      "on": "2029-03-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2957160,
+      "on": "2029-04-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2838680,
+      "on": "2029-05-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2908350,
+      "on": "2029-06-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2791010,
+      "on": "2029-07-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2858640,
+      "on": "2029-08-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2833860,
+      "on": "2029-09-01",
+      "required": 5510270
+    },
+    {
+      "interest": 2718250,
+      "on": "2029-10-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2782780,
+      "on": "2029-11-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2668350,
+      "on": "2029-12-01",
+      "required": 5510270
+    },
+    {
+      "interest": 2730740,
+      "on": "2030-01-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2704770,
+      "on": "2030-02-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2419340,
+      "on": "2030-03-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2649680,
+      "on": "2030-04-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2538350,
+      "on": "2030-05-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2595190,
+      "on": "2030-06-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2485130,
+      "on": "2030-07-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2539700,
+      "on": "2030-08-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2511950,
+      "on": "2030-09-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2403810,
+      "on": "2030-10-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2454910,
+      "on": "2030-11-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2348100,
+      "on": "2030-12-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2396830,
+      "on": "2031-01-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2367740,
+      "on": "2031-02-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2112080,
+      "on": "2031-03-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2306640,
+      "on": "2031-04-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2203260,
+      "on": "2031-05-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2245810,
+      "on": "2031-06-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2143850,
+      "on": "2031-07-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2183860,
+      "on": "2031-08-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2152790,
+      "on": "2031-09-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2052990,
+      "on": "2031-10-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2089120,
+      "on": "2031-11-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1990800,
+      "on": "2031-12-01",
+      "required": 5510260
+    },
+    {
+      "interest": 2024280,
+      "on": "2032-01-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1991710,
+      "on": "2032-02-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1832460,
+      "on": "2032-03-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1924480,
+      "on": "2032-04-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1829980,
+      "on": "2032-05-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1856590,
+      "on": "2032-06-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1763670,
+      "on": "2032-07-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1787460,
+      "on": "2032-08-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1752680,
+      "on": "2032-09-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1662170,
+      "on": "2032-10-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1681620,
+      "on": "2032-11-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1592760,
+      "on": "2032-12-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1609250,
+      "on": "2033-01-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1572810,
+      "on": "2033-02-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1387380,
+      "on": "2033-03-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1497500,
+      "on": "2033-04-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1412920,
+      "on": "2033-05-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1421730,
+      "on": "2033-06-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1338900,
+      "on": "2033-07-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1344560,
+      "on": "2033-08-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1305650,
+      "on": "2033-09-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1225520,
+      "on": "2033-10-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1226340,
+      "on": "2033-11-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1148050,
+      "on": "2033-12-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1145560,
+      "on": "2034-01-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1104790,
+      "on": "2034-02-01",
+      "required": 5510260
+    },
+    {
+      "interest": 960700,
+      "on": "2034-03-01",
+      "required": 5510260
+    },
+    {
+      "interest": 1021120,
+      "on": "2034-04-01",
+      "required": 5510260
+    },
+    {
+      "interest": 947600,
+      "on": "2034-05-01",
+      "required": 5510260
+    },
+    {
+      "interest": 936560,
+      "on": "2034-06-01",
+      "required": 5510260
+    },
+    {
+      "interest": 864990,
+      "on": "2034-07-01",
+      "required": 5510260
+    },
+    {
+      "interest": 850430,
+      "on": "2034-08-01",
+      "required": 5510260
+    },
+    {
+      "interest": 806890,
+      "on": "2034-09-01",
+      "required": 5510260
+    },
+    {
+      "interest": 738340,
+      "on": "2034-10-01",
+      "required": 5510260
+    },
+    {
+      "interest": 718380,
+      "on": "2034-11-01",
+      "required": 5510260
+    },
+    {
+      "interest": 651880,
+      "on": "2034-12-01",
+      "required": 5510260
+    },
+    {
+      "interest": 628220,
+      "on": "2035-01-01",
+      "required": 5510260
+    },
+    {
+      "interest": 582600,
+      "on": "2035-02-01",
+      "required": 5510260
+    },
+    {
+      "interest": 484640,
+      "on": "2035-03-01",
+      "required": 5510250
+    },
+    {
+      "interest": 489620,
+      "on": "2035-04-01",
+      "required": 5510250
+    },
+    {
+      "interest": 428430,
+      "on": "2035-05-01",
+      "required": 5510250
+    },
+    {
+      "interest": 395230,
+      "on": "2035-06-01",
+      "required": 5510250
+    },
+    {
+      "interest": 336240,
+      "on": "2035-07-01",
+      "required": 5510250
+    },
+    {
+      "interest": 299110,
+      "on": "2035-08-01",
+      "required": 5510250
+    },
+    {
+      "interest": 250430,
+      "on": "2035-09-01",
+      "required": 5510250
+    },
+    {
+      "interest": 194790,
+      "on": "2035-10-01",
+      "required": 5510250
+    },
+    {
+      "interest": 151630,
+      "on": "2035-11-01",
+      "required": 5510250
+    },
+    {
+      "interest": 98290,
+      "on": "2035-12-01",
+      "required": 5510250
+    },
+    {
+      "interest": 51000,
+      "on": "2036-01-01",
+      "required": 5510240
+    }
+  ],
+  "minimum_payoff": "2036-01-15",
+  "months": [
+    {
+      "cash": 0,
+      "extra": 13354840,
+      "fees": 0,
+      "interest": 6406550,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Car",
+          "owed": 117620710,
+          "paid": 4519560
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 398226720,
+          "paid": 5510270
+        },
+        {
+          "cleared": false,
+          "extra": 13354840,
+          "freed": 0,
+          "name": "Phone",
+          "owed": 15559120,
+          "paid": 14970170
+        }
+      ],
+      "on": "2026-02-01",
+      "owed": 531406550,
+      "required": 11645160
+    },
+    {
+      "cash": 0,
+      "extra": 14104920,
+      "fees": 0,
+      "interest": 5424860,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Car",
+          "owed": 114995970,
+          "paid": 4519560
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 396076830,
+          "paid": 5510270
+        },
+        {
+          "cleared": false,
+          "extra": 14104920,
+          "freed": 0,
+          "name": "Phone",
+          "owed": 758610,
+          "paid": 14970170
+        }
+      ],
+      "on": "2026-03-01",
+      "owed": 511831410,
+      "required": 10895080
+    },
+    {
+      "cash": 43750,
+      "extra": 14926420,
+      "fees": 0,
+      "interest": 5646500,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 14158620,
+          "freed": 0,
+          "name": "Car",
+          "owed": 98254770,
+          "paid": 18678180
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 394266890,
+          "paid": 5510270
+        },
+        {
+          "cleared": true,
+          "extra": 767800,
+          "freed": 1615330,
+          "name": "Phone",
+          "owed": 0,
+          "paid": 767800
+        }
+      ],
+      "on": "2026-04-01",
+      "owed": 492521660,
+      "required": 10029830
+    },
+    {
+      "cash": 0,
+      "extra": 15587170,
+      "fees": 0,
+      "interest": 5134950,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 15587170,
+          "freed": 0,
+          "name": "Car",
+          "owed": 80291640,
+          "paid": 19533480
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 392321220,
+          "paid": 5510270
+        }
+      ],
+      "on": "2026-05-01",
+      "owed": 472612860,
+      "required": 9456580
+    },
+    {
+      "cash": 0,
+      "extra": 16189290,
+      "fees": 0,
+      "interest": 4966900,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 16189290,
+          "freed": 0,
+          "name": "Car",
+          "owed": 62103560,
+          "paid": 19489730
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 390476200,
+          "paid": 5510270
+        }
+      ],
+      "on": "2026-06-01",
+      "owed": 452579760,
+      "required": 8810710
+    },
+    {
+      "cash": 0,
+      "extra": 16876110,
+      "fees": 0,
+      "interest": 4466320,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 16876110,
+          "freed": 0,
+          "name": "Car",
+          "owed": 43549820,
+          "paid": 19489730
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 388496260,
+          "paid": 5510270
+        }
+      ],
+      "on": "2026-07-01",
+      "owed": 432046080,
+      "required": 8123890
+    },
+    {
+      "cash": 0,
+      "extra": 17610280,
+      "fees": 0,
+      "interest": 4264400,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 17610280,
+          "freed": 0,
+          "name": "Car",
+          "owed": 24694980,
+          "paid": 19489730
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 386615500,
+          "paid": 5510270
+        }
+      ],
+      "on": "2026-08-01",
+      "owed": 411310480,
+      "required": 7389720
+    },
+    {
+      "cash": 0,
+      "extra": 18396310,
+      "fees": 0,
+      "interest": 3904210,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 18396310,
+          "freed": 0,
+          "name": "Car",
+          "owed": 5497510,
+          "paid": 19489740
+        },
+        {
+          "cleared": false,
+          "extra": 0,
+          "freed": 0,
+          "name": "Home",
+          "owed": 384717180,
+          "paid": 5510260
+        }
+      ],
+      "on": "2026-09-01",
+      "owed": 390214690,
+      "required": 6603690
+    },
+    {
+      "cash": 250030,
+      "extra": 19239710,
+      "fees": 0,
+      "interest": 3471100,
+      "loans": [
+        {
+          "cleared": true,
+          "extra": 5548120,
+          "freed": 4519560,
+          "name": "Car",
+          "owed": 0,
+          "paid": 5548120
+        },
+        {
+          "cleared": false,
+          "extra": 13691590,
+          "freed": 0,
+          "name": "Home",
+          "owed": 368935820,
+          "paid": 19201850
+        }
+      ],
+      "on": "2026-10-01",
+      "owed": 368935820,
+      "required": 5510260
+    },
+    {
+      "cash": 0,
+      "extra": 19937740,
+      "fees": 0,
+      "interest": 3362650,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 19937740,
+          "freed": 0,
+          "name": "Home",
+          "owed": 347048440,
+          "paid": 25250030
+        }
+      ],
+      "on": "2026-11-01",
+      "owed": 347048440,
+      "required": 5312290
+    },
+    {
+      "cash": 0,
+      "extra": 19977470,
+      "fees": 0,
+      "interest": 3053410,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 19977470,
+          "freed": 0,
+          "name": "Home",
+          "owed": 325101850,
+          "paid": 25000000
+        }
+      ],
+      "on": "2026-12-01",
+      "owed": 325101850,
+      "required": 5022530
+    },
+    {
+      "cash": 0,
+      "extra": 20269390,
+      "fees": 0,
+      "interest": 2951730,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 20269390,
+          "freed": 0,
+          "name": "Home",
+          "owed": 303053580,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-01-01",
+      "owed": 303053580,
+      "required": 4730610
+    },
+    {
+      "cash": 0,
+      "extra": 20567130,
+      "fees": 0,
+      "interest": 2744490,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 20567130,
+          "freed": 0,
+          "name": "Home",
+          "owed": 280798070,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-02-01",
+      "owed": 280798070,
+      "required": 4432870
+    },
+    {
+      "cash": 0,
+      "extra": 20870850,
+      "fees": 0,
+      "interest": 2281420,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 20870850,
+          "freed": 0,
+          "name": "Home",
+          "owed": 258079490,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-03-01",
+      "owed": 258079490,
+      "required": 4129150
+    },
+    {
+      "cash": 0,
+      "extra": 21180990,
+      "fees": 0,
+      "interest": 2321740,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 21180990,
+          "freed": 0,
+          "name": "Home",
+          "owed": 235401230,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-04-01",
+      "owed": 235401230,
+      "required": 3819010
+    },
+    {
+      "cash": 0,
+      "extra": 21497470,
+      "fees": 0,
+      "interest": 2037590,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 21497470,
+          "freed": 0,
+          "name": "Home",
+          "owed": 212438820,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-05-01",
+      "owed": 212438820,
+      "required": 3502530
+    },
+    {
+      "cash": 0,
+      "extra": 21820570,
+      "fees": 0,
+      "interest": 1892640,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 21820570,
+          "freed": 0,
+          "name": "Home",
+          "owed": 189331460,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-06-01",
+      "owed": 189331460,
+      "required": 3179430
+    },
+    {
+      "cash": 0,
+      "extra": 22150370,
+      "fees": 0,
+      "interest": 1618310,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 22150370,
+          "freed": 0,
+          "name": "Home",
+          "owed": 165949770,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-07-01",
+      "owed": 165949770,
+      "required": 2849630
+    },
+    {
+      "cash": 0,
+      "extra": 22487190,
+      "fees": 0,
+      "interest": 1455500,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 22487190,
+          "freed": 0,
+          "name": "Home",
+          "owed": 142405270,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-08-01",
+      "owed": 142405270,
+      "required": 2512810
+    },
+    {
+      "cash": 0,
+      "extra": 22831120,
+      "fees": 0,
+      "interest": 1234080,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 22831120,
+          "freed": 0,
+          "name": "Home",
+          "owed": 118639350,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-09-01",
+      "owed": 118639350,
+      "required": 2168880
+    },
+    {
+      "cash": 0,
+      "extra": 23182380,
+      "fees": 0,
+      "interest": 974820,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 23182380,
+          "freed": 0,
+          "name": "Home",
+          "owed": 94614170,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-10-01",
+      "owed": 94614170,
+      "required": 1817620
+    },
+    {
+      "cash": 0,
+      "extra": 23541300,
+      "fees": 0,
+      "interest": 784610,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 23541300,
+          "freed": 0,
+          "name": "Home",
+          "owed": 70398780,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-11-01",
+      "owed": 70398780,
+      "required": 1458700
+    },
+    {
+      "cash": 0,
+      "extra": 23908000,
+      "fees": 0,
+      "interest": 535610,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 23908000,
+          "freed": 0,
+          "name": "Home",
+          "owed": 45934390,
+          "paid": 25000000
+        }
+      ],
+      "on": "2027-12-01",
+      "owed": 45934390,
+      "required": 1092000
+    },
+    {
+      "cash": 0,
+      "extra": 24282840,
+      "fees": 0,
+      "interest": 326690,
+      "loans": [
+        {
+          "cleared": false,
+          "extra": 24282840,
+          "freed": 0,
+          "name": "Home",
+          "owed": 21261080,
+          "paid": 25000000
+        }
+      ],
+      "on": "2028-01-01",
+      "owed": 21261080,
+      "required": 717160
+    },
+    {
+      "cash": 3629990,
+      "extra": 21370010,
+      "fees": 0,
+      "interest": 108930,
+      "loans": [
+        {
+          "cleared": true,
+          "extra": 21370010,
+          "freed": 5510270,
+          "name": "Home",
+          "owed": 0,
+          "paid": 21370010
+        }
+      ],
+      "on": "2028-02-01",
+      "owed": 0,
+      "required": 0
+    }
+  ],
+  "opening": 550000000,
+  "payoff": "2028-02-01",
+  "policies": 96,
+  "source": "Synthetic portfolio from internal/app/advice_render_test.go fixedReport; not bank-verified",
+  "strength": "exhaustive_static_order"
+}
+;
+const $=id=>document.getElementById(id),m=n=>'֏'+new Intl.NumberFormat('en-US',{minimumFractionDigits:n%100?2:0,maximumFractionDigits:2}).format(n/100),date=s=>new Date(s+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}),month=s=>new Date(s+'T12:00:00Z').toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
+const paths={Home:'<path d="m3 10 9-7 9 7v11h-6v-7H9v7H3z"/>',Loans:'<path d="m3 8 9-5 9 5H3zm2 3v7m5-7v7m4-7v7m5-7v7M3 21h18"/>',Plan:'<path d="M4 3v17h17M7 15l5-5 4 2 5-7"/>',Budget:'<path d="M20 8V4H5a2 2 0 0 0 0 4h16v12H5a2 2 0 0 1-2-2V6m18 6h-6v4h6"/>',Car:'<path d="m5 6-3 7v6h3v-3h14v3h3v-6l-3-7zM3 12h18M6 14h2m8 0h2"/>',Phone:'<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/>',Activity:'<path d="M5 4h14v17H5zM8 8h8m-8 4h8m-8 4h5"/>',More:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>'};const icon=k=>'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[k]||paths.Activity)+'</svg>';
+const loanIcons={Car:'Loans',Home:'Loans',Phone:'Loans'};
+const loans=[{name:'Car',balance:120000000,rate:21,years:3},{name:'Home',balance:400000000,rate:11,years:10},{name:'Phone',balance:30000000,rate:26,years:2}],first=d.months[0];let screen='Home',loan='Car',cycle=0,history=[];
+const row=(a,b)=>'<div class="row"><span>'+a+'</span><b>'+b+'</b></div>',card=(a,b)=>'<section class="card"><h2>'+a+'</h2>'+b+'</section>',go=(s,label,cls='primary')=>'<button class="'+cls+'" data-go="'+s+'">'+label+'</button>';
+// Edits affect this design session only. The calculated report stays frozen.
+let demoBudget=d.budget,demoPayday=1,demoReserve=0,planOutdated=false,notice='';
+const loanEdits=Object.fromEntries(loans.map(l=>[l.name,{nickname:l.name+' loan',rate:String(l.rate),maturity:(2026+l.years)+'-01-15',asOf:d.as_of}]));
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function editLink(target,label){return '<button class="edit-link" data-go="'+target+'">'+label+'</button>'}
+function editField(id,label,value,type='text',attrs=''){return '<div class="edit-field"><label for="'+id+'">'+label+'</label><input id="'+id+'" name="'+id+'" type="'+type+'" value="'+esc(value)+'" '+attrs+' required></div>'}
+function decimal(n){return (Math.trunc(n/100))+'.'+String(n%100).padStart(2,'0')}
+function readAmount(id){const s=$(id).value.trim();if(!/^\d+(\.\d{1,2})?$/.test(s))throw new Error('Use a positive amount with at most two decimal places.');const [whole,fraction='']=s.split('.');const n=BigInt(whole)*100n+BigInt(fraction.padEnd(2,'0'));if(n>BigInt(Number.MAX_SAFE_INTEGER))throw new Error('This amount is too large.');return Number(n)}
+function editScreen(){const e=loanEdits[loan],l=loans.find(x=>x.name===loan);let title,body,save;
+ if(screen==='Edit budget'){title='Edit budget';save='Save budget';body=card('Monthly limit',editField('edit-budget','Debt budget · AMD',decimal(demoBudget),'text','inputmode="decimal"'))+card('Cash timing',editField('edit-payday','Available on day of month',demoPayday,'number','min="1" max="31" step="1"')+editField('edit-reserve','Protected reserve · AMD',decimal(demoReserve),'text','inputmode="decimal"'))}
+ else if(screen==='Edit loan'){title='Edit loan';save='Save loan';body=card('Loan details',editField('edit-name','Loan name',e.nickname,'text','maxlength="60"')+'<div class="edit-field"><label for="edit-icon">Icon</label><select id="edit-icon">'+[['Loans','Bank (default)'],['Car','Car'],['Home','Home'],['Phone','Phone'],['Activity','Document'],['Budget','Wallet']].map(([v,t])=>'<option value="'+v+'" '+(loanIcons[loan]===v?'selected':'')+'>'+t+'</option>').join('')+'</select></div>')+card('Contract terms',editField('edit-rate','Annual nominal rate · %',e.rate,'number','min="0" max="200" step="0.01"')+editField('edit-maturity','Maturity date',e.maturity,'date','min="2026-01-16"')+editField('edit-effective','Effective from',d.as_of,'date','min="2026-01-15"')+'<small>Terms are a new dated version. To change the balance, use Update balance.</small>')}
+ else{title='Update balance';save='Save bank snapshot';body=card(esc(e.nickname),editField('edit-balance','Bank balance · AMD',decimal(l.balance),'text','inputmode="decimal"')+editField('edit-asof','Balance as of',e.asOf,'date','min="2026-01-15"')+'<small>Add a dated snapshot from your bank statement.</small>')}
+ return '<h1>'+title+'</h1><form id="edit-form">'+body+'<p id="edit-error" class="edit-error" role="alert"></p><button class="primary" type="submit">'+save+'</button><button type="button" id="cancel-edit" class="cancel-edit">Cancel</button></form><p class="label">Demo only. Changes stay in this open page.</p>'}
+function saveEdit(event){event.preventDefault();try{const e=loanEdits[loan];if(screen==='Edit budget'){const amount=readAmount('edit-budget'),reserve=readAmount('edit-reserve');if(amount===0)throw new Error('Enter a budget greater than zero.');demoBudget=amount;demoReserve=reserve;demoPayday=Number($('edit-payday').value);notice='Budget saved in demo';screen='Budget'}else if(screen==='Edit loan'){const name=$('edit-name').value.trim();if(!name)throw new Error('Enter a loan name.');if($('edit-effective').value>=$('edit-maturity').value)throw new Error('Maturity must be after the effective date.');e.nickname=name;e.rate=$('edit-rate').value;e.maturity=$('edit-maturity').value;e.effective=$('edit-effective').value;loans.find(l=>l.name===loan).rate=Number(e.rate);loanIcons[loan]=$('edit-icon').value;notice='Loan saved in demo';screen='Loan'}else{loans.find(l=>l.name===loan).balance=readAmount('edit-balance');e.asOf=$('edit-asof').value;notice='Bank snapshot saved in demo';screen='Loan'}planOutdated=true;history.pop();render();window.scrollTo(0,0)}catch(err){$('edit-error').textContent=err.message}}
+
+function loanCard(l,full=false){const a=d.actions.find(a=>a.loan===l.name&&a.kind==='instalment');return '<section class="card"><button class="loan-button" data-loan="'+l.name+'"><span class="title"><span class="badge">'+icon(loanIcons[l.name])+'</span><span><strong>'+esc(loanEdits[l.name].nickname)+'</strong><small>'+l.rate+'% yearly</small></span></span><span>›</span></button><div class="subamount">'+m(l.balance)+'</div>'+(full?row('Next required',m(a.amount))+'<small>'+date(a.on)+'</small>':'<small>Balance as of '+date(loanEdits[l.name].asOf)+'</small>')+(l.name==='Phone'?'<div class="pill">First extra-payment target</div>':'')+'<div class="loan-tools"><button data-edit-loan="'+l.name+'">Edit loan</button><button data-balance-loan="'+l.name+'">Update balance</button></div></section>'}
+function renderFull(){let html='';if(screen==='Home'){html='<section class="card"><span class="label">Next planned payment · 1 Feb 2026</span><div class="title"><span class="badge">'+icon(loanIcons.Phone)+'</span><h2 style="margin:12px 0">Phone loan</h2></div><div class="amount">'+m(d.actions[0].amount)+'</div><span class="pill">Optional extra</span>'+go('Plan','View payment plan')+'</section><div class="tiles"><button class="tile" data-go="Loans">'+icon('Loans')+'<small>Total balance</small><strong>'+m(loans.reduce((sum,l)=>sum+l.balance,0))+'</strong><small>3 loans · 15 Jan 2026</small></button><button class="tile" data-go="Budget">'+icon('Budget')+'<small>Monthly budget</small><strong>'+m(demoBudget)+'</strong><small>See payment split</small></button></div>'+card('Your plan','<div class="label">Projected debt-free date</div><div class="subamount">'+date(d.payoff)+'</div>'+go('Plan','Open plan','primary'))+'<h2>Your loans</h2>'+loans.map(l=>loanCard(l)).join('')}
+else if(screen==='Loans'){html='<h1>Your loans</h1><p class="label">Starting balances · 15 Jan 2026</p>'+loans.map(l=>loanCard(l,true)).join('')+card('Total balance','<div class="amount">'+m(loans.reduce((sum,l)=>sum+l.balance,0))+'</div><small>Sample user-entered balances, not bank verified.</small>')}
+else if(screen==='Loan'){const l=loans.find(l=>l.name===loan),a=d.actions.find(a=>a.loan===loan&&a.kind==='instalment');html='<div class="page-title"><h1>'+esc(loanEdits[loan].nickname)+'</h1>'+editLink('Edit loan','Edit loan')+'</div>'+go('Update balance','Update balance','balance-action')+card('Appearance','<label for="loan-icon" class="label">Loan icon</label><select id="loan-icon" style="display:block;width:100%;margin-top:8px;padding:12px;background:var(--raised);color:var(--text);border:1px solid var(--line);border-radius:8px;font:inherit">'+[['Loans','Bank (default)'],['Car','Car'],['Home','Home'],['Phone','Phone'],['Activity','Document'],['Budget','Wallet']].map(([v,t])=>'<option value="'+v+'" '+(loanIcons[loan]===v?'selected':'')+'>'+t+'</option>').join('')+'</select><small>You choose the icon.</small>')+card('Starting balance','<div class="amount">'+m(l.balance)+'</div><small>As of 15 Jan 2026 · Sample balance</small>')+card('Next required payment',row('Amount',m(a.amount))+row('Due date',date(a.on)))+card('Loan terms',row('Annual nominal rate',l.rate+'%')+row('Maturity',date(loanEdits[loan].maturity))+row('Method','Annuity')+'<details><summary>Calculation rules</summary><p>Actual/365. No fees. Extra payments reduce principal. These are synthetic test terms.</p></details>')+go('Plan','See in payment plan')}
+else if(screen==='Budget'){html='<div class="page-title"><h1>Monthly budget</h1>'+editLink('Edit budget','Edit budget')+'</div>'+card('Your limit','<div class="amount">'+m(demoBudget)+'</div><small>Cash arrives on day '+demoPayday+'</small>'+row('Protected reserve',m(demoReserve)))+card('First cycle · February 2026','<div class="bar"><i style="width:'+100*first.required/d.budget+'%"></i><i style="width:'+100*first.extra/d.budget+'%"></i></div>'+row('Required payments',m(first.required))+row('Optional extra',m(first.extra))+row('Fees',m(first.fees))+row('Total outflow',m(first.required+first.extra+first.fees))+row('Carried cash',m(first.cash)))+card('Where it goes',first.loans.map(l=>row(l.name+' loan',m(l.paid))).join(''))+'<details><summary>Demo assumptions</summary><p>No separate reserve or one-time cash. This plan/5 example treats the budget as arriving cash. V3 will check funding and spending limits separately.</p></details>'+go('Plan','View plan')}
+else if(screen==='Plan'){html='<h1>Your plan</h1>'+card('Projected debt-free date','<div class="amount">'+date(d.payoff)+'</div>'+row('Interest saved*',m(d.minimum_interest-d.interest))+'<small>*Versus minimum-only payments.</small>')+card('First cycle payments',d.actions.map(a=>'<div class="action"><span>'+a.loan+' loan<small>'+date(a.on)+' · '+(a.kind==='extra'?'Optional extra':'Required')+'</small></span><b>'+m(a.amount)+'</b></div>').join(''))+card('Projected balances','<div id="balance-chart"></div><label for="cycle" class="label">Explore a projected cycle</label><input id="cycle" type="range" min="0" max="'+(d.months.length-1)+'" value="'+cycle+'"><div id="projection"></div>')+card('Monthly payments','<small>Projected outflow · AMD / month</small><div id="payments-chart"></div><div id="payments-values"></div>')+card('Monthly interest','<small>Same months · AMD / month</small><div id="interest-chart"></div><div id="interest-values"></div><details><summary>What is compared?</summary><p>Green follows this plan. The dashed line shows interest if only required payments were made. Both use the same sample loans and dates.</p><p>Charts show the active plan’s horizon. Required-only payments continue beyond it. These are projections; no interest has been recorded as actually paid.</p></details>')+card('Payoff milestones',d.months.flatMap(m=>m.loans.filter(l=>l.cleared).map(l=>'<div class="action"><span>'+l.name+' loan closed<small>Projected · cycle starting '+date(m.on)+'</small></span></div>')).join(''))+'<details><summary>How it was calculated</summary><p>'+d.engine+' · '+d.policies+' policies tested. Proven best under this sample’s conditions: '+d.eligibility+'.</p><p>Projected interest '+m(d.interest)+'. Minimum-only finish '+date(d.minimum_payoff)+'.</p></details>'+go('Budget','View budget')}
+else if(screen==='Activity'){html='<h1>Activity</h1>'+card('No recorded payments','<div class="empty">'+icon('Activity')+'<p>The plan is a projection.</p><small>No actual payments have been recorded in this demo.</small></div>')+go('Plan','See planned payments')}
+else{html='<h1>More</h1><div class="menu">'+go('Budget',icon('Budget')+' Budget','')+go('Loans',icon('Loans')+' Loans','')+go('Plan',icon('Plan')+' Plan','')+'</div><details open><summary>About this example</summary><p>Three synthetic loans from the existing engine test. Starting date: 15 January 2026. This is a clickable design preview, not a connected account.</p></details>'}
+if(['Edit budget','Edit loan','Update balance'].includes(screen))html=editScreen();
+if(planOutdated&&!['Edit budget','Edit loan','Update balance'].includes(screen))html='<div class="stale" role="status">'+esc(notice)+'. Plan needs recalculation.<details><summary>About the figures</summary><p>The charts and payment schedule still show the original sample. This preview does not calculate a new plan after edits.</p></details></div>'+html;
+$('view').innerHTML=html;
+$('edit-form')?.addEventListener('submit',saveEdit);$('cancel-edit')?.addEventListener('click',()=>{screen=history.pop()||'Home';render()});
+document.querySelectorAll('[data-edit-loan]').forEach(b=>b.onclick=()=>{loan=b.dataset.editLoan;navigate('Edit loan')});document.querySelectorAll('[data-balance-loan]').forEach(b=>b.onclick=()=>{loan=b.dataset.balanceLoan;navigate('Update balance')});$('back').style.visibility=history.length?'visible':'hidden';$('nav').innerHTML=['Home','Plan','Loans','Activity','More'].map(s=>'<button data-go="'+s+'" '+(s===screen?'aria-current="page"':'')+'>'+icon(s)+'<span>'+s+'</span></button>').join('');document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>navigate(b.dataset.go));document.querySelectorAll('[data-loan]').forEach(b=>b.onclick=()=>{loan=b.dataset.loan;navigate('Loan')});if(screen==='Loan'){$('loan-icon').onchange=e=>{loanIcons[loan]=e.target.value;render()}}if(screen==='Plan'){$('cycle').oninput=()=>{cycle=Number($('cycle').value);projection()};projection()}}
+// All charts use the same axes, line weights, selection marker and legend.
+function chart(series,selected,labels){const max=Math.max(1,...series.flatMap(s=>s.values)),count=Math.max(...series.map(s=>s.values.length)),x=i=>36+i/Math.max(1,count-1)*274,y=v=>108-v/max*86;const tick=v=>new Intl.NumberFormat('en',{notation:'compact',maximumFractionDigits:1}).format(v/100);return '<svg class="chart" viewBox="0 0 330 142" role="img" aria-label="'+series.map(s=>s.name).join(' compared with ')+' over time"><line x1="36" y1="22" x2="310" y2="22" class="grid-line"/><line x1="36" y1="65" x2="310" y2="65" class="grid-line"/><line x1="36" y1="108" x2="310" y2="108" class="grid-line"/><text x="0" y="26">'+tick(max)+'</text><text x="8" y="112">0</text>'+series.map((s,j)=>'<path class="series-'+j+'" d="'+s.values.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join(' ')+'"/><circle class="point-'+j+'" cx="'+x(selected)+'" cy="'+y(s.values[selected]||0)+'" r="3.5"/>').join('')+'<text x="36" y="135">'+labels[0]+'</text><text x="310" y="135" text-anchor="end">'+labels[1]+'</text></svg><div class="legend">'+series.map((s,j)=>'<span><i class="key-'+j+'"></i>'+s.name+'</span>').join('')+'</div>'}
+const baselineByMonth=new Map(d.minimum_months.map(v=>[v.on.slice(0,7),v]));
+function updateCharts(){const c=d.months[cycle],range=[month(d.months[0].on),month(d.months.at(-1).on)],base=baselineByMonth.get(c.on.slice(0,7));$('balance-chart').innerHTML=chart([{name:'Projected balance',values:[d.opening,...d.months.map(v=>v.owed)]}],cycle+1,[month(d.as_of),range[1]]);$('payments-chart').innerHTML=chart([{name:'Total payment',values:d.months.map(v=>v.required+v.extra+v.fees)},{name:'Required portion',values:d.months.map(v=>v.required)}],cycle,range);$('payments-values').innerHTML='<div class="label">'+month(c.on)+' · Projected</div>'+row('Required',m(c.required))+row('Extra',m(c.extra))+row('Fees',m(c.fees))+row('Total payment',m(c.required+c.extra+c.fees));$('interest-chart').innerHTML=chart([{name:'With this plan',values:d.months.map(v=>v.interest)},{name:'Required-only',values:d.months.map(v=>baselineByMonth.get(v.on.slice(0,7))?.interest||0)}],cycle,range);$('interest-values').innerHTML='<div class="label">'+month(c.on)+' · Projected interest</div>'+row('With this plan',m(c.interest))+row('Required-only',m(base.interest))+row('Difference this month',m(base.interest-c.interest));}
+
+function projection(){const c=d.months[cycle];$('projection').innerHTML='<div class="label">After cycle starting '+date(c.on)+'</div><div class="subamount">'+m(c.owed)+'</div>'+c.loans.map(l=>row(l.name,m(l.owed))).join('')+'<small>Projected remaining principal, not actual progress.</small>';updateCharts()}
+let chartChoice='Balance';
+function compactLoan(l){return '<div class="compact-loan"><button class="loan-button" data-loan="'+l.name+'"><span class="title"><span class="badge">'+icon(loanIcons[l.name])+'</span><span><strong>'+esc(loanEdits[l.name].nickname)+'</strong><small>'+l.rate+'% · '+date(loanEdits[l.name].asOf)+'</small></span></span><b>'+m(l.balance)+'</b></button><button class="small-edit" data-edit-loan="'+l.name+'">Edit loan</button></div>'}
+function layerNav(){document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>navigate(b.dataset.go));document.querySelectorAll('[data-loan]').forEach(b=>b.onclick=()=>{loan=b.dataset.loan;navigate('Loan')});document.querySelectorAll('[data-edit-loan]').forEach(b=>b.onclick=()=>{loan=b.dataset.editLoan;navigate('Edit loan')});}
+function drawSelectedChart(){const c=d.months[cycle],base=baselineByMonth.get(c.on.slice(0,7)),range=[month(d.months[0].on),month(d.months.at(-1).on)];let series,selected=cycle,labels=range,values;
+if(chartChoice==='Balance'){series=[{name:'Projected balance',values:[d.opening,...d.months.map(v=>v.owed)]}];selected++;labels=[month(d.as_of),range[1]];values=row('Remaining principal',m(c.owed))+c.loans.map(l=>row(l.name,m(l.owed))).join('')}
+else if(chartChoice==='Monthly payments'){series=[{name:'Total',values:d.months.map(v=>v.required+v.extra+v.fees)},{name:'Required',values:d.months.map(v=>v.required)}];values=row('Required',m(c.required))+row('Extra',m(c.extra))+row('Fees',m(c.fees))+row('Total',m(c.required+c.extra+c.fees))}
+else{series=[{name:'This plan',values:d.months.map(v=>v.interest)},{name:'Required-only',values:d.months.map(v=>baselineByMonth.get(v.on.slice(0,7))?.interest||0)}];values=row('This plan',m(c.interest))+row('Required-only',m(base.interest))+row('Difference',m(base.interest-c.interest))}
+$('chosen-chart').innerHTML=chart(series,selected,labels);$('chosen-values').innerHTML=values;$('chosen-month').textContent=month(c.on)}
+function render(){renderFull();let html=null;
+if(screen==='Home')html='<div class="page-title"><h1>Home</h1><small>Sample portfolio</small></div><section class="card"><span class="label">Total balance · '+(planOutdated?'Edited demo':'15 Jan 2026')+'</span><div class="amount">'+m(loans.reduce((sum,l)=>sum+l.balance,0))+'</div><div class="summary-links"><button data-go="Budget"><small>Monthly budget</small><b>'+m(demoBudget)+'</b></button><button data-go="Plan"><small>Projected finish</small><b>'+(planOutdated?'Needs update':date(d.payoff))+'</b></button></div></section><section class="card"><div class="page-title"><h2>Your loans</h2><button class="small-edit" data-go="Loans">View all</button></div>'+loans.map(compactLoan).join('')+'</section>'+go('Plan','View payment plan');
+else if(screen==='Loans')html='<div class="page-title"><h1>Your loans</h1><small>3 loans</small></div><section class="card">'+loans.map(compactLoan).join('')+'</section><section class="card">'+row('Total balance',m(loans.reduce((sum,l)=>sum+l.balance,0)))+'<small>Tap a loan for its terms and balance.</small></section>';
+else if(screen==='Plan')html='<div class="page-title"><h1>Your plan</h1><button class="small-edit" data-go="Budget">Budget</button></div><div class="plan-strip"><span><small>Projected finish</small><b>'+(planOutdated?'Needs update':date(d.payoff))+'</b></span><span><small>Interest saved*</small><b>'+m(d.minimum_interest-d.interest)+'</b></span></div><section class="card chart-card"><label for="chart-choice" class="sr-only">Choose chart</label><select id="chart-choice">'+['Balance','Monthly payments','Monthly interest'].map(c=>'<option '+(c===chartChoice?'selected':'')+'>'+c+'</option>').join('')+'</select><div id="chosen-chart"></div><div class="cycle-label"><label for="chosen-cycle">Projected cycle</label><b id="chosen-month"></b></div><input type="range" id="chosen-cycle" min="0" max="'+(d.months.length-1)+'" value="'+cycle+'"><div id="chosen-values"></div></section><div class="layer-buttons">'+go('Payments','Payments','')+go('Milestones','Milestones','')+go('Plan details','Details','')+'</div><small>*Compared with required-only. Demo projections.</small>';
+else if(screen==='Payments')html='<h1>Planned payments</h1><small>First cycle · February 2026</small>'+card('Payment schedule',d.actions.map(a=>'<div class="action"><span>'+a.loan+'<small>'+date(a.on)+' · '+(a.kind==='extra'?'Extra':'Required')+'</small></span><b>'+m(a.amount)+'</b></div>').join(''))+go('Plan','Back to plan');
+else if(screen==='Milestones')html='<h1>Payoff milestones</h1>'+card('Projected closures',d.months.flatMap(c=>c.loans.filter(l=>l.cleared).map(l=>'<div class="action"><span>'+l.name+' loan<small>Cycle starting '+date(c.on)+'</small></span>'+icon('Plan')+'</div>')).join(''))+go('Plan','Back to plan');
+else if(screen==='Plan details')html='<h1>Calculation details</h1>'+card('Original sample',row('Engine',d.engine)+row('Policies tested',d.policies)+row('Projected interest',m(d.interest))+row('Minimum-only finish',date(d.minimum_payoff))+'<p class="label">Fixed rates, no fees, Actual/365, extra payments credited to principal. Best under these sample conditions.</p><p class="label">Charts compare the same months. Required-only repayments continue after this plan ends. No actual payments are recorded.</p>')+go('Plan','Back to plan');
+else if(screen==='Budget')html='<div class="page-title"><h1>Budget</h1>'+editLink('Edit budget','Edit budget')+'</div>'+card('Monthly limit','<div class="amount">'+m(demoBudget)+'</div><small>Available on day '+demoPayday+'</small>')+card('Original plan · first cycle',row('Required',m(first.required))+row('Optional extra',m(first.extra))+row('Fees',m(first.fees))+row('Total',m(first.required+first.extra+first.fees)))+go('Budget details','Cash and allocation','')+go('Plan','View plan');
+else if(screen==='Budget details')html='<h1>Budget details</h1>'+card('Current demo settings',row('Cash arrival day',demoPayday)+row('Protected reserve',m(demoReserve)))+card('Original allocation',first.loans.map(l=>row(l.name,m(l.paid))).join(''))+'<p class="label">The original report treats budget as incoming cash. Saved edits do not recalculate this report.</p>'+go('Edit budget','Edit budget');
+else if(screen==='Loan'){const l=loans.find(l=>l.name===loan),e=loanEdits[loan],a=d.actions.find(a=>a.loan===loan&&a.kind==='instalment');html='<div class="page-title"><h1>'+esc(e.nickname)+'</h1>'+editLink('Edit loan','Edit loan')+'</div>'+card('Balance','<div class="amount">'+m(l.balance)+'</div><small>As of '+date(e.asOf)+'</small>'+go('Update balance','Update balance'))+card('Loan details',row('Annual rate',l.rate+'%')+row('Maturity',date(e.maturity))+row('Original next payment',m(a.amount))+row('Due date',date(a.on)))+go('Plan','Open plan','')}
+if(html!==null){$('view').innerHTML=(planOutdated?'<div class="stale compact-stale" role="status">Demo changed · Charts show the original plan.</div>':'')+html;layerNav();if(screen==='Plan'){$('chart-choice').onchange=e=>{chartChoice=e.target.value;drawSelectedChart()};$('chosen-cycle').oninput=e=>{cycle=Number(e.target.value);drawSelectedChart()};drawSelectedChart()}}
+// Long editing forms expose one block at a time, retaining entered values.
+if(['Edit loan','Edit budget'].includes(screen)){const blocks=[...$('edit-form').querySelectorAll(':scope > .card')];if(blocks.length>1){const tabs=document.createElement('div');tabs.className='form-tabs';let index=0;function show(i){index=i;blocks.forEach((b,j)=>b.hidden=j!==i);tabs.querySelectorAll('button').forEach((b,j)=>b.setAttribute('aria-pressed',String(j===i)))}blocks.forEach((b,i)=>{const btn=document.createElement('button');btn.type='button';btn.textContent=b.querySelector('h2').textContent;btn.onclick=()=>show(i);tabs.append(btn)});$('edit-form').prepend(tabs);show(0);$('edit-form').addEventListener('invalid',event=>{const i=blocks.findIndex(b=>b.contains(event.target));if(i>=0)show(i)},true)}}
+$('view').scrollTop=0;
+}
+
+function navigate(s){history.push(screen);screen=s;render();window.scrollTo(0,0)}$('back').onclick=()=>{screen=history.pop()||'Home';render();window.scrollTo(0,0)};$('theme').onclick=()=>{$('theme').textContent=document.body.classList.toggle('light')?'Dark':'Light'};render();
+</script></body></html>

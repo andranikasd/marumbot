@@ -1,175 +1,94 @@
 //go:build oracle
 
-// The oracle takes minutes by design. Run it with: go test -tags oracle -run Oracle ./pkg/core/plan/
-
 package plan_test
 
 import (
 	"testing"
 
-	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
 	"github.com/andranikasd/marumbot/pkg/core/plan"
 )
 
-// The oracle is an independent, deliberately slow exhaustive search over
-// DYNAMIC allocations: every month it tries every split of the surplus
-// across the loans in coarse steps, including keeping cash for later, and
-// follows the whole tree. It shares the single-loan arithmetic (Accrue,
-// Solve) with the engine but none of the portfolio logic, and it knows
-// nothing about priority orders. On fee-free immediate-credit loans with a
-// fixed instalment the static-order search must reach its cost; a gap would
-// be a static-order assumption failing.
-
-type oLoan struct {
-	balance    int64 // minor
-	instalment int64 // fixed at the start: shorten_term semantics
-	rate       money.Rate
-	dc         money.DayCount
-	pol        money.Policy
-	day        int
-	from       date.Date
-}
-
-func (l oLoan) accrue(to date.Date) int64 {
-	i, _ := money.Accrue(money.FromMinor(l.balance, amd), l.rate, int64(date.DaysBetween(l.from, to)), l.dc, l.pol)
-	return i.Minor()
-}
-
-// oracleStep pays one month: the instalment on the due date, plus `extra`
-// on the same date (payday = due day, so there is no timing dimension).
-// Returns interest paid and the loan after the payment.
-func oracleStep(l oLoan, extra int64) (int64, oLoan) {
-	due := date.Occurrence(l.from, l.day, 1)
-	interest := l.accrue(due)
-	owed := l.balance + interest
-	pay := l.instalment + extra
-	if pay > owed {
-		pay = owed
+// reducedOracle is an independent FORWARD exhaustive frontier. It uses no
+// planner transition, schedule builder, accrual, rounding or priority primitive.
+// Tiny amounts make these integer products provably fit int64. Each frontier
+// belongs to one explicit calendar event; its key retains cash and both balances.
+// Production uses backward recursion and memoized tails; this oracle retains
+// the cheapest prefix reaching each exact state. Hold and every split are tried.
+func reducedOracle(balances [2]int64, rates [2]int64, budget int64, horizon int) (int64, bool) {
+	type state struct {
+		balance [2]int64
+		cash    int64
 	}
-	l.balance = owed - pay
-	l.from = due
-	return interest, l
-}
-
-func oracleBest(loans []oLoan, budget, carry int64, step int64, depth int, memo map[[5]int64]int64) int64 {
-	open := 0
-	var key [5]int64
-	for i, l := range loans {
-		if l.balance > 0 {
-			open++
-		}
-		if i < 4 {
-			key[i] = l.balance
-		}
-	}
-	if open == 0 {
-		return 0
-	}
-	if depth == 0 {
-		// Horizon: a cost floor that cannot favour leaving debt open, so the
-		// tree is compared on equal footing — the remaining interest if the
-		// budget is spent on the highest rate first from here is not known
-		// to the oracle; it simply refuses to leave loans open.
-		return 1 << 60
-	}
-	key[4] = carry*1000 + int64(depth)
-	if v, ok := memo[key]; ok {
-		return v
-	}
-	required := int64(0)
-	for _, l := range loans {
-		if l.balance > 0 {
-			due := date.Occurrence(l.from, l.day, 1)
-			owed := l.balance + l.accrue(due)
-			r := l.instalment
-			if r > owed {
-				r = owed
-			}
-			required += r
-		}
-	}
-	surplus := budget + carry - required
-	if surplus < 0 {
-		memo[key] = 1 << 60
-		return 1 << 60
-	}
+	frontier := map[state]int64{{balance: balances}: 0}
 	best := int64(1 << 60)
-	n := len(loans)
-	split := make([]int64, n)
-	var rec func(i int, left int64)
-	rec = func(i int, left int64) {
-		if i == n {
+	days := []int64{31, 28, 31, 30}
+	for month := 0; month < horizon; month++ {
+		next := map[state]int64{}
+		for s, cost := range frontier {
+			remaining := s.balance
+			available := s.cash + budget
 			interest := int64(0)
-			next := make([]oLoan, n)
-			for j, l := range loans {
-				if l.balance <= 0 {
-					next[j] = l
-					continue
+			for i, b := range s.balance {
+				// Half-up to one minor unit; ppb rate, actual/365. No money.Accrue.
+				numerator := b * rates[i] * days[month]
+				denominator := int64(365000000000)
+				accrued := (numerator + denominator/2) / denominator
+				owed := b + accrued
+				required := min(int64(2), owed)
+				remaining[i] = owed - required
+				available -= required
+				interest += accrued
+			}
+			if available < 0 {
+				continue
+			}
+			for a := int64(0); a <= min(available, remaining[0]); a++ {
+				for b := int64(0); b <= min(available-a, remaining[1]); b++ {
+					ns := state{balance: [2]int64{remaining[0] - a, remaining[1] - b}, cash: available - a - b}
+					nc := cost + interest
+					if ns.balance == [2]int64{} {
+						if nc < best {
+							best = nc
+						}
+						continue
+					}
+					if old, ok := next[ns]; !ok || nc < old {
+						next[ns] = nc
+					}
 				}
-				in, nl := oracleStep(l, split[j])
-				interest += in
-				next[j] = nl
 			}
-			rest := oracleBest(next, budget, left, step, depth-1, memo)
-			if rest < 1<<59 && interest+rest < best {
-				best = interest + rest
-			}
-			return
 		}
-		if loans[i].balance <= 0 {
-			split[i] = 0
-			rec(i+1, left)
-			return
-		}
-		for a := int64(0); a <= left; a += step {
-			split[i] = a
-			rec(i+1, left-a)
-		}
-		if left%step != 0 {
-			split[i] = left // the remainder, so a payoff is always reachable
-			rec(i+1, 0)
-		}
+		frontier = next
 	}
-	rec(0, surplus)
-	memo[key] = best
-	return best
+	return best, best < 1<<60
 }
 
-func TestStaticOrderMatchesDynamicOracleWithoutFees(t *testing.T) {
-	ls := []plan.Position{
-		pos("x", "X", 120_000, 24, 1),
-		pos("y", "Y", 180_000, 12, 1),
-	}
-	for i := range ls {
-		ls[i].Contract.Prepayment.Effect = model.PrepayShortenTerm
-	}
-	in := input(ls, 60_000, 15) // payday on the due day: no timing dimension
-	rep, err := plan.Search(in, plan.Goal{Kind: plan.LeastInterest})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var ol []oLoan
-	for _, l := range ls {
-		inst, err := amortisation.Solve(l.Contract, l.Balance, l.From)
-		if err != nil {
-			t.Fatal(err)
+func TestDynamicMatchesIndependentReducedOracle(t *testing.T) {
+	for _, budget := range []int64{6, 8, 10} {
+		for _, rate := range []int64{240, 600} {
+			ls := []plan.Position{pos("x", "X", 1, rate, 2), pos("y", "Y", 1, 120, 2)}
+			for i := range ls {
+				ls[i].Balance = money.FromMinor(int64(4+2*i), amd)
+				ls[i].Contract.HasScheduled = true
+				ls[i].Contract.ScheduledPayment = money.FromMinor(2, amd)
+				ls[i].Contract.Prepayment.Effect = model.PrepayShortenTerm
+				ls[i].Contract.Rounding = money.Policy{Mode: money.HalfUp, Unit: 1}
+			}
+			in := plan.Input{ValuationDate: date.MustNew(2026, 1, 15), Loans: ls, Cash: plan.CashPlan{Monthly: money.FromMinor(budget, amd)}}
+			got, err := plan.SearchDynamic(plan.DynamicRequest{Input: in, Horizon: 4, MaxStates: 100000})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !got.Complete {
+				t.Fatalf("oracle fixture unexpectedly capped: budget=%d rate=%d", budget, rate)
+			}
+			want, feasible := reducedOracle([2]int64{4, 6}, [2]int64{int64(ls[0].Contract.NominalRate), int64(ls[1].Contract.NominalRate)}, budget, 4)
+			if feasible != (got.Cost != nil) || (feasible && want != got.Cost.Minor()) {
+				t.Fatalf("budget=%d rate=%d got=%v oracle=%d feasible=%v", budget, rate, got.Cost, want, feasible)
+			}
 		}
-		ol = append(ol, oLoan{
-			balance: l.Balance.Minor(), instalment: inst.Minor(), rate: l.Contract.NominalRate,
-			dc: l.Contract.DayCount, pol: l.Contract.Rounding, day: l.Contract.PaymentDay, from: l.From,
-		})
-	}
-	oracle := oracleBest(ol, amt(60_000).Minor(), 0, amt(10_000).Minor(), 7, map[[5]int64]int64{})
-	if oracle >= 1<<59 {
-		t.Fatal("oracle found no complete policy within the horizon")
-	}
-	got := rep.Best.TotalInterest.Minor()
-	t.Logf("search %d, oracle %d (minor units)", got, oracle)
-	if got > oracle {
-		t.Fatalf("search found %s, oracle found %s", rep.Best.TotalInterest, money.FromMinor(oracle, amd))
 	}
 }

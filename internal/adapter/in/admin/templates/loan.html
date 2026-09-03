@@ -9,6 +9,7 @@
 </div>
 {{end}}
 {{define "content"}}
+{{if .Can.caseNotes}}<p><a href="/cases?user={{.V.Loan.UserID}}&loan={{.V.Loan.ID}}">Open a support case for this loan</a></p>{{end}}
 <p class="subtitle">
   <span class="mono">{{.V.Loan.Currency}}</span> ·
   <span>user <a class="mono" href="/users/{{.V.Loan.UserID}}" title="{{.V.Loan.UserID}}">{{short .V.Loan.UserID}}</a></span> ·
@@ -147,7 +148,7 @@
       <tr>
         <td class="num">{{.RecordedSeq}}</td>
         <td>{{.Kind}}</td>
-        <td class="nowrap">{{date .ValueDate}}</td>
+        <td class="nowrap">{{if .ValueDate.IsZero}}Pending posting{{else}}{{date .ValueDate}}{{end}}</td>
         <td class="num">{{if .AmountMinor}}{{minor .AmountMinor $.V.Loan.Currency}}{{else}}—{{end}}</td>
         <td class="num">{{if .BankOrder}}{{.BankOrder}}{{else}}—{{end}}</td>
         <td class="mono">{{if .BankReference}}{{.BankReference}}{{else}}—{{end}}</td>

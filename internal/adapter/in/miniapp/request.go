@@ -21,6 +21,10 @@ const maxTermYears = 40
 // user quickly; this one exists because the browser belongs to whoever is using
 // it and its checks can simply be deleted.
 func (r LoanRequest) Validate(today date.Date) (app.LoanDraft, error) {
+	icon, iconErr := app.LoanIcon(r.Icon)
+	if iconErr != nil {
+		return app.LoanDraft{}, fmt.Errorf("%w: loan icon", ErrInvalid)
+	}
 	title := trimTo(r.Title, 60)
 	if title == "" {
 		return app.LoanDraft{}, fmt.Errorf("%w: no title", ErrInvalid)
@@ -100,7 +104,7 @@ func (r LoanRequest) Validate(today date.Date) (app.LoanDraft, error) {
 	}
 
 	return app.LoanDraft{
-		Title:       title,
+		Title: title, Icon: icon, OptionalExcluded: r.OptionalExcluded,
 		Description: description,
 		Principal:   principal,
 		Balance:     balance,
@@ -128,14 +132,18 @@ func (r LoanRequest) Validate(today date.Date) (app.LoanDraft, error) {
 // original principal are deliberately absent: the first cannot change
 // without re-denominating the ledger, the second is history.
 type LoanEditRequest struct {
-	Name         string  `json:"name"`
-	Description  string  `json:"description"`
-	RatePercent  float64 `json:"rate_percent"`
-	Method       string  `json:"method"`
-	PrepayEffect string  `json:"prepay_effect"`
-	StartDate    string  `json:"start_date"`
-	MaturityDate string  `json:"maturity_date"`
-	PaymentDay   int     `json:"payment_day"`
+	SnapshotMinor    *int64  `json:"snapshot_minor"`
+	SnapshotAsOf     string  `json:"snapshot_as_of"`
+	Icon             *string `json:"icon"`
+	OptionalExcluded *bool   `json:"optional_excluded"`
+	Name             string  `json:"name"`
+	Description      string  `json:"description"`
+	RatePercent      float64 `json:"rate_percent"`
+	Method           string  `json:"method"`
+	PrepayEffect     string  `json:"prepay_effect"`
+	StartDate        string  `json:"start_date"`
+	MaturityDate     string  `json:"maturity_date"`
+	PaymentDay       int     `json:"payment_day"`
 	// BalanceMajor restates what is owed today; zero means unchanged.
 	BalanceMajor float64 `json:"balance_major"`
 }
@@ -149,6 +157,11 @@ func (r LoanEditRequest) FullEdit() bool { return r.StartDate != "" }
 // already has. Same discipline as LoanRequest.Validate: the browser's checks
 // exist to be quick, these exist because the browser can be lied about.
 func (r LoanEditRequest) Validate(cur money.Currency) (app.LoanEdit, error) {
+	if r.Icon != nil {
+		if _, err := app.LoanIcon(*r.Icon); err != nil {
+			return app.LoanEdit{}, fmt.Errorf("%w: icon", ErrInvalid)
+		}
+	}
 	name := trimTo(r.Name, 60)
 	if name == "" {
 		return app.LoanEdit{}, fmt.Errorf("%w: no title", ErrInvalid)
@@ -190,14 +203,25 @@ func (r LoanEditRequest) Validate(cur money.Currency) (app.LoanEdit, error) {
 	}
 
 	e := app.LoanEdit{
-		Name:         name,
-		Description:  trimTo(r.Description, 200),
+		Name:        name,
+		Description: trimTo(r.Description, 200), Icon: r.Icon, OptionalExcluded: r.OptionalExcluded,
 		NominalRate:  money.RateFromPercent(whole, micro),
 		Type:         typ,
 		StartDate:    start,
 		MaturityDate: maturity,
 		PaymentDay:   r.PaymentDay,
 		PrepayEffect: prepay,
+	}
+	if r.SnapshotMinor != nil {
+		if *r.SnapshotMinor < 0 || *r.SnapshotMinor > math.MaxInt64/1000 {
+			return app.LoanEdit{}, fmt.Errorf("%w: balance", ErrInvalid)
+		}
+		asOf, err := date.Parse(r.SnapshotAsOf)
+		if err != nil || asOf.Before(start) {
+			return app.LoanEdit{}, fmt.Errorf("%w: balance date", ErrInvalid)
+		}
+		e.BalanceMinor = r.SnapshotMinor
+		e.BalanceAsOf = asOf
 	}
 	if r.BalanceMajor > 0 {
 		minor, err := budgetMinor(r.BalanceMajor, cur, false)
@@ -211,8 +235,12 @@ func (r LoanEditRequest) Validate(cur money.Currency) (app.LoanEdit, error) {
 
 // BudgetRequest is what the budget form posts.
 type BudgetRequest struct {
-	MonthlyMajor float64 `json:"monthly_major"`
-	Currency     string  `json:"currency"`
+	AsOf            string             `json:"as_of"`
+	Key             string             `json:"idempotency_key"`
+	Funding         *app.BudgetFunding `json:"funding"`
+	ExpectedVersion *int64             `json:"expected_version"`
+	MonthlyMajor    float64            `json:"monthly_major"`
+	Currency        string             `json:"currency"`
 	// PayDay is the day of the month the money arrives; 0 means not stated.
 	PayDay int `json:"pay_day"`
 	// OpeningMajor is cash on hand for loans today. Zero or absent withdraws
@@ -301,4 +329,35 @@ func budgetMinor(major float64, cur money.Currency, allowZero bool) (int64, erro
 		return 0, fmt.Errorf("%w: amount too large", ErrInvalid)
 	}
 	return int64(minor), nil
+}
+
+// ValidateFunding checks explicitly declared minor-unit funding without using
+// floating-point conversions. Future expected receipts remain assumptions.
+func (r BudgetRequest) ValidateFunding(today date.Date) error {
+	if r.ExpectedVersion != nil && *r.ExpectedVersion < 0 {
+		return fmt.Errorf("%w: version", ErrInvalid)
+	}
+	if r.Funding == nil {
+		return nil
+	}
+	f := r.Funding
+	if f.SpentPeriodStart != "" {
+		d, err := date.Parse(f.SpentPeriodStart)
+		if err != nil || d.After(today) {
+			return fmt.Errorf("%w: spending period start", ErrInvalid)
+		}
+	}
+	if f.CashThrough != "" {
+		d, err := date.Parse(f.CashThrough)
+		if err != nil || d.After(today) {
+			return fmt.Errorf("%w: cash statement date", ErrInvalid)
+		}
+	}
+	if r.PayDay < 1 || r.PayDay > 31 || f.MonthlyMinor < 0 || f.SpentMinor < 0 || f.MonthlyMinor > math.MaxInt64/1000 || f.SpentMinor > math.MaxInt64/1000 || len(f.Events) > maxOverrideMonths {
+		return fmt.Errorf("%w: funding", ErrInvalid)
+	}
+	if err := app.ValidateBudgetCashEvents(f.Events, r.Currency, today); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	return nil
 }

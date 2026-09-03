@@ -17,8 +17,8 @@
 -- own figure arrives -- which is the whole reliability model working as
 -- intended rather than an omission.
 WITH new_loan AS (
-    INSERT INTO loans (id, user_id, name, description, currency)
-    SELECT $1, $2, $3, $4, $5
+    INSERT INTO loans (id, user_id, name, description, currency, icon, optional_excluded)
+    SELECT $1, $2, $3, $4, $5, $20, $21
      WHERE (SELECT count(*) FROM loans WHERE user_id = $2 AND archived_at IS NULL) < $19
     RETURNING id
 ), new_contract AS (
@@ -64,7 +64,14 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        s.principal_minor, s.as_of::text, s.trust,
        coalesce(p.excess_rule, 'unknown'),
        c.prepayment_policy::text,
-       f.principal_minor AS first_principal_minor
+       f.principal_minor AS first_principal_minor, l.icon, l.optional_excluded, c.version, c.effective_from::text,
+ EXISTS (SELECT 1 FROM loan_events e WHERE e.loan_id = l.id
+ AND e.kind IN ('payment_reported','prepayment_reported')
+ AND NOT EXISTS (SELECT 1 FROM loan_events v WHERE v.voids_event_id = e.id)
+ AND NOT EXISTS (SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id = e.id))
+ OR EXISTS (SELECT 1 FROM loan_events v WHERE v.loan_id=l.id AND v.kind='entry_voided'
+ AND EXISTS(SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id=v.voids_event_id)
+ AND v.recorded_seq>coalesce(s.observed_event_seq,0)), CASE WHEN s.contract_version_id=c.id THEN s.next_due_date::text END, CASE WHEN s.contract_version_id=c.id THEN s.next_installment_minor END, coalesce(p.policy_key,'unknown'),coalesce(p.version,0), l.mutation_version
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
@@ -95,6 +102,7 @@ ON CONFLICT (user_id, currency) DO UPDATE
    SET monthly_amount_minor = EXCLUDED.monthly_amount_minor,
        pay_day = CASE WHEN EXCLUDED.pay_day > 0 THEN EXCLUDED.pay_day ELSE budgets.pay_day END,
        updated_at = now()
+WHERE budgets.policies = '[]'::jsonb
 RETURNING monthly_amount_minor;
 
 -- name: SetBudgetConfiguration
@@ -104,9 +112,12 @@ RETURNING monthly_amount_minor;
 -- pay_day is replaced exactly: zero deliberately clears it.
 INSERT INTO budgets (
     user_id, currency, monthly_amount_minor, overrides_schema_version,
-    pay_day, opening_cash_minor, opening_as_of, overrides, reserve_floor_minor
+    pay_day, opening_cash_minor, opening_as_of, overrides, reserve_floor_minor, funding
 )
-VALUES ($1, $2, $3, 1, $4, $5, $6::date, $7::jsonb, $8)
+SELECT $1, $2, $3, 1, $4, $5, $6::date, $7::jsonb, $8, $9::jsonb
+WHERE $10::bigint IS NULL OR $10::bigint = 0 OR EXISTS (
+    SELECT 1 FROM budgets WHERE user_id = $1 AND currency = $2 AND version = $10::bigint
+)
 ON CONFLICT (user_id, currency) DO UPDATE
    SET monthly_amount_minor = EXCLUDED.monthly_amount_minor,
        pay_day = EXCLUDED.pay_day,
@@ -114,7 +125,10 @@ ON CONFLICT (user_id, currency) DO UPDATE
        opening_as_of = EXCLUDED.opening_as_of,
        overrides = EXCLUDED.overrides,
        reserve_floor_minor = EXCLUDED.reserve_floor_minor,
+       funding = EXCLUDED.funding,
        updated_at = now()
+WHERE ($10::bigint IS NULL OR budgets.version = $10::bigint)
+ AND budgets.policies = '[]'::jsonb
 RETURNING monthly_amount_minor;
 
 -- name: GetBudget
@@ -123,9 +137,18 @@ RETURNING monthly_amount_minor;
 -- currency had the bigger unit. The one the user last set is the one they
 -- mean.
 SELECT currency, monthly_amount_minor, pay_day,
-       overrides::text, opening_cash_minor, opening_as_of::text, reserve_floor_minor
+       overrides::text, opening_cash_minor, opening_as_of::text, reserve_floor_minor, funding::text, version, policies::text
   FROM budgets
  WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1;
+
+-- name: AppendBudgetPolicy
+-- One aggregate compare-and-swap. Never touches spent, cash, or receipts.
+UPDATE budgets SET
+ policies = policies || jsonb_build_array($4::jsonb || jsonb_build_object('version', version + 1)),
+ updated_at = now()
+WHERE user_id = $1 AND currency = $2 AND version = $3
+ AND funding IS NOT NULL
+RETURNING version;
 
 -- name: SetBudgetOpening
 -- The borrower states what is on hand today for loans. Stamped with the day
@@ -142,7 +165,7 @@ RETURNING opening_cash_minor;
 -- real statement ("nothing spare that month").
 UPDATE budgets
    SET overrides = $3::jsonb, updated_at = now()
- WHERE user_id = $1 AND currency = $2
+ WHERE user_id = $1 AND currency = $2 AND policies = '[]'::jsonb
 RETURNING overrides::text;
 
 -- name: UpdateLoanForUser
@@ -174,7 +197,14 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        s.principal_minor, s.as_of::text, s.trust,
        coalesce(p.excess_rule, 'unknown'),
        c.prepayment_policy::text,
-       f.principal_minor AS first_principal_minor
+       f.principal_minor AS first_principal_minor, l.icon, l.optional_excluded, c.version, c.effective_from::text,
+ EXISTS (SELECT 1 FROM loan_events e WHERE e.loan_id = l.id
+ AND e.kind IN ('payment_reported','prepayment_reported')
+ AND NOT EXISTS (SELECT 1 FROM loan_events v WHERE v.voids_event_id = e.id)
+ AND NOT EXISTS (SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id = e.id))
+ OR EXISTS (SELECT 1 FROM loan_events v WHERE v.loan_id=l.id AND v.kind='entry_voided'
+ AND EXISTS(SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id=v.voids_event_id)
+ AND v.recorded_seq>coalesce(s.observed_event_seq,0)), CASE WHEN s.contract_version_id=c.id THEN s.next_due_date::text END, CASE WHEN s.contract_version_id=c.id THEN s.next_installment_minor END, coalesce(p.policy_key,'unknown'),coalesce(p.version,0), l.mutation_version
   FROM loans l
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
@@ -233,9 +263,8 @@ RETURNING id;
 -- Trust is 'user_entered' -- the honest grade for a typed figure; only a
 -- lender-confirmed number resets drift.
 --
--- Ownership lives in the predicate. The idempotency key is loan and date, so
--- restating the balance on the same day corrects the same claim rather than
--- stacking a contradiction; a new day is a new claim and a new row.
+-- Ownership lives in the predicate. Every statement gets a new identity;
+-- later same-day statements supersede earlier anchors without rewriting them.
 WITH owned AS (
     SELECT l.id FROM loans l
      WHERE l.id = $1 AND l.user_id = $2 AND l.archived_at IS NULL
@@ -251,12 +280,11 @@ INSERT INTO loan_snapshots (
     id, loan_id, contract_version_id, as_of, trust,
     principal_minor, source_note, idempotency_key
 )
-SELECT $3, loan_id, contract_id, $4, 'user_entered', $5,
+SELECT $3::uuid, loan_id, contract_id, $4, 'user_entered', $5,
        'balance stated by the borrower after a payment',
-       'balance:' || loan_id::text || ':' || $4
+       'balance:' || loan_id::text || ':' || $3::text
   FROM latest
-ON CONFLICT (idempotency_key) DO UPDATE
-   SET principal_minor = EXCLUDED.principal_minor, captured_at = now()
+ON CONFLICT (idempotency_key) DO NOTHING
 RETURNING id;
 
 -- name: ApplyLoanRevision
@@ -266,9 +294,16 @@ RETURNING id;
 WITH owned AS (
     SELECT id FROM loans
      WHERE id = $1 AND user_id = $2 AND archived_at IS NULL
+       AND (NOT $18::boolean OR (
+           $23::date >= (SELECT effective_from FROM loan_contract_versions
+                       WHERE loan_id = $1 ORDER BY version DESC LIMIT 1)
+           AND (NOT $6::boolean OR $23::date >= $8::date)
+       ))
 ), renamed AS (
-    UPDATE loans SET name = $4, description = $5
-     WHERE id IN (SELECT id FROM owned) AND $3::boolean
+    UPDATE loans SET name = CASE WHEN $3::boolean THEN $4 ELSE name END,
+           description = CASE WHEN $3::boolean THEN $5 ELSE description END,
+           icon = coalesce($21::text, icon), optional_excluded = coalesce($22::boolean, optional_excluded)
+     WHERE id IN (SELECT id FROM owned) AND ($3::boolean OR $21::text IS NOT NULL OR $22::boolean IS NOT NULL)
     RETURNING id
 ), prev AS (
     SELECT v.id, v.version, v.allocation_policy_version_id
@@ -298,12 +333,11 @@ WITH owned AS (
         id, loan_id, contract_version_id, as_of, trust, principal_minor,
         source_note, idempotency_key
     )
-    SELECT $19, c.loan_id, c.id, $8, 'user_entered', $20,
+    SELECT $19::uuid, c.loan_id, c.id, $23::date, 'user_entered', $20,
            'balance stated by the borrower after a payment',
-           'balance:' || c.loan_id::text || ':' || $8
+           'balance:' || c.loan_id::text || ':' || $19::text
       FROM current_contract c WHERE $18::boolean
-    ON CONFLICT (idempotency_key) DO UPDATE
-       SET principal_minor = EXCLUDED.principal_minor, captured_at = now()
+    ON CONFLICT (idempotency_key) DO NOTHING
     RETURNING id
 )
 SELECT id FROM owned;
@@ -345,7 +379,7 @@ SELECT o.id, o.user_id, o.loan_id, o.due_date::text, o.offset_days,
        l.name, l.currency
   FROM reminder_occurrences o
   JOIN loans l ON l.id = o.loan_id
- WHERE o.status = 'scheduled' AND o.target_send_at <= now()
+ WHERE o.approved_plan_id IS NULL AND o.status = 'scheduled' AND o.target_send_at <= now()
    AND l.archived_at IS NULL
  ORDER BY o.target_send_at
  LIMIT $1;
@@ -383,3 +417,51 @@ SELECT goal, cap_minor, policy, engine, payoff_date::text, months, interest_mino
 
 -- name: ClearApprovedPlan
 DELETE FROM approved_plans WHERE user_id = $1 RETURNING user_id;
+
+-- name: BorrowerActivity
+-- Source facts only. Value dates remain unknown until the borrower reports posting.
+WITH facts AS (
+ SELECT sn.id, l.id AS loan_id, l.name, l.currency, sn.as_of::text AS as_of,
+ sn.principal_minor, sn.trust, 'balance_snapshot'::text AS kind, 0::bigint AS amount_minor,
+ ''::text AS transaction_date, ''::text AS value_date, 'user_entered'::text AS status,
+ ''::text AS voids, false AS voided, l.next_event_seq - 1 AS version, sn.captured_at AS recorded_at
+ FROM loan_snapshots sn JOIN loans l ON l.id = sn.loan_id WHERE l.user_id = $1
+ UNION ALL
+ SELECT e.id, l.id, l.name, l.currency,
+ COALESCE(e.fact_payload->>'transaction_date', e.value_date::text, ''),
+ 0, COALESCE(e.fact_payload->>'trust', 'user_entered'), e.kind, COALESCE(e.amount_minor, 0),
+ COALESCE(e.fact_payload->>'transaction_date', e.value_date::text, ''), COALESCE(e.value_date::text, ''),
+ CASE WHEN e.kind = 'entry_voided' THEN 'voided' WHEN e.value_date IS NULL THEN 'pending_bank_posting' WHEN EXISTS(SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id=e.id) THEN 'reconciled' ELSE 'needs_reconciliation' END,
+ COALESCE(e.voids_event_id::text, ''), EXISTS (SELECT 1 FROM loan_events v WHERE v.voids_event_id = e.id),
+ l.next_event_seq - 1, e.recorded_at
+ FROM loan_events e JOIN loans l ON l.id = e.loan_id WHERE l.user_id = $1
+)
+SELECT id::text, loan_id::text, name, currency, as_of, principal_minor, trust, kind,
+ amount_minor, transaction_date, value_date, status, voids, voided, version
+FROM facts WHERE $2::text = '' OR (recorded_at,id) <
+ (SELECT recorded_at,id FROM facts WHERE id::text = $2)
+ORDER BY recorded_at DESC, id DESC LIMIT 100;
+
+-- name: BudgetPeriodPolicies
+SELECT policies::text FROM budgets WHERE user_id=$1 AND currency=$2 FOR UPDATE;
+
+-- name: GetBudgetReleaseFacts
+-- Only verified statements captured after a policy declaration can release
+-- its budget. Earlier facts are already known when a new total is approved.
+WITH verified AS (
+ SELECT l.user_id,l.currency,s.id,s.as_of,s.captured_at,
+ lag(s.id) OVER(PARTITION BY s.loan_id ORDER BY s.as_of,s.captured_at,s.id) AS prior_id,
+ CASE WHEN s.principal_minor=0 THEN 0 ELSE s.next_installment_minor END AS after_minor,
+ lag(CASE WHEN s.principal_minor=0 THEN 0 ELSE s.next_installment_minor END)
+ OVER(PARTITION BY s.loan_id ORDER BY s.as_of,s.captured_at,s.id) AS before_minor
+ FROM loan_snapshots s JOIN loans l ON l.id=s.loan_id
+ WHERE l.user_id=$1 AND l.currency=$2 AND s.trust IN ('bank_confirmed','imported_verified')
+)
+SELECT (policy->>'version')::bigint,v.id::text,v.as_of::text,v.before_minor,v.after_minor,coalesce(v.prior_id::text,'')
+FROM budgets b CROSS JOIN LATERAL jsonb_array_elements(b.policies) policy
+JOIN budget_versions bv ON bv.user_id=b.user_id AND bv.currency=b.currency
+ AND bv.version=(policy->>'version')::bigint
+JOIN verified v ON v.user_id=b.user_id AND v.currency=b.currency
+ AND v.captured_at>bv.declared_at AND v.as_of>=(policy->>'effective_from')::date
+WHERE b.user_id=$1 AND b.currency=$2 AND policy->>'released_payment_rule'<>'roll_all'
+ORDER BY (policy->>'version')::bigint,v.as_of,v.captured_at,v.id;

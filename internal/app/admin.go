@@ -59,9 +59,14 @@ type EngineReader interface {
 
 // Admin is the read-mostly service behind the private web interface.
 type Admin struct {
-	store  AdminStore
-	mod    Moderation
-	engine EngineReader
+	corpus     AdminCorpusStore
+	history    AdminHistoryStore
+	signPolicy func(string) (string, error)
+	security   AdminSecurityStore
+	now        func() time.Time
+	store      AdminStore
+	mod        Moderation
+	engine     EngineReader
 }
 
 // NewAdmin builds the read-mostly service behind the admin interface.
@@ -81,103 +86,167 @@ func (a *Admin) WithEngine(e EngineReader) *Admin { a.engine = e; return a }
 
 // PauseUser suspends an account without destroying anything.
 func (a *Admin) PauseUser(ctx context.Context, userID string) error {
+	if err := a.CheckAccess(ctx, AdminCapabilityEntitlements, userID); err != nil {
+		return err
+	}
 	return a.mod.SetUserAccess(ctx, userID, "paused")
 }
 
 // RestoreUser returns a suspended account to active use.
 func (a *Admin) RestoreUser(ctx context.Context, userID string) error {
+	if err := a.CheckAccess(ctx, AdminCapabilityEntitlements, userID); err != nil {
+		return err
+	}
 	return a.mod.SetUserAccess(ctx, userID, "active")
 }
 
 // RequestDeletion marks an account for erasure. Reversible until honoured.
 func (a *Admin) RequestDeletion(ctx context.Context, userID string) error {
+	if err := a.CheckAccess(ctx, AdminCapabilityDeletionVerification, userID); err != nil {
+		return err
+	}
 	return a.mod.RequestUserDeletion(ctx, userID)
 }
 
 // EraseUser honours a deletion request. Irreversible, and the only such action.
 func (a *Admin) EraseUser(ctx context.Context, userID string) error {
+	if err := a.CheckAccess(ctx, AdminCapabilityDeletionVerification, userID); err != nil {
+		return err
+	}
+	u, err := a.store.GetUser(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if !u.DeletionRequested {
+		return ErrAdminAccessDenied
+	}
 	return a.mod.DeleteUser(ctx, userID)
 }
 
 // ArchiveLoan hides a loan; its ledger is kept so the balance stays checkable.
 func (a *Admin) ArchiveLoan(ctx context.Context, loanID string) error {
+	if err := a.CheckAccess(ctx, AdminCapabilityUserConfirmation, loanID); err != nil {
+		return err
+	}
 	return a.mod.ArchiveLoanAdmin(ctx, loanID)
 }
 
 // RestoreLoan un-archives a loan.
 func (a *Admin) RestoreLoan(ctx context.Context, loanID string) error {
+	if err := a.CheckAccess(ctx, AdminCapabilityUserConfirmation, loanID); err != nil {
+		return err
+	}
 	return a.mod.RestoreLoan(ctx, loanID)
 }
 
 // RenameLoan changes a loan's title and note.
 func (a *Admin) RenameLoan(ctx context.Context, loanID, name, description string) error {
+	if err := a.CheckAccess(ctx, AdminCapabilityUserConfirmation, loanID); err != nil {
+		return err
+	}
 	return a.mod.RenameLoanAdmin(ctx, loanID, name, description)
 }
 
 // Queue returns the command inbox in detail, optionally filtered by status.
 func (a *Admin) Queue(ctx context.Context, status string) ([]CommandDetail, error) {
+	if err := a.CheckAccess(ctx, AdminCapabilityNotifications, "queue"); err != nil {
+		return nil, err
+	}
 	return a.mod.CommandsDetailed(ctx, status, 100)
 }
 
 // PurgeDead deletes every command that has exhausted its retries, returning
 // how many. An operator's decision, taken once the evidence has been read.
 func (a *Admin) PurgeDead(ctx context.Context) (int64, error) {
+	if err := a.CheckAccess(ctx, AdminCapabilityNotifications, "queue"); err != nil {
+		return 0, err
+	}
 	return a.mod.PurgeDeadCommands(ctx)
 }
 
 // Retry puts a command back in the queue with a fresh attempt budget.
 func (a *Admin) Retry(ctx context.Context, id string) error {
+	if err := a.CheckAccess(ctx, AdminCapabilitySafeReplay, id); err != nil {
+		return err
+	}
 	return a.mod.RetryCommand(ctx, id)
 }
 
 // CommandCounts returns the inbox split by status.
 func (a *Admin) CommandCounts(ctx context.Context) ([]StatusCount, error) {
+	if err := a.CheckAccess(ctx, AdminCapabilityHealth, "commands"); err != nil {
+		return nil, err
+	}
 	return call(ctx, "CommandCounts", a.store.CommandCounts)
 }
 
 // DeliveryCounts returns the outbox split by status.
 func (a *Admin) DeliveryCounts(ctx context.Context) ([]StatusCount, error) {
+	if err := a.CheckAccess(ctx, AdminCapabilityHealth, "deliveries"); err != nil {
+		return nil, err
+	}
 	return call(ctx, "DeliveryCounts", a.store.DeliveryCounts)
 }
 
 // Overview returns the dashboard counters.
 func (a *Admin) Overview(ctx context.Context) (Overview, error) {
+	if err := a.CheckAccess(ctx, AdminCapabilityHealth, "overview"); err != nil {
+		return Overview{}, err
+	}
 	return call(ctx, "Overview", a.store.Overview)
 }
 
 // Users lists the most recent accounts.
 func (a *Admin) Users(ctx context.Context) ([]UserRow, error) {
+	if err := a.CheckAccess(ctx, AdminCapabilitySupportRead, "users"); err != nil {
+		return nil, err
+	}
 	return call(ctx, "ListUsers", func(c context.Context) ([]UserRow, error) { return a.store.ListUsers(c, 200) })
 }
 
 // Loans lists loans with their derived reliability.
 func (a *Admin) Loans(ctx context.Context) ([]LoanRow, error) {
+	if err := a.CheckAccess(ctx, AdminCapabilityFinancialRead, "loans"); err != nil {
+		return nil, err
+	}
 	return call(ctx, "ListLoans", func(c context.Context) ([]LoanRow, error) { return a.store.ListLoans(c, 200) })
 }
 
 // Commands lists the most recent inbox entries.
 func (a *Admin) Commands(ctx context.Context) ([]CommandRow, error) {
+	if err := a.CheckAccess(ctx, AdminCapabilityNotifications, "commands"); err != nil {
+		return nil, err
+	}
 	return call(ctx, "ListCommands", func(c context.Context) ([]CommandRow, error) { return a.store.ListCommands(c, 200) })
 }
 
 // Deliveries lists the most recent outbound messages.
 func (a *Admin) Deliveries(ctx context.Context) ([]DeliveryRow, error) {
+	if err := a.CheckAccess(ctx, AdminCapabilityNotifications, "deliveries"); err != nil {
+		return nil, err
+	}
 	return call(ctx, "ListDeliveries", func(c context.Context) ([]DeliveryRow, error) { return a.store.ListDeliveries(c, 200) })
 }
 
 // Reconciliations lists recent drift measurements.
 func (a *Admin) Reconciliations(ctx context.Context) ([]ReconRow, error) {
+	if err := a.CheckAccess(ctx, AdminCapabilityReconciliation, "reconciliation"); err != nil {
+		return nil, err
+	}
 	return call(ctx, "ListReconciliations", func(c context.Context) ([]ReconRow, error) { return a.store.ListReconciliationRuns(c, 200) })
 }
 
 // Policies lists every recorded allocation policy.
 func (a *Admin) Policies(ctx context.Context) ([]PolicyRow, error) {
+	if err := a.CheckAccess(ctx, AdminCapabilityPolicyReview, "policies"); err != nil {
+		return nil, err
+	}
 	return call(ctx, "ListPolicies", a.store.ListPolicies)
 }
 
 // AddPolicy records a lender payment allocation policy.
 func (a *Admin) AddPolicy(ctx context.Context, id, key string, version int32, definition []byte, excess, source string) error {
-	return a.store.InsertPolicy(ctx, id, key, version, definition, excess, source)
+	return a.DraftPolicy(ctx, AdminPolicy{ID: id, Key: key, Version: version, Definition: definition, Excess: excess, Source: source}, 0)
 }
 
 // LoanView is everything the interface shows about one loan: the stored
@@ -205,6 +274,9 @@ type LoanView struct {
 
 // Loan returns one loan with its contracts, snapshots and ledger.
 func (a *Admin) Loan(ctx context.Context, id string, now time.Time) (LoanView, error) {
+	if err := a.CheckAccess(ctx, AdminCapabilityFinancialRead, id); err != nil {
+		return LoanView{}, err
+	}
 	var v LoanView
 	var err error
 	if v.Loan, err = a.store.GetLoan(ctx, id); err != nil {
@@ -232,6 +304,9 @@ type Health struct {
 
 // Health reports whether the database is reachable and at which schema.
 func (a *Admin) Health(ctx context.Context) Health {
+	if err := a.CheckAccess(ctx, AdminCapabilityHealth, "health"); err != nil {
+		return Health{DatabaseError: "access denied"}
+	}
 	h := Health{DatabaseOK: true}
 	if err := a.store.Ping(ctx); err != nil {
 		h.DatabaseOK, h.DatabaseError = false, err.Error()

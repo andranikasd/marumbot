@@ -1,8 +1,10 @@
 package app
 
 import (
+	"context"
 	"testing"
 
+	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
 )
 
@@ -23,5 +25,14 @@ func TestPercentRendersAsAPersonReadsIt(t *testing.T) {
 		if got := percent(c.rate); got != c.want {
 			t.Errorf("percent(%s) = %q, want %q", c.rate, got, c.want)
 		}
+	}
+}
+
+func TestPositionsNeverDropAnUnprojectableDebt(t *testing.T) {
+	w := Worker{}
+	loans := []UserLoan{{ID: "bad", Balance: money.FromMinor(100, money.MustLookup("AMD")), Contract: model.Contract{Currency: money.MustLookup("AMD")}}}
+	positions, _, _, _, err := w.positions(context.Background(), loans)
+	if err == nil || len(positions) != 0 {
+		t.Fatal("invalid debt silently omitted")
 	}
 }

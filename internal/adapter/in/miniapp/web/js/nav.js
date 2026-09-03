@@ -10,6 +10,8 @@
 import { haptic, mainButton, backButton } from "./core.js";
 import { applyI18n, T } from "./i18n.js";
 
+import { beginView } from "./api.js";
+
 const screens = new Map();
 let current = null;
 let params = null;
@@ -53,7 +55,8 @@ export function go(id, withParams) {
   }
   current = id;
   params = withParams || null;
-  const tabId = s.parent || id;
+  let tabId=id;
+  while(screens.get(tabId)?.parent) tabId=screens.get(tabId).parent;
   for (const b of document.querySelectorAll("nav.tabs button")) {
     const on = b.dataset.go === tabId;
     b.classList.toggle("on", on);
@@ -67,6 +70,7 @@ export function go(id, withParams) {
   else backButton.hide();
   mainButton.hide();
   window.scrollTo(0, 0);
+  beginView();
   s.onShow?.(s.el, params);
 }
 
@@ -95,4 +99,18 @@ export function buildTabs() {
     const s = screens.get(current);
     go(s?.parent || "loans");
   });
+}
+
+// Update labels without resetting unsaved child-screen forms.
+export function refreshLanguage(){
+ $('tabs').setAttribute('aria-label',T('nav.label'));
+ $('offline-text').textContent=T('offline');
+ $('offline-retry').textContent=T('offline.retry');
+ for(const s of screens.values())if(s.el)applyI18n(s.el);
+ for(const b of document.querySelectorAll('nav.tabs button')){
+  const s=screens.get(b.dataset.go);if(s)b.querySelector('span').textContent=T(s.labelKey);
+ }
+ const s=screens.get(current);if(!s)return;
+ setTitle(T(s.titleKey||s.labelKey));
+ if(!s.parent)s.onShow?.(s.el,params);
 }

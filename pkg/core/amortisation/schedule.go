@@ -97,7 +97,8 @@ func PaymentDates(c model.Contract) ([]date.Date, error) {
 // RemainingDates returns the instalment dates still ahead of from: strictly
 // after it, because a date equal to from is the instalment just paid, and a
 // row for it would accrue zero days and then swallow a whole instalment as
-// principal. A zero from means the drawdown, and every date remains.
+// principal. A zero from means the drawdown. Dates before NotBeforeDue are
+// excluded when it is set, including when from is zero.
 //
 // Every projection goes through this, so a loan anchored on a mid-life
 // balance — the normal case for a loan filed months after it was taken —
@@ -107,11 +108,12 @@ func RemainingDates(c model.Contract, from date.Date) ([]date.Date, error) {
 	if err != nil {
 		return nil, err
 	}
-	if from.IsZero() {
+	if from.IsZero() && c.NotBeforeDue.IsZero() {
 		return dates, nil
 	}
 	i := 0
-	for i < len(dates) && !dates[i].After(from) {
+	for i < len(dates) && ((!from.IsZero() && !dates[i].After(from)) ||
+		(!c.NotBeforeDue.IsZero() && dates[i].Before(c.NotBeforeDue))) {
 		i++
 	}
 	if i == len(dates) {

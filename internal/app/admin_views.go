@@ -36,6 +36,9 @@ type DashboardView struct {
 // reported inside the view rather than failing the page: an operator looking
 // for a stuck queue must not be locked out by a broken chart.
 func (a *Admin) Dashboard(ctx context.Context, now time.Time) (DashboardView, error) {
+	if err := a.CheckAccess(ctx, AdminCapabilityNotifications, "dashboard"); err != nil {
+		return DashboardView{}, err
+	}
 	v := DashboardView{Health: a.Health(ctx)}
 	var err error
 	if v.Overview, err = a.Overview(ctx); err != nil {
@@ -103,6 +106,9 @@ type UserView struct {
 
 // User returns one account with its loans, budgets and pending dialogue.
 func (a *Admin) User(ctx context.Context, id string, now time.Time) (UserView, error) {
+	if err := a.CheckAccess(ctx, AdminCapabilityFinancialRead, id); err != nil {
+		return UserView{}, err
+	}
 	var v UserView
 	var err error
 	if v.User, err = call(ctx, "GetUser", func(c context.Context) (UserRow, error) { return a.store.GetUser(c, id) }); err != nil {
@@ -559,6 +565,9 @@ type SearchResult struct {
 // prefix, over the most recent rows. Identifiers are UUIDs, so a few
 // characters are enough; names are matched case-insensitively.
 func (a *Admin) Search(ctx context.Context, q string) (SearchResult, error) {
+	if err := a.CheckAccess(ctx, AdminCapabilityFinancialRead, "search"); err != nil {
+		return SearchResult{}, err
+	}
 	q = strings.TrimSpace(q)
 	res := SearchResult{Query: q}
 	if q == "" {

@@ -1,0 +1,38 @@
+{
+  "note": "Provenance ratchet for the golden corpus. A fixture's hash, row counts and support state are recorded here; changing a fixture requires changing this file in the same reviewed commit, and neither the fixture count nor any exact_rows may decrease.",
+  "fixtures": {
+    "cba-8-01-example-1.json": {
+      "sha256": "56c9760e27208e8844a6973a725538be6df453014385d9b908d5168c8beeeb4c",
+      "total_rows": 0,
+      "exact_rows": 0,
+      "support": "regulatory_example",
+      "profile": "",
+      "source": "CBA Regulation 8/01, Example 1"
+    },
+    "inecobank-consumer-M26-029210-original.json": {
+      "sha256": "5722e7b666a5c518c00efceb47d645296d5b9d77edfd4db089c53197ae920426",
+      "total_rows": 60,
+      "exact_rows": 59,
+      "support": "provisional",
+      "profile": "M26/029210",
+      "source": "Inecobank consumer loan agreement — full repayment schedule",
+      "note": "59 of 60 exact; the final row absorbs the lender's drift. Provisional until the boundary matrix (mid-life anchor, leap year, month-end days, reissue) is covered."
+    },
+    "inecobank-consumer-M26-029210.json": {
+      "sha256": "437cca3da739a4b41bc36ee72f6ee1d37db52ea6b6e79c765107f05b1c428d41",
+      "total_rows": 55,
+      "exact_rows": 52,
+      "support": "experimental",
+      "profile": "M26/029210",
+      "source": "Inecobank consumer loan — payment schedule (վճարային օրացույց)"
+    },
+    "unibank-annuity-example.json": {
+      "sha256": "baee099f293d2f0fc39010d678087bcd2506cee3a70c1d25a69cb7dc5c3e1c41",
+      "total_rows": 12,
+      "exact_rows": 8,
+      "support": "experimental",
+      "profile": "unibank-annuity-example",
+      "source": "Unibank — annuity calculation method, worked schedule (anuitet.pdf)"
+    }
+  }
+}

@@ -3,12 +3,16 @@
 // payday, cash on hand, the untouched reserve, the stated months. Editing
 // is a sub-screen reached from the app bar.
 "use strict";
-import { haptic, fmtMoney, fmtMonth } from "../core.js";
-import { T, sub } from "../i18n.js";
+import "./budget-policy.js";
+import { haptic, fmtMoney, fmtMonth, fmtFull } from "../core.js";
+import { T, sub, addStrings } from "../i18n.js";
 import { getJSON } from "../api.js";
-import { register, go, setAction } from "../nav.js";
+import { register, go, setAction, currentScreen } from "../nav.js";
 
+addStrings({'budget.cashdate':'Գումարի ամսաթիվը','budget.cashdate.unknown':'Ամսաթիվը նշված չէ'},{'budget.cashdate':'Cash as of','budget.cashdate.unknown':'Date not supplied'});
+import { budgetHelpHTML } from "./budget-help.js";
 const HTML = `
+  ${budgetHelpHTML}
   <div id="budget-view" class="stack" hidden>
     <div class="hero">
       <div class="k"><span data-i18n="budget.monthly">Ամսական բյուջե</span><span class="pill" id="bo-state"></span></div>
@@ -20,6 +24,7 @@ const HTML = `
       </div>
     </div>
     <div class="card kv" id="bo-facts"></div>
+    <button class="cta ghost" type="button" data-go="budget-policy" data-i18n="bp.title"></button>
     <p class="lede" data-i18n="budget.note">Պլանը հավելյալը ծախսում է միայն պարտադիր վճարումները ծածկելուց հետո։</p>
     <button class="cta ghost" type="button" data-go="plan" data-i18n="budget.plan">Տեսնել պլանը</button>
   </div>
@@ -51,7 +56,7 @@ function render(b) {
   const set = b.monthly_major != null;
   $("budget-view").hidden = !set;
   $("budget-none").hidden = set;
-  setAction(set ? T("budget.edit") : null, () => go("budget-edit"));
+  if(currentScreen()==="budget")setAction(set ? T("budget.edit") : null, () => go("budget-edit"));
   if (!set) return;
   const cur = b.currency;
   const monthly = b.monthly_major;
@@ -68,7 +73,9 @@ function render(b) {
   const facts = $("bo-facts"); facts.textContent = "";
   facts.append(row(T("budget.payday"), b.pay_day > 0 ? sub("budget.payday.day", { d: b.pay_day }) : T("budget.unset"), b.pay_day > 0 ? "" : "mute"));
   const opening = b.opening_major || 0, reserve = b.reserve_major || 0;
-  facts.append(row(T("budget.opening"), opening > 0 ? fmtMoney(opening, cur) : T("budget.unset"), opening > 0 ? "num" : "mute"));
+  const declared = !!b.opening_as_of || opening > 0;
+  facts.append(row(T("budget.opening"), declared ? fmtMoney(opening, cur) : T("budget.unset"), declared ? "num" : "mute"));
+  if(declared) facts.append(row(T("budget.cashdate"), b.opening_as_of ? fmtFull(b.opening_as_of) : T("budget.cashdate.unknown"), "mute"));
   if (reserve > 0) facts.append(row(T("budget.reserve"), fmtMoney(reserve, cur), "num"));
   if (opening > 0) facts.append(row(T("budget.usable.label"), fmtMoney(Math.max(0, opening - reserve), cur), "num ok"));
   const months = Object.entries(b.overrides || {}).sort();
@@ -90,6 +97,7 @@ async function load() {
 
 register({
   id: "budget",
+  parent:"home",
   icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>',
   labelKey: "tab.budget",
   titleKey: "budget.title",

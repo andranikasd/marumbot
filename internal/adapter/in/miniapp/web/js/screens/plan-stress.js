@@ -1,0 +1,25 @@
+"use strict";
+import {register} from '../nav.js';
+import {getJSON} from '../api.js';
+import {addStrings,T} from '../i18n.js';
+import {esc,fmtFull} from '../core.js';
+const labels={
+ title:['Stress check','Դիմացկունության ստուգում'],notice:['Risk information for this plan. Base assumptions stay unchanged. Unknown cases have not been verified.','Այս պլանի ռիսկերի մասին։ Հիմնական ենթադրությունները չեն փոխվում։ Անհայտ դեպքերը ստուգված չեն։'],missing:['Open a plan first to check its original inputs.','Նախ բացեք պլանը՝ սկզբնական տվյալները ստուգելու համար։'],
+ healthy:['Healthy','Կայուն'],tight:['Tight','Սահմանային'],infeasible:['Infeasible','Անիրագործելի'],unknown:['Unknown','Անհայտ'],passed:['Passed','Անցած'],failed:['Failed','Չանցած'],not_applicable:['Not applicable','Կիրառելի չէ'],base:['Base plan','Հիմնական պլան'],
+ income_three_days_late:['Income three days late','Եկամուտը երեք օր ուշ'],missing_expected_cash:['Expected cash does not arrive','Սպասվող գումարը չի ստացվում'],required_payment_increase:['Required payment increases','Պարտադիր վճարումն աճում է'],next_business_day_credit:['Extra payment credited next business day','Հավելյալ վճարումը հաշվառվում է հաջորդ աշխատանքային օրը'],maximum_verified_fee:['Maximum verified fee','Ստուգված առավելագույն վճար'],
+ exact_selected_policy_replay:['Original selected plan replayed.','Վերահաշվարկվել է սկզբնական ընտրված պլանը։'],scheduled_receipts_shifted_three_calendar_days:['Scheduled receipts moved three calendar days later.','Պլանավորված մուտքերը տեղափոխվել են երեք օր ուշ։'],expected_cash_already_excluded_from_base:['Expected cash was already excluded from the base plan.','Սպասվող գումարն արդեն բացառված էր հիմնական պլանից։'],no_expected_cash:['No expected cash events.','Սպասվող մուտքեր չկան։'],income_date_unknown:['Income date is missing.','Եկամտի ամսաթիվը բացակայում է։'],required_increase_percentage_missing:['No increase percentage configured; adjustment terms also need verification.','Աճի տոկոս նշված չէ․ ճշգրտման պայմանները նույնպես պետք է ստուգել։'],required_adjustment_terms_unverified:['Required-payment adjustment terms are not verified.','Պարտադիր վճարման փոփոխման պայմանները ստուգված չեն։'],business_calendar_and_posting_rule_unverified:['Business calendar and bank posting rules are not verified.','Աշխատանքային օրացույցն ու բանկի հաշվառման կանոնները ստուգված չեն։'],no_extra_payments:['No extra payments.','Հավելյալ վճարումներ չկան։'],no_fee_rules:['No fee rules apply.','Վճարի կանոններ չեն կիրառվում։'],verified_maximum_fee_stress_rule_missing:['A verified maximum-fee rule is missing.','Առավելագույն վճարի ստուգված կանոնը բացակայում է։'],fixed_contract_fees_already_applied:['Fixed contract fees already apply in the base plan.','Պայմանագրի հաստատուն վճարներն արդեն ներառված են։'],no_remaining_obligations:['No remaining obligations.','Մնացած պարտավորություններ չկան։'],payoff_not_completed_within_horizon:['Payoff is not established within the calculation horizon.','Մարումը չի հաստատվել հաշվարկի ժամանակահատվածում։'],unsupported_simulation_domain:['Required calculation rules are not supported.','Հաշվարկի անհրաժեշտ կանոնները չեն աջակցվում։'],reason_unknown:['The required rule or input is not established.','Անհրաժեշտ կանոնը կամ տվյալը հաստատված չէ։']};
+addStrings(Object.fromEntries(Object.entries(labels).map(([k,v])=>['stress.'+k,v[1]])),Object.fromEntries(Object.entries(labels).map(([k,v])=>['stress.'+k,v[0]])));
+const $=id=>document.getElementById(id);
+let proposal=null,generation=0;
+function label(key){return T('stress.'+(labels[key]?key:'unknown'));}
+function caseHTML(c,base=false){return `<div class="card stack"><b>${esc(label(base?'base':c.id))}</b><span>${esc(label(c.status))}</span><small class="mute">${esc(label(labels[c.reason]?c.reason:'reason_unknown'))}</small>${c.failure?.on?`<small>${esc(fmtFull(c.failure.on))}</small>`:''}</div>`;}
+async function load(){
+ const view=++generation,original=proposal,root=$('stress-result');root.textContent='';$('stress-error').textContent='';$('stress-retry').disabled=true;
+ if(!original){$('stress-error').textContent=T('stress.missing');return;}
+ try{await getJSON('api/plan/stress?proposal='+encodeURIComponent(original),d=>{
+  if(view!==generation)return;
+  if(d.proposal!==original||!d.base||!Array.isArray(d.cases))throw new Error('stress source');
+  root.innerHTML=`<div class="hero"><b>${esc(label(d.health))}</b><div class="sub">${esc(fmtFull(d.as_of))}</div></div>${caseHTML(d.base,true)}<details><summary>${esc(T('plan.details'))}</summary><div class="stack">${d.cases.map(c=>caseHTML(c)).join('')}</div></details>`;
+ });}catch{if(view===generation)$('stress-error').textContent=T('err.load');}finally{if(view===generation)$('stress-retry').disabled=false;}
+}
+register({id:'plan-stress',parent:'plan',titleKey:'stress.title',html:`<div class="stack"><p class="hint" data-i18n="stress.notice"></p><div id="stress-result" class="stack"></div><p id="stress-error" role="status"></p><button id="stress-retry" class="alink" data-i18n="retry"></button></div>`,onMount(){$('stress-retry').onclick=load;},onShow(_el,params){proposal=params?.sheet?.proposal||null;return load();}});

@@ -13,18 +13,8 @@ function applyTheme() {
   document.documentElement.dataset.theme = scheme;
   document.documentElement.style.colorScheme = scheme;
   if (!tg) return;
-  const p = tg.themeParams || {};
-  const root = document.documentElement.style;
-  // Telegram supplies only the ground: background, ink, hint, surfaces.
-  // Accent, buttons and links stay brand green in every client theme —
-  // mapping them too painted half the screen Telegram blue under a green
-  // hero, two brands on one screen.
-  const map = {
-    bg_color: "--bg", text_color: "--fg", hint_color: "--hint",
-    secondary_bg_color: "--field", section_bg_color: "--card",
-  };
-  for (const [k, v] of Object.entries(map)) if (p[k]) root.setProperty(v, p[k]);
-  try { tg.setHeaderColor?.("bg_color"); tg.setBackgroundColor?.("bg_color"); } catch { /* older clients */ }
+  const background=scheme==="dark"?"#101113":"#f2f3f5";
+  try { tg.setHeaderColor?.(background); tg.setBackgroundColor?.(background); } catch { /* older clients */ }
 }
 applyTheme();
 tg?.onEvent?.("themeChanged", applyTheme);
@@ -36,27 +26,34 @@ export const haptic = {
   bad: () => tg?.HapticFeedback?.notificationOccurred?.("error"),
 };
 
-export const lang = (tg?.initDataUnsafe?.user?.language_code || "hy").slice(0, 2) === "en" ? "en" : "hy";
+export let lang = (tg?.initDataUnsafe?.user?.language_code || "hy").slice(0, 2) === "en" ? "en" : "hy";
 document.documentElement.lang = lang;
-const locale = lang === "en" ? "en-GB" : "hy-AM";
+let locale = lang === "en" ? "en-GB" : "hy-AM";
+
+export function setLanguage(value){
+ if(value!=="hy"&&value!=="en")return;
+ lang=value;locale=lang==="en"?"en-GB":"hy-AM";document.documentElement.lang=lang;
+}
 
 export const fmtMoney = (n, cur) => new Intl.NumberFormat(lang === "en" ? "en-US" : "hy-AM",
-  { style: "currency", currency: cur, maximumFractionDigits: 0 }).format(n);
+  { style: "currency", currency: cur }).format(n);
 const parseISO = (iso) => { const d = new Date(iso + "T00:00:00"); return Number.isNaN(d.getTime()) ? null : d; };
+// Some embedded browsers ship without Armenian Intl date data.
+const armenianMonths=["հունվար","փետրվար","մարտ","ապրիլ","մայիս","հունիս","հուլիս","օգոստոս","սեպտեմբեր","հոկտեմբեր","նոյեմբեր","դեկտեմբեր"];
 // fmtDate is day + short month, for dates inside the running year.
 export const fmtDate = (iso) => {
   const d = parseISO(iso);
-  return d ? new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d) : iso;
+  return d ? lang==="hy"?`${d.getDate()} ${armenianMonths[d.getMonth()]}`:new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d) : iso;
 };
 // fmtMonth is month + year: a payoff or milestone sits years out.
 export const fmtMonth = (iso) => {
   const d = parseISO(iso);
-  return d ? new Intl.DateTimeFormat(locale, { month: "short", year: "numeric" }).format(d) : iso;
+  return d ? lang==="hy"?`${armenianMonths[d.getMonth()]} ${d.getFullYear()}`:new Intl.DateTimeFormat(locale, { month: "short", year: "numeric" }).format(d) : iso;
 };
 // fmtFull keeps the year: a balance stated long ago, a contract date.
 export const fmtFull = (iso) => {
   const d = parseISO(iso);
-  return d ? new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(d) : iso;
+  return d ? lang==="hy"?`${d.getDate()} ${armenianMonths[d.getMonth()]} ${d.getFullYear()}`:new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(d) : iso;
 };
 // monthsBetween counts whole months from one ISO date to another, for a
 // derived term caption. Approximate on purpose: a caption, not a contract.

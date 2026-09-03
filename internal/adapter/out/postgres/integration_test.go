@@ -708,3 +708,87 @@ func TestTooManyLoans(t *testing.T) {
 		t.Fatalf("beyond the cap: want ErrTooManyLoans, got %v", err)
 	}
 }
+
+func TestVersionedBudgetRejectsStaleForm(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	user := newUser(t, s)
+	zero := int64(0)
+	cfg := app.BudgetConfiguration{UserID: user, Currency: "AMD", MonthlyMinor: 20000, PayDay: 1, OpeningAsOf: mustDate(t, "2026-09-02"), ExpectedVersion: &zero, Funding: &app.BudgetFunding{MonthlyMinor: 50000, SpentMinor: 1000, Events: []app.BudgetCashEvent{{On: "2026-10-01", Minor: 20000, Expected: true}}}}
+	if err := s.SetBudgetConfiguration(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.Budget(ctx, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Version != 1 || first.Funding == nil || first.Funding.Events[0].Minor != 20000 {
+		t.Fatalf("funding lost: %+v", first)
+	}
+	cfg.ExpectedVersion = &first.Version
+	cfg.MonthlyMinor = 30000
+	if err := s.SetBudgetConfiguration(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	cfg.MonthlyMinor = 40000
+	if err := s.SetBudgetConfiguration(ctx, cfg); !errors.Is(err, app.ErrConflict) {
+		t.Fatalf("stale edit accepted: %v", err)
+	}
+	latest, err := s.Budget(ctx, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest.Version != 2 || latest.Monthly.Minor() != 30000 {
+		t.Fatalf("stale edit changed budget: %+v", latest)
+	}
+}
+
+func TestIconsAndSnapshotHistory(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	user := newUser(t, s)
+	d := draft(user, t)
+	id, err := s.CreateLoan(ctx, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := s.LoanForUser(ctx, id, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Icon != "bank" {
+		t.Fatal("default icon isn't bank")
+	}
+	icon := "car"
+	excluded := true
+	if err := s.ApplyLoanRevision(ctx, id, user, app.LoanRevision{Icon: &icon, OptionalExcluded: &excluded, EffectiveFrom: d.AsOf}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := s.LoanForUser(ctx, id, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Icon != "car" || !after.OptionalExcluded {
+		t.Fatal("loan choices not persisted")
+	}
+	for _, amount := range []int64{10000, 9000} {
+		if err := s.RecordBalance(ctx, id, user, amount, d.AsOf.String()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	facts, err := s.BorrowerActivity(ctx, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(facts) != 3 {
+		t.Fatalf("same-day history overwritten: %d", len(facts))
+	}
+	stranger := newUser(t, s)
+	facts, err = s.BorrowerActivity(ctx, stranger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(facts) != 0 {
+		t.Fatal("activity leaked across accounts")
+	}
+}

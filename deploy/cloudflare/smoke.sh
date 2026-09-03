@@ -42,9 +42,12 @@ get() {
 # status retries until it sees the expected code, for the same reason.
 status() {
   local url="$1" want="$2" method="${3:-GET}" attempt code
+  local -a body_args=()
+  # Fetch-based proxies reject GET/HEAD bodies. Only mutation probes send JSON.
+  case "$method" in GET|HEAD) ;; *) body_args=(-H 'Content-Type: application/json' -d '{}') ;; esac
   for attempt in 1 2 3 4 5; do
     code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X "$method" \
-      "$url" -H 'Content-Type: application/json' -d '{}' 2>/dev/null)
+      "$url" "${body_args[@]}" 2>/dev/null)
     [ "$code" = "$want" ] && { printf '%s' "$code"; return 0; }
     sleep 4
   done
@@ -77,6 +80,7 @@ echo "$ready" | grep -q '"database":true' || fail "database unreachable: $ready"
 echo "→ schema version"
 version=$(echo "$ready" | sed -n 's/.*"migration_version":\([0-9]*\).*/\1/p')
 [ -n "$version" ] && [ "$version" -gt 0 ] || fail "no schema version reported"
+[ "$version" -ge 22 ] || fail "schema is behind this application (requires at least 22)"
 echo "  schema at version $version"
 
 echo "→ status endpoint"
@@ -120,6 +124,11 @@ planmod=$(get "$base/app/js/screens/plan.js") || fail "the plan module did not a
 echo "$planmod" | grep -q 'plan-goals' || fail "the plan module does not carry its screen"
 loanmod=$(get "$base/app/js/screens/loan.js") || fail "the loan module did not answer"
 echo "$loanmod" | grep -q 'loan-view' || fail "the loan module does not carry its screen"
+for module in home activity payment reconcile more plan-chart budget-funding budget-policy plan-history plan-inverse plan-comparison plan-scenarios plan-evidence plan-stress budget-cash-routing user-preferences reminder; do
+  get "$base/app/js/screens/$module.js" > /dev/null || fail "missing $module module"
+done
+get "$base/app/js/icons.js" > /dev/null || fail "missing loan icons"
+
 styles=$(get "$base/app/a/$expected_version/styles.css") || fail "the stylesheet did not answer"
 echo "$styles" | grep -q -- '--brass:' || fail "the stylesheet lacks the shared design tokens"
 
@@ -129,6 +138,11 @@ code=$(status "$base/app/api/loans" 401 POST)
 
 code=$(status "$base/app/api/budget" 401 POST)
 [ "$code" = "401" ] || fail "an unsigned budget POST answered $code, want 401"
+
+for route in plans plan/comparisons plan/timeline plan/stress payment-actuals plan-actuals scenarios settings/reminders; do
+  code=$(status "$base/app/api/$route" 401 GET)
+  [ "$code" = "401" ] || fail "an unsigned $route GET answered $code, want 401"
+done
 
 # What Telegram shows in the chat is not what the container serves; it is what
 # the container last told Telegram. The global menu button carries the version
@@ -143,19 +157,27 @@ code=$(status "$base/app/api/budget" 401 POST)
 # the bot's own credentials, and a self-hosted smoke may not have them.
 if [ -n "${MARUM_BOT_TOKEN:-}" ]; then
   echo "→ telegram menu button"
-  want="v=$(printf '%s' "$expected_version" | sed 's/[^A-Za-z0-9._-]/./g')"
+  want="v=$expected_version"
   button=""
-  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  # A retry can replace a container carrying the same version stamp. Its
+  # health response is not proof that the replacement has started, so give
+  # menu publication the full cold-start window independently of liveness.
+  menu_started=$(date +%s)
+  while [ "$(( $(date +%s) - menu_started ))" -lt "$deadline_s" ]; do
     button=$(curl -s --max-time 20 \
       "https://api.telegram.org/bot${MARUM_BOT_TOKEN}/getChatMenuButton" 2>/dev/null || true)
-    if printf '%s' "$button" | grep -Eq "\"url\":\"[^\"]*[?&]${want}"; then
+    if jq -e --arg want "$want" '
+      .ok == true and .result.type == "web_app" and
+      (((.result.web_app.url // "" | split("?")[1] // "" |
+        split("#")[0] | split("&")) | index($want)) != null)
+    ' <<< "$button" >/dev/null 2>&1; then
       echo "  menu button opens the app at $expected_version"
       break
     fi
     button=""
     sleep 5
   done
-  [ -n "$button" ] || fail "the chat menu button does not point at $expected_version; the container is running without its Mini App URL, or publishing the menus failed"
+  [ -n "$button" ] || fail "the chat menu button does not point at $expected_version after ${deadline_s}s; the container is running without its Mini App URL, or publishing the menus failed"
 fi
 
 echo "→ cold start"

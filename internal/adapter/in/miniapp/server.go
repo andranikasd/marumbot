@@ -5,19 +5,16 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
-	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/andranikasd/marumbot/internal/app"
 	"github.com/andranikasd/marumbot/internal/design"
 	"github.com/andranikasd/marumbot/internal/obs"
-	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
@@ -47,11 +44,13 @@ type Server struct {
 	// balance re-anchored. Optional: without it PATCH stays a rename.
 	Reviser LoanReviser
 	// BudgetConfig records the complete form atomically.
-	BudgetConfig app.BudgetConfigurator
-	Users        app.UserStore
-	Cipher       TagCipher
-	Clock        app.Clock
-	Log          *slog.Logger
+	Payments      *app.PaymentService
+	PaymentReader app.PaymentReader
+	BudgetConfig  app.BudgetConfigurator
+	Users         app.UserStore
+	Cipher        TagCipher
+	Clock         app.Clock
+	Log           *slog.Logger
 }
 
 // LoanReviser applies a full loan edit; the Worker implements it. Declared
@@ -68,7 +67,12 @@ type TagCipher interface {
 }
 
 // maxRequest caps the request body. A loan is a few hundred bytes.
-const maxRequest = 1 << 15
+const (
+	maxRequest       = 1 << 15
+	keyCurrency      = "currency"
+	keyBlocked       = "blocked"
+	errorUnavailable = "unavailable"
+)
 
 // Handler returns the Mini App routes.
 func (s *Server) Handler() http.Handler {
@@ -77,11 +81,34 @@ func (s *Server) Handler() http.Handler {
 		panic(err) // an embed that does not contain its own directory is a build fault
 	}
 	mux := http.NewServeMux()
+	s.RegisterScenarioRoutes(mux)
 	mux.Handle("POST /api/loans", s.createLoan())
 	mux.Handle("POST /api/budget", s.setBudget())
 	mux.Handle("GET /api/plan", s.planSheet())
+	mux.Handle("GET /api/plans", s.planHistory())
+	mux.Handle("GET /api/plan/budget-by-date", s.inverseBudget())
+	mux.Handle("GET /api/plan/timeline", s.planTimeline())
+	mux.Handle("GET /api/plan/comparisons", s.planComparisons())
+	mux.Handle("GET /api/plan/stress", s.planStress())
+	mux.Handle("GET /api/budget/policies", s.BudgetPolicies())
+	mux.Handle("POST /api/budget/policies", s.SetBudgetPolicy())
+	mux.Handle("POST /api/budget/funding", s.SetBudgetFunding())
+	mux.Handle("GET /api/plans/{id}", s.historicalPlan())
+	mux.Handle("POST /api/plans/activate", s.activateProposal())
 	mux.Handle("POST /api/plan/approve", s.approvePlan())
 	mux.Handle("GET /api/budget", s.getBudget())
+	mux.Handle("GET /api/activity", s.allocatedActivity())
+	mux.Handle("GET /api/payment-actuals", s.paymentActuals())
+	mux.Handle("GET /api/plan-actuals", s.planActuals())
+	mux.Handle("GET /api/settings", s.settings())
+	mux.Handle("POST /api/settings", s.settings())
+	mux.Handle("GET /api/settings/reminders", s.UserPreferences())
+	mux.Handle("POST /api/settings/reminders", s.UserPreferences())
+	mux.Handle("GET /api/reminders/{id}", s.ReminderPreferences())
+	mux.Handle("POST /api/reminders/{id}/snooze", s.ReminderPreferences())
+	mux.Handle("GET /api/loans/{id}/payments", s.paymentContext())
+	mux.Handle("POST /api/loans/{id}/payments", s.recordPayment())
+	mux.Handle("POST /api/loans/{id}/reconcile", s.reconcilePayment())
 	mux.Handle("GET /api/loans", s.listLoans())
 	mux.Handle("PATCH /api/loans/{id}", s.updateLoan())
 	mux.Handle("DELETE /api/loans/{id}", s.deleteLoan())
@@ -139,17 +166,8 @@ func (s *Server) createLoan() http.Handler {
 		}
 
 		var in LoanRequest
-		if err := json.NewDecoder(io.LimitReader(r.Body, maxRequest)).Decode(&in); err != nil {
+		if err := decodeRequest(w, r, &in); err != nil {
 			http.Error(w, `{"error":"malformed"}`, http.StatusBadRequest)
-			return
-		}
-
-		// Validated here, not only in the browser. The browser is the attacker's
-		// machine; its checks tell the user quickly and prove nothing.
-		draft, err := in.Validate(date.From(s.Clock.Now(), time.UTC))
-		if err != nil {
-			s.Log.InfoContext(ctx, "miniapp loan rejected", "error", err)
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
 			return
 		}
 
@@ -163,11 +181,33 @@ func (s *Server) createLoan() http.Handler {
 			http.Error(w, `{"error":"unknown account"}`, http.StatusForbidden)
 			return
 		}
+		today, err := (app.PaymentService{Clock: s.Clock, Users: s.Users}).BusinessDate(ctx, userID)
+		if err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{jsonError: errorUnavailable})
+			return
+		}
+		// Validated here, not only in the browser. The browser is the attacker's
+		// machine; its checks tell the user quickly and prove nothing.
+		draft, err := in.Validate(today)
+		if err != nil {
+			s.Log.InfoContext(ctx, "miniapp loan rejected", "error", err)
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
+			return
+		}
+
 		draft.UserID = userID
 
-		id, err := s.Loans.CreateLoan(ctx, draft)
+		commands, key, _, ok := s.loanCommandRequest(w, r, false)
+		if !ok {
+			return
+		}
+		receipt, err := commands.Create(ctx, key, draft)
+		id := receipt.ID
 		if err != nil {
 			span.RecordError(err)
+			if loanCommandError(w, err) {
+				return
+			}
 			if errors.Is(err, app.ErrTooManyLoans) {
 				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "too_many_loans"})
 				return
@@ -183,7 +223,7 @@ func (s *Server) createLoan() http.Handler {
 				s.Log.WarnContext(ctx, "setting up reminders failed", "error", err)
 			}
 		}
-		writeJSON(w, http.StatusCreated, map[string]string{"id": id})
+		writeJSON(w, http.StatusCreated, receipt)
 	})
 }
 
@@ -196,12 +236,48 @@ func (s *Server) getBudget() http.Handler {
 		if !ok {
 			return
 		}
-		out := map[string]any{}
+		today, err := (app.PaymentService{Clock: s.Clock, Users: s.Users}).BusinessDate(ctx, userID)
+		if err != nil {
+			http.Error(w, errorUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		out := map[string]any{"today": today.String()}
 		if b, err := s.Budgets.Budget(ctx, userID); err == nil && b.Set {
-			out["currency"] = b.Currency
-			out["monthly_major"] = major(b.Monthly)
+			out[keyCurrency] = b.Currency
+			permission, err := b.PermissionOn(today)
+			if err != nil {
+				http.Error(w, "invalid budget policy", http.StatusUnprocessableEntity)
+				return
+			}
+			out["monthly_major"] = major(permission)
+			out["base_monthly_major"] = major(b.Monthly)
 			out["pay_day"] = b.PayDay
-			if b.Opening.Sign() > 0 {
+			out["version"] = b.Version
+			if b.Funding != nil {
+				funding := *b.Funding
+				cash, _, err := b.CashPlans(today)
+				if err != nil {
+					http.Error(w, "invalid budget policy", http.StatusUnprocessableEntity)
+					return
+				}
+				funding.SpentMinor = cash.Spending.Spent.Minor()
+				b.Opening = cash.OpeningCash
+				funding.CashThrough = ""
+				if !cash.CashThrough.IsZero() {
+					funding.CashThrough = cash.CashThrough.String()
+				}
+				funding.Events = nil
+				for _, event := range b.Funding.Events {
+					on, err := date.Parse(event.On)
+					if err == nil && (!on.Before(today) || event.Routing != nil || event.FromOpening) {
+						funding.Events = append(funding.Events, event)
+					}
+				}
+				b.Funding = &funding
+			}
+			out["funding"] = b.Funding
+			out["currency_exponent"] = b.Monthly.Currency().Exponent
+			if !b.OpeningAsOf.IsZero() {
 				out["opening_major"] = major(b.Opening)
 				out["opening_as_of"] = b.OpeningAsOf.String()
 			}
@@ -219,10 +295,10 @@ func (s *Server) getBudget() http.Handler {
 		}
 		if s.Required != nil {
 			if req, cur, err := s.Required.RequiredThisMonth(ctx, userID); err == nil && req.Sign() > 0 {
-				if out["currency"] == nil {
-					out["currency"] = cur.Code
+				if out[keyCurrency] == nil {
+					out[keyCurrency] = cur.Code
 				}
-				if out["currency"] == cur.Code {
+				if out[keyCurrency] == cur.Code {
 					out["required_major"] = major(req)
 				}
 			}
@@ -281,7 +357,7 @@ func (s *Server) setBudget() http.Handler {
 		}
 
 		var in BudgetRequest
-		if err := json.NewDecoder(io.LimitReader(r.Body, maxRequest)).Decode(&in); err != nil {
+		if err := decodeRequest(w, r, &in); err != nil {
 			http.Error(w, `{"error":"malformed"}`, http.StatusBadRequest)
 			return
 		}
@@ -314,7 +390,7 @@ func (s *Server) setBudget() http.Handler {
 				return
 			}
 		}
-		if reserve > 0 && (opening == nil || reserve > *opening) {
+		if in.Funding == nil && reserve > 0 && (opening == nil || reserve > *opening) {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{
 				jsonError: "protected reserve exceeds opening cash",
 			})
@@ -330,21 +406,52 @@ func (s *Server) setBudget() http.Handler {
 			http.Error(w, `{"error":"unavailable"}`, http.StatusServiceUnavailable)
 			return
 		}
+		today, err := (app.PaymentService{Clock: s.Clock, Users: s.Users}).BusinessDate(ctx, userID)
+		if err != nil {
+			http.Error(w, errorUnavailable, http.StatusServiceUnavailable)
+			return
+		}
+		if in.Key != "" && in.AsOf == "" {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "statement date required"})
+			return
+		}
+		statementDay := today
+		if in.AsOf != "" {
+			statementDay, err = date.Parse(in.AsOf)
+			if err != nil {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "invalid statement date"})
+				return
+			}
+		}
+		if err := in.ValidateFunding(statementDay); err != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
+			return
+		}
 		configuration := app.BudgetConfiguration{
+			Key:     in.Key,
+			Funding: in.Funding, ExpectedVersion: in.ExpectedVersion,
 			UserID: userID, Currency: cur, MonthlyMinor: minor, PayDay: payDay,
-			OpeningAsOf: date.From(s.Clock.Now(), time.UTC), Overrides: overrides,
+			OpeningAsOf: statementDay, Overrides: overrides,
 			ReserveMinor: reserve,
 		}
 		if opening != nil {
 			configuration.OpeningMinor = *opening
 		}
 		if err := s.BudgetConfig.SetBudgetConfiguration(ctx, configuration); err != nil {
+			if errors.Is(err, app.ErrPaymentInvalid) {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "invalid budget command"})
+				return
+			}
+			if errors.Is(err, app.ErrConflict) {
+				writeJSON(w, http.StatusConflict, map[string]string{jsonError: "budget changed; reload before saving"})
+				return
+			}
 			span.RecordError(err)
 			s.Log.ErrorContext(ctx, "recording the budget failed", "error", err)
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"monthly_minor": minor, "currency": cur, "pay_day": payDay})
+		writeJSON(w, http.StatusOK, map[string]any{"monthly_minor": minor, keyCurrency: cur, "pay_day": payDay})
 	})
 }
 
@@ -389,9 +496,9 @@ func (s *Server) listLoans() http.Handler {
 		out := make([]map[string]any, 0, len(loans))
 		for _, l := range loans {
 			row := map[string]any{
-				"id": l.ID, "name": l.Name, "description": l.Description,
+				"id": l.ID, "mutation_version": l.MutationVersion, "name": l.Name, "description": l.Description, "currency_exponent": l.Contract.Currency.Exponent, "icon": l.Icon, "optional_excluded": l.OptionalExcluded,
 				"balance": l.Balance.String(), "balance_major": major(l.Balance),
-				"currency":  l.Contract.Currency.Code,
+				keyCurrency: l.Contract.Currency.Code,
 				"maturity":  l.Contract.MaturityDate.String(),
 				"confirmed": l.Confirmed(),
 				// When the balance was stated, so the screen can say "your
@@ -411,7 +518,8 @@ func (s *Server) listLoans() http.Handler {
 			// The next instalment, projected the same way the bot projects it,
 			// so the summary card and the chat cannot disagree. Absent when the
 			// schedule cannot be built; the card then shows a dash, not a zero.
-			if s, err := amortisation.Build(l.Contract, l.Balance, l.AsOf); err == nil && len(s.Rows) > 0 {
+			row["needs_reconciliation"] = l.UnreconciledPayments
+			if s, err := l.Schedule(); err == nil && len(s.Rows) > 0 {
 				row["next_due"] = s.Rows[0].Due.String()
 				row["next_payment_major"] = major(s.Rows[0].Payment)
 			}
@@ -432,11 +540,15 @@ func (s *Server) updateLoan() http.Handler {
 			return
 		}
 		var in LoanEditRequest
-		if err := json.NewDecoder(io.LimitReader(r.Body, maxRequest)).Decode(&in); err != nil {
+		if err := decodeRequest(w, r, &in); err != nil {
 			http.Error(w, `{"error":"malformed"}`, http.StatusBadRequest)
 			return
 		}
 		loanID := r.PathValue("id")
+		commands, key, expected, ok := s.loanCommandRequest(w, r, true)
+		if !ok {
+			return
+		}
 
 		if !in.FullEdit() {
 			name := trimTo(in.Name, 60)
@@ -444,7 +556,10 @@ func (s *Server) updateLoan() http.Handler {
 				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "a name is required"})
 				return
 			}
-			err := s.Editor.UpdateLoan(ctx, loanID, userID, name, trimTo(in.Description, 200))
+			receipt, err := commands.Rename(ctx, userID, loanID, key, expected, name, trimTo(in.Description, 200))
+			if loanCommandError(w, err) {
+				return
+			}
 			if errors.Is(err, app.ErrNotFound) {
 				http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
 				return
@@ -454,7 +569,7 @@ func (s *Server) updateLoan() http.Handler {
 				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"id": loanID})
+			writeJSON(w, http.StatusOK, receipt)
 			return
 		}
 
@@ -462,9 +577,9 @@ func (s *Server) updateLoan() http.Handler {
 			http.Error(w, `{"error":"unavailable"}`, http.StatusServiceUnavailable)
 			return
 		}
-		// The currency the loan already has bounds the edit; read it through
-		// the same ownership-scoped path every other read uses.
-		ln, err := s.Editor.LoanForUser(ctx, loanID, userID)
+		// Decode using immutable, owned currency even after archive. The command
+		// then returns an existing receipt before checking active-loan state.
+		currency, err := commands.Currency(ctx, loanID, userID)
 		if errors.Is(err, app.ErrNotFound) {
 			http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
 			return
@@ -474,13 +589,30 @@ func (s *Server) updateLoan() http.Handler {
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}
-		edit, err := in.Validate(ln.Contract.Currency)
+		edit, err := in.Validate(currency)
 		if err != nil {
 			s.Log.InfoContext(ctx, "miniapp loan edit rejected", "error", err)
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
 			return
 		}
+		today, err := (app.PaymentService{Clock: s.Clock, Users: s.Users}).BusinessDate(ctx, userID)
+		if err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{jsonError: errorUnavailable})
+			return
+		}
+		if edit.BalanceAsOf.After(today) {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "balance date cannot be in the future"})
+			return
+		}
+		edit.Key, edit.ExpectedVersion = key, expected
 		if err := s.Reviser.ReviseLoan(ctx, loanID, userID, edit); err != nil {
+			if loanCommandError(w, err) {
+				return
+			}
+			if errors.Is(err, app.ErrSnapshotContractDate) {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: err.Error()})
+				return
+			}
 			if errors.Is(err, app.ErrNotFound) {
 				http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
 				return
@@ -502,7 +634,14 @@ func (s *Server) deleteLoan() http.Handler {
 		if !ok {
 			return
 		}
-		err := s.Editor.ArchiveLoan(ctx, r.PathValue("id"), userID)
+		commands, key, expected, ok := s.loanCommandRequest(w, r, true)
+		if !ok {
+			return
+		}
+		receipt, err := commands.Archive(ctx, userID, r.PathValue("id"), key, expected)
+		if loanCommandError(w, err) {
+			return
+		}
 		if errors.Is(err, app.ErrNotFound) {
 			http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
 			return
@@ -512,7 +651,7 @@ func (s *Server) deleteLoan() http.Handler {
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"id": r.PathValue("id")})
+		writeJSON(w, http.StatusOK, receipt)
 	})
 }
 
@@ -524,9 +663,11 @@ func writeJSON(w http.ResponseWriter, code int, body any) {
 
 // LoanRequest is what the form posts.
 type LoanRequest struct {
-	Title          string  `json:"title"`
-	Description    string  `json:"description"`
-	PrincipalMajor float64 `json:"principal_major"`
+	Icon             string  `json:"icon"`
+	OptionalExcluded bool    `json:"optional_excluded"`
+	Title            string  `json:"title"`
+	Description      string  `json:"description"`
+	PrincipalMajor   float64 `json:"principal_major"`
 	// BalanceMajor is what is owed TODAY, for a loan that has been running.
 	// Zero means "same as principal": a loan filed on its drawdown date.
 	BalanceMajor float64 `json:"balance_major"`
@@ -579,6 +720,18 @@ func (s *Server) planSheet() http.Handler {
 			goal = &g
 		}
 		sheet, err := s.Planner.PlanSheet(ctx, userID, goal)
+		if errors.Is(err, app.ErrCashRoutingStale) {
+			writeJSON(w, http.StatusOK, map[string]string{keyBlocked: "cash_routing_stale"})
+			return
+		}
+		if errors.Is(err, app.ErrFundingRequired) {
+			writeJSON(w, http.StatusOK, map[string]string{keyBlocked: "funding_required"})
+			return
+		}
+		if errors.Is(err, app.ErrPaymentReconciliation) {
+			writeJSON(w, http.StatusOK, map[string]string{keyBlocked: "payment_reconciliation"})
+			return
+		}
 		if err != nil {
 			if errors.Is(err, app.ErrNotFound) {
 				writeJSON(w, http.StatusOK, map[string]any{"empty": true})
@@ -589,8 +742,8 @@ func (s *Server) planSheet() http.Handler {
 				// A budget that cannot meet a date is not a failure page; it
 				// is a fact with a fix, and the screen offers the fix.
 				writeJSON(w, http.StatusOK, map[string]any{
-					"blocked": "budget_low", "on": inf.On.String(),
-					"currency":       inf.Required.Currency().Code,
+					keyBlocked: "budget_low", "on": inf.On.String(),
+					keyCurrency:      inf.Required.Currency().Code,
 					"required_major": major(inf.Required), "short_major": major(inf.Shortfall),
 				})
 				return
@@ -600,7 +753,7 @@ func (s *Server) planSheet() http.Handler {
 				// Same idea: an old balance is a fact with a fix -- confirm
 				// the figure -- not an error page.
 				writeJSON(w, http.StatusOK, map[string]any{
-					"blocked": "balance_stale", "as_of": st.AsOf.String(), "loan_id": st.LoanID,
+					keyBlocked: "balance_stale", "as_of": st.AsOf.String(), "loan_id": st.LoanID,
 				})
 				return
 			}
@@ -626,7 +779,7 @@ func (s *Server) approvePlan() http.Handler {
 		var in struct {
 			Goal string `json:"goal"`
 		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, maxRequest)).Decode(&in); err != nil {
+		if err := decodeRequest(w, r, &in); err != nil {
 			http.Error(w, `{"error":"malformed"}`, http.StatusBadRequest)
 			return
 		}
@@ -657,7 +810,7 @@ func (s *Server) shell(sub fs.FS) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, err := fs.ReadFile(sub, "index.html")
 		if err != nil {
-			http.Error(w, "unavailable", http.StatusInternalServerError)
+			http.Error(w, errorUnavailable, http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -705,7 +858,7 @@ func withTokens(sub fs.FS, next http.Handler) http.Handler {
 		}
 		b, err := fs.ReadFile(sub, "styles.css")
 		if err != nil {
-			http.Error(w, "unavailable", http.StatusInternalServerError)
+			http.Error(w, errorUnavailable, http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"net/url"
 	"strings"
 	"time"
 
@@ -13,22 +14,14 @@ import (
 	"github.com/andranikasd/marumbot/pkg/core/money"
 )
 
-// The paid flow.
-//
-// A reminder carries one button: "I paid". Tapping it asks for the balance
-// the bank now shows, and the answer becomes a snapshot the schedule
-// re-anchors on. This is the single biggest data-quality lever the bot has:
-// every confirmed balance replaces a projection with a statement, and the
-// default policy for an unstudied lender is exactly this -- ask the borrower
-// for the bank's figure rather than derive one.
-//
-// The question is skippable. A reminder is about paying, not bookkeeping, and
-// a borrower who taps "paid" and walks away has still paid.
+// The paid callback opens Quick Record when a Mini App is configured.
+// An acknowledgement alone never creates a payment. The legacy chat-only
+// fallback asks for a bank balance and records only that separate statement.
 
 // askPaidBalance is the button's landing: remember which loan the answer
 // settles, then ask for the bank's figure.
 func (w *Worker) askPaidBalance(ctx context.Context, userID string, chat int64, l i18n.Locale, loanID string) error {
-	if w.Balances == nil || w.Convos == nil || w.Editor == nil {
+	if w.Editor == nil {
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "error.generic"), w.mainMenu(l))
 	}
 	// Ownership first: a forged callback with someone else's loan id must
@@ -36,6 +29,13 @@ func (w *Worker) askPaidBalance(ctx context.Context, userID string, chat int64, 
 	ln, err := w.Editor.LoanForUser(ctx, loanID, userID)
 	if err != nil {
 		return w.refuse(ctx, chat, l, err)
+	}
+	if w.MiniApp != "" {
+		markup := map[string]any{keyInline: [][]map[string]any{{webAppButton(i18n.T(l, "payment.record"), w.miniURL("payment")+"&id="+url.QueryEscape(loanID))}}}
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "payment.prompt", html.EscapeString(ln.Name)), markup)
+	}
+	if w.Convos == nil || w.Balances == nil {
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "error.generic"), w.mainMenu(l))
 	}
 	if err := w.Convos.SetState(ctx, userID, StateAwaitingBalance+":"+loanID); err != nil {
 		return fmt.Errorf("recording the question: %w", err)
@@ -47,8 +47,7 @@ func (w *Worker) askPaidBalance(ctx context.Context, userID string, chat int64, 
 	return w.Send.SendMessage(ctx, chat, text, markup)
 }
 
-// skipPaidBalance is the other button: the borrower paid and does not want to
-// type a number. The reminder's job is done either way.
+// skipPaidBalance dismisses the balance question without creating a fact.
 func (w *Worker) skipPaidBalance(ctx context.Context, userID string, chat int64, l i18n.Locale) error {
 	if w.Convos != nil {
 		if err := w.Convos.ClearState(ctx, userID); err != nil {
@@ -112,7 +111,7 @@ func (w *Worker) takeBalance(ctx context.Context, userID string, chat int64, l i
 	rows := [][2]string{{i18n.T(l, "fig.balance"), balance.String()}}
 	// The next instalment from the new anchor, when it can be projected: the
 	// confirmation shows the consequence, not just the receipt.
-	if s, err := amortisation.Build(ln.Contract, balance, asOf); err == nil && len(s.Rows) > 0 {
+	if s, err := amortisation.Build(ln.Contract, balance, asOf); !ln.UnreconciledPayments && err == nil && len(s.Rows) > 0 {
 		rows = append(rows, [2]string{i18n.T(l, "fig.next"), shortDate(l, s.Rows[0].Due, asOf) + "  " + bare(s.Rows[0].Payment)})
 	}
 	msg += strings.TrimRight(figures(rows), "\n")

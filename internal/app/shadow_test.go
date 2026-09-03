@@ -86,7 +86,7 @@ func TestTickShadowStoresSilently(t *testing.T) {
 	amd := money.MustLookup("AMD")
 	f := &shadowFakes{
 		loans:  []UserLoan{shadowLoan(t)},
-		budget: Budget{Currency: "AMD", Monthly: money.FromMinor(25_000_000, amd), Set: true, PayDay: 1},
+		budget: Budget{Currency: "AMD", Monthly: money.FromMinor(25_000_000, amd), Set: true, PayDay: 1, Funding: &BudgetFunding{MonthlyMinor: 25_000_000}},
 		users:  []string{"user-1", "user-2"},
 	}
 	w := shadowWorker(t, f)

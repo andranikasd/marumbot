@@ -1,0 +1,6 @@
+"use strict";
+import {addStrings, T} from './i18n.js';
+const paths={bank:'M3 9h18L12 3 3 9zm2 3v6m5-6v6m4-6v6m5-6v6M3 21h18',car:'M5 10l2-5h10l2 5M4 10h16v8H4zM6 18v3m12-3v3M7 14h2m6 0h2',home:'M3 11l9-8 9 8M5 9v12h14V9M10 21v-7h4v7',phone:'M7 2h10v20H7zM10 18h4',document:'M6 2h8l4 4v16H6zM14 2v5h4M9 12h6m-6 4h6',wallet:'M3 6h18v15H3V6zm0 0V3h15v3M15 12h6v5h-6z'};
+addStrings({'icon.label':'Պատկերակ','icon.bank':'Բանկ','icon.car':'Մեքենա','icon.home':'Տուն','icon.phone':'Հեռախոս','icon.document':'Փաստաթուղթ','icon.wallet':'Դրամապանակ','loan.noextra':'Միայն պարտադիր վճարումներ'},{'icon.label':'Icon','icon.bank':'Bank','icon.car':'Car','icon.home':'Home','icon.phone':'Phone','icon.document':'Document','icon.wallet':'Wallet','loan.noextra':'Required payments only'});
+export function icon(name='bank'){return `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]||paths.bank}"/></svg>`;}
+export function iconPicker(id){return `<div class="field"><label for="${id}" data-i18n="icon.label">Icon</label><select id="${id}">${Object.keys(paths).map(k=>`<option value="${k}" data-i18n="icon.${k}">${T('icon.'+k)}</option>`).join('')}</select></div>`;}

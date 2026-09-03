@@ -58,7 +58,7 @@ func TestNormaliseCallback(t *testing.T) {
 	if !ok {
 		t.Fatal("expected the update to normalise")
 	}
-	if n.Kind != KindCallback || n.UserID != 7 {
+	if n.Kind != KindCallback || n.UserID != 7 || n.ChatID != 7 {
 		t.Errorf("got %+v", n)
 	}
 	var p payload
@@ -81,7 +81,10 @@ func TestPayloadCarriesNoIdentifiers(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &u); err != nil {
 		t.Fatal(err)
 	}
-	n, _ := Normalise(u)
+	n, ok := Normalise(u)
+	if !ok {
+		t.Fatal("expected the private message to normalise")
+	}
 	if s := string(n.Payload); contains(s, "8982118495") {
 		t.Errorf("payload %s contains the telegram id", s)
 	}
@@ -113,5 +116,93 @@ func TestBotsAreIgnored(t *testing.T) {
 func TestEmptyUpdateIsIgnored(t *testing.T) {
 	if _, ok := Normalise(Update{UpdateID: 1}); ok {
 		t.Error("an update with no message and no callback was accepted")
+	}
+}
+
+func TestNormalisePrivateChatProtection(t *testing.T) {
+	cases := []struct {
+		name  string
+		from  string
+		chat  string
+		extra string
+		want  bool
+	}{
+		{name: "private", want: true},
+		{name: "group", chat: `{"id":-42,"type":"group"}`},
+		{name: "supergroup", chat: `{"id":-42,"type":"supergroup"}`},
+		{name: "channel", chat: `{"id":-42,"type":"channel"}`},
+		{name: "group matching sender", chat: `{"id":42,"type":"group"}`},
+		{name: "missing type", chat: `{"id":42}`},
+		{name: "unknown type", chat: `{"id":42,"type":"unknown"}`},
+		{name: "different private owner", chat: `{"id":43,"type":"private"}`},
+		{name: "missing chat", chat: `null`},
+		{name: "missing sender", from: `null`},
+		{name: "bot", from: `{"id":42,"is_bot":true}`},
+		{name: "missing sender id", from: `{}`},
+		{name: "zero ids", from: `{"id":0}`, chat: `{"id":0,"type":"private"}`},
+		{name: "negative ids", from: `{"id":-42}`, chat: `{"id":-42,"type":"private"}`},
+		{name: "forwarded group", extra: `,"forward_origin":{"type":"chat","sender_chat":{"id":-42,"type":"supergroup"}}`},
+		{name: "forwarded channel", extra: `,"forward_origin":{"type":"channel","chat":{"id":-42,"type":"channel"}}`},
+		{name: "legacy forwarded group", extra: `,"forward_from_chat":{"id":-42,"type":"group"}`},
+		{name: "automatic forward", extra: `,"is_automatic_forward":true`},
+		{name: "unknown forward origin", extra: `,"forward_origin":{"type":"unknown"}`},
+		{name: "missing forward origin type", extra: `,"forward_origin":{}`},
+		{name: "forwarded user", extra: `,"forward_origin":{"type":"user"}`, want: true},
+		{name: "forwarded hidden user", extra: `,"forward_origin":{"type":"hidden_user"}`, want: true},
+	}
+	for _, tc := range cases {
+		for _, callback := range []bool{false, true} {
+			kind := KindHelp
+			if callback {
+				kind = KindCallback
+			}
+			t.Run(tc.name+"/"+kind, func(t *testing.T) {
+				from, chat := tc.from, tc.chat
+				if from == "" {
+					from = `{"id":42,"is_bot":false,"language_code":"hy"}`
+				}
+				if chat == "" {
+					chat = `{"id":42,"type":"private"}`
+				}
+				raw := `{"message":{"message_id":5,"from":` + from + `,"chat":` + chat + `,"text":"/help@marum_dev_bot"` + tc.extra + `}}`
+				wantPayload := `{"text":"/help@marum_dev_bot","message_id":5}`
+				if callback {
+					raw = `{"callback_query":{"id":"c1","from":` + from + `,"data":"lang:en","message":{"from":{"id":99,"is_bot":true},"chat":` + chat + tc.extra + `}}}`
+					wantPayload = `{"data":"lang:en"}`
+				}
+				var u Update
+				if err := json.Unmarshal([]byte(raw), &u); err != nil {
+					t.Fatal(err)
+				}
+				n, ok := Normalise(u)
+				if ok != tc.want {
+					t.Fatalf("accepted = %v, want %v", ok, tc.want)
+				}
+				if !ok {
+					if n.Kind != "" || n.UserID != 0 || n.ChatID != 0 || n.Language != "" || n.Payload != nil {
+						t.Fatalf("rejected update returned command: %+v", n)
+					}
+					return
+				}
+				if n.Kind != kind || n.UserID != 42 || n.ChatID != 42 || n.Language != "hy" || string(n.Payload) != wantPayload {
+					t.Fatalf("unexpected private command: %+v, payload %s", n, n.Payload)
+				}
+			})
+		}
+	}
+}
+
+func TestNormaliseCallbackWithoutMessage(t *testing.T) {
+	for _, raw := range []string{
+		`{"callback_query":{"from":{"id":42},"data":"lang:en","inline_message_id":"inline-1"}}`,
+		`{"callback_query":{"from":{"id":42},"data":"lang:en","message":null}}`,
+	} {
+		var u Update
+		if err := json.Unmarshal([]byte(raw), &u); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := Normalise(u); ok {
+			t.Fatal("callback without a message was accepted")
+		}
 	}
 }

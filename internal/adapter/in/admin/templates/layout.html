@@ -23,9 +23,18 @@
     <div class="group">Messaging</div>
     <a class="nav" {{if eq .Nav "commands"}}aria-current="page"{{end}} href="/commands"><span class="ic" aria-hidden="true">⌁</span>Inbox{{if .Badges.CommandsDead}}<span class="count hot" title="dead commands">{{.Badges.CommandsDead}}</span>{{else if .Badges.CommandsPending}}<span class="count" title="pending commands">{{.Badges.CommandsPending}}</span>{{end}}</a>
     <a class="nav" {{if eq .Nav "deliveries"}}aria-current="page"{{end}} href="/deliveries"><span class="ic" aria-hidden="true">↗</span>Outbox{{if .Badges.DeliveriesDead}}<span class="count hot" title="dead deliveries">{{.Badges.DeliveriesDead}}</span>{{else if .Badges.DeliveriesPending}}<span class="count" title="pending deliveries">{{.Badges.DeliveriesPending}}</span>{{end}}</a>
+    <div class="group">Administration</div>
+    {{if .Can.identities}}<a class="nav" href="/identities" {{if eq .Nav "identities"}}aria-current="page"{{end}}>Identities</a>{{end}}
+    {{if .Can.cases}}<a class="nav" href="/cases" {{if eq .Nav "cases"}}aria-current="page"{{end}}>Support cases</a>{{end}}
+    {{if .Can.flags}}<a class="nav" href="/flags" {{if eq .Nav "flags"}}aria-current="page"{{end}}>Profile flags</a>{{end}}
+    {{if .Can.audit}}<a class="nav" href="/audit" {{if eq .Nav "audit"}}aria-current="page"{{end}}>Audit and access</a>{{end}}
+    {{if .Can.history}}<a class="nav" href="/history" {{if eq .Nav "history"}}aria-current="page"{{end}}>Calculation history</a>{{end}}
+    {{if .Can.entitlements}}<a class="nav" href="/entitlements" {{if eq .Nav "entitlements"}}aria-current="page"{{end}}>Entitlements</a>{{end}}
+    {{if .Can.corpus}}<a class="nav" href="/corpus" {{if eq .Nav "corpus"}}aria-current="page"{{end}}>Golden corpus</a>{{end}}
   </nav>
   <div class="side-foot">
     <div class="build"><span class="status-dot" aria-hidden="true"></span>{{.Env}} <span class="mono">{{.Version}}</span></div>
+    <a href="/security">Identity and purpose</a>
     <form method="post" action="/logout"><button class="side-action"><span aria-hidden="true">↪</span> Sign out</button></form>
   </div>
 </aside>
@@ -42,7 +51,7 @@
       <button class="search-button" aria-label="Search">⌕</button>
     </form>
     {{block "actions" .}}{{end}}
-    <div class="operator"><span class="avatar">OP</span><span>Operator</span></div>
+    <div class="operator"><span class="avatar">OP</span><span>{{.Operator}}</span></div>
   </header>
   <main id="main" tabindex="-1">{{template "content" .}}</main>
 </div>

@@ -125,6 +125,10 @@ type Contract struct {
 	MaturityDate date.Date
 	PaymentDay   int // contractual day of month, 1..31, clamped per month
 
+	// NotBeforeDue is the bank-reported earliest outstanding instalment date.
+	// Zero retains the original schedule behaviour.
+	NotBeforeDue date.Date
+
 	// ScheduledPayment is the contractual instalment. The zero value means the
 	// borrower did not supply it and the engine must solve for it — which is a
 	// different statement from an instalment of zero.

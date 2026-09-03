@@ -194,14 +194,16 @@ func newTestServer(t *testing.T) (*httptest.Server, *http.Cookie) {
 		t.Fatal(err)
 	}
 	now := func() time.Time { return stamp }
-	svc := app.NewAdmin(fakeStore{}).WithModeration(fakeStore{}).WithEngine(fakeStore{})
+	svc := app.NewAdmin(fakeStore{}).WithModeration(fakeStore{}).WithEngine(fakeStore{}).WithSecurity(&pageSecurity{identity: pageIdentity(hash)}, now)
 	s, err := New(svc, Config{User: "op", PasswordHash: hash, Version: "test", Env: "test", Now: now}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
-	return ts, &http.Cookie{Name: cookieName, Value: issue(s.key, now())}
+	recorder := httptest.NewRecorder()
+	s.saveSession(recorder, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil), browserSession{IdentityID: "op", Username: "op", Version: 1, Strong: true, StepUpAt: now(), Expires: now().Add(sessionTTL)})
+	return ts, recorder.Result().Cookies()[0]
 }
 
 func TestEveryPageRenders(t *testing.T) {
@@ -233,6 +235,7 @@ func TestEveryPageRenders(t *testing.T) {
 	for _, p := range pages {
 		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+p.path, nil)
 		req.AddCookie(cookie)
+		req.Header.Set("X-Admin-Purpose", "verify page rendering for support case")
 		res, err := client.Do(req)
 		if err != nil {
 			t.Fatalf("%s: %v", p.path, err)
@@ -258,6 +261,7 @@ func TestLoanPageShowsProjectionAndPlan(t *testing.T) {
 	ts, cookie := newTestServer(t)
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/loans/"+fakeLoan, nil)
 	req.AddCookie(cookie)
+	req.Header.Set("X-Admin-Purpose", "verify page rendering for support case")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -277,6 +281,7 @@ func TestPlaygroundProjectsTypedTerms(t *testing.T) {
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.URL+"/engine", strings.NewReader(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(cookie)
+	req.Header.Set("X-Admin-Purpose", "verify page rendering for support case")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -290,6 +295,7 @@ func TestPlaygroundProjectsTypedTerms(t *testing.T) {
 	req, _ = http.NewRequestWithContext(context.Background(), http.MethodPost, ts.URL+"/engine", strings.NewReader(bad))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(cookie)
+	req.Header.Set("X-Admin-Purpose", "verify page rendering for support case")
 	res, _ = http.DefaultClient.Do(req)
 	body, _ = io.ReadAll(res.Body)
 	_ = res.Body.Close()
@@ -304,6 +310,7 @@ func postForm(t *testing.T, ts *httptest.Server, cookie *http.Cookie, path, form
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.URL+path, strings.NewReader(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(cookie)
+	req.Header.Set("X-Admin-Purpose", "verify page rendering for support case")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -371,6 +378,7 @@ func TestStylesheetCarriesTheSharedTokens(t *testing.T) {
 	ts, cookie := newTestServer(t)
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/style.css", nil)
 	req.AddCookie(cookie)
+	req.Header.Set("X-Admin-Purpose", "verify page rendering for support case")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)

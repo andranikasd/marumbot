@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -123,7 +124,7 @@ func (w *Worker) ScheduleForUser(ctx context.Context, userID string) error {
 		if l.Balance.Sign() <= 0 {
 			continue
 		}
-		s, err := amortisation.Build(l.Contract, l.Balance, l.AsOf)
+		s, err := l.Schedule()
 		if err != nil || len(s.Rows) == 0 {
 			w.Log.WarnContext(ctx, "cannot project a loan for reminders", "error", err)
 			continue
@@ -141,7 +142,15 @@ func (w *Worker) ScheduleForUser(ctx context.Context, userID string) error {
 			}
 		}
 	}
-	return nil
+	return w.scheduleOptionalReminders(ctx, userID)
+}
+
+// ReminderDeliveryStore applies the injected clock and quiet-window filtering
+// before the limit, so quiet accounts cannot starve everyone behind them.
+type ReminderDeliveryStore interface {
+	ReadyReminders(context.Context, time.Time, int32) ([]DueReminder, error)
+	MarkReminderDelivered(context.Context, string, time.Time) error
+	ReminderOccurrence(context.Context, string, string) (ReminderOccurrence, error)
 }
 
 // SendDueReminders delivers what is owed and marks each one satisfied.
@@ -151,9 +160,30 @@ func (w *Worker) ScheduleForUser(ctx context.Context, userID string) error {
 // The wording therefore has to read correctly if it arrives twice, which is why
 // a reminder states the due date rather than saying "tomorrow".
 func (w *Worker) SendDueReminders(ctx context.Context, limit int32) (int, error) {
-	due, err := w.Reminders.DueReminders(ctx, limit)
+	now := w.Clock.Now()
+	var due []DueReminder
+	var err error
+	delivery, modern := w.Reminders.(ReminderDeliveryStore)
+	if modern {
+		due, err = delivery.ReadyReminders(ctx, now, limit)
+	} else {
+		due, err = w.Reminders.DueReminders(ctx, limit)
+	}
 	if err != nil {
 		return 0, fmt.Errorf("reading due reminders: %w", err)
+	}
+	optional := map[string]OptionalReminder{}
+	optionalStore, supportsOptional := w.Reminders.(OptionalReminderStore)
+	if supportsOptional && modern && int32(len(due)) < limit {
+		extra, readErr := optionalStore.DueOptionalReminders(ctx, now, limit-int32(len(due)))
+		if readErr != nil {
+			w.Log.WarnContext(ctx, "reading optional reminders failed", "error", readErr)
+		} else {
+			for _, item := range extra {
+				optional[item.ID] = item
+				due = append(due, item.DueReminder)
+			}
+		}
 	}
 	// One locale, one chat and one schedule build per user, not per reminder:
 	// fifty due reminders used to mean hundreds of queries and repeated
@@ -166,29 +196,81 @@ func (w *Worker) SendDueReminders(ctx context.Context, limit int32) (int, error)
 			book = w.reminderBook(ctx, d.UserID)
 			books[d.UserID] = book
 		}
-		if book == nil {
+		if book == nil || book.preferences.QuietAt(w.Clock.Now()) {
 			continue
 		}
 
-		text := reminderText(book, d, date.From(w.Clock.Now(), time.UTC))
+		// A snooze or cancellation may have happened while this batch was loading.
+		// Recheck just before delivery; the guarded mark also preserves a snooze
+		// arriving while Telegram is accepting the message.
+		if modern {
+			current, readErr := delivery.ReminderOccurrence(ctx, d.UserID, d.ID)
+			if readErr != nil || current.Status != "scheduled" || current.TargetSendAt.After(w.Clock.Now()) {
+				continue
+			}
+		}
+		loc, _ := time.LoadLocation(book.preferences.Timezone)
+		if loc == nil {
+			loc = time.UTC
+		}
+		text := reminderText(book, d, date.From(w.Clock.Now(), loc))
+		extra, isOptional := optional[d.ID]
+		if isOptional {
+			if book.chat <= 0 {
+				continue
+			}
+			action, fresh, checkErr := w.optionalReminderAction(ctx, extra)
+			if checkErr != nil {
+				w.Log.WarnContext(ctx, "checking optional reminder failed", "error", checkErr)
+				continue
+			}
+			if !fresh {
+				if cancelErr := optionalStore.CancelOptionalReminder(ctx, d.ID); cancelErr != nil {
+					w.Log.WarnContext(ctx, "canceling optional reminder failed", "error", cancelErr)
+				}
+				continue
+			}
+			text = optionalReminderText(book.locale, extra, action)
+			if text == "" {
+				continue
+			}
+		}
 
-		// The reminder carries its own button: "I paid". Closing the loop at
-		// the moment of payment is what turns projections into statements.
+		// The deployed Mini App resolves this exact occurrence. Older bot-only
+		// installations retain their payment callback.
 		markup := w.mainMenu(book.locale)
-		if w.Balances != nil {
+		if w.Balances != nil && !isOptional {
 			markup = paidMarkup(book.locale, d.LoanID)
+		}
+		if w.MiniApp != "" {
+			label := "Required payment · review / snooze"
+			if book.locale != i18n.EN {
+				label = "Պարտադիր վճարում · դիտել / հետաձգել"
+			}
+			if isOptional {
+				label = "Optional extra payment · review / snooze"
+				if book.locale != i18n.EN {
+					label = "Լրացուցիչ վճարում · դիտել / հետաձգել"
+				}
+			}
+			markup = map[string]any{keyInline: [][]map[string]any{{webAppButton(label, w.miniURL("reminder")+"&id="+url.QueryEscape(d.ID))}}}
 		}
 		if err := w.Send.SendMessage(ctx, book.chat, text, markup); err != nil {
 			// Left scheduled, so the next tick tries again. A reminder that
 			// failed to send is not a reminder that is no longer owed.
-			w.Log.WarnContext(ctx, "reminder failed to send", "occurrence", d.ID, "error", err)
+			w.Log.WarnContext(ctx, "reminder failed to send", "error", err)
 			continue
 		}
-		if err := w.Reminders.MarkReminderSatisfied(ctx, d.ID); err != nil {
+		if modern {
+			err = delivery.MarkReminderDelivered(ctx, d.ID, now)
+		} else {
+			err = w.Reminders.MarkReminderSatisfied(ctx, d.ID)
+		}
+		if err != nil {
 			// Sent but not recorded. The next tick will send it again, which is
 			// exactly why the wording has to survive arriving twice.
 			w.Log.ErrorContext(ctx, "reminder sent but not recorded",
-				"occurrence", d.ID, "error", err)
+				"error", err)
 		}
 		sent++
 	}
@@ -198,9 +280,11 @@ func (w *Worker) SendDueReminders(ctx context.Context, limit int32) (int, error)
 // reminderBook is everything one user's reminders read: locale, chat, and each
 // live loan with its projected schedule, built once.
 type reminderBook struct {
-	locale i18n.Locale
-	chat   int64
-	loans  []scheduledLoan
+	preferences UserPreferences
+	locale      i18n.Locale
+	chat        int64
+	loans       []scheduledLoan
+	pending     map[string]bool
 }
 
 type scheduledLoan struct {
@@ -211,7 +295,7 @@ type scheduledLoan struct {
 // reminderBook loads one user's reminder context, or nil when the user cannot
 // receive reminders at all; the cause is logged here, once.
 func (w *Worker) reminderBook(ctx context.Context, userID string) *reminderBook {
-	locale, _, err := w.Users.Locale(ctx, userID)
+	locale, timezone, err := w.Users.Locale(ctx, userID)
 	if err != nil {
 		w.Log.WarnContext(ctx, "reminder: unknown user", "error", err)
 		return nil
@@ -221,7 +305,15 @@ func (w *Worker) reminderBook(ctx context.Context, userID string) *reminderBook 
 		w.Log.WarnContext(ctx, "reminder: no chat", "error", err)
 		return nil
 	}
-	book := &reminderBook{locale: i18n.Locale(locale), chat: chat}
+	prefs := UserPreferences{Timezone: timezone}
+	if reader, ok := w.Users.(UserPreferenceReader); ok {
+		prefs, err = reader.UserPreferences(ctx, userID)
+		if err != nil {
+			w.Log.WarnContext(ctx, "reminder: preferences unavailable", "error", err)
+			return nil
+		}
+	}
+	book := &reminderBook{preferences: prefs, locale: i18n.Locale(locale), chat: chat, pending: map[string]bool{}}
 	loans, err := w.Loans.LoansForUser(ctx, userID, plan.MaxLoans+1)
 	if err != nil {
 		// Reminders still go out, without figures: a late reminder with a
@@ -230,10 +322,14 @@ func (w *Worker) reminderBook(ctx context.Context, userID string) *reminderBook 
 		return book
 	}
 	for _, ln := range loans {
+		if ln.UnreconciledPayments {
+			book.pending[ln.ID] = true
+			continue
+		}
 		if ln.Balance.Sign() <= 0 {
 			continue
 		}
-		s, err := amortisation.Build(ln.Contract, ln.Balance, ln.AsOf)
+		s, err := ln.Schedule()
 		if err != nil || len(s.Rows) == 0 {
 			continue
 		}
@@ -271,7 +367,15 @@ func reminderText(book *reminderBook, d DueReminder, today date.Date) string {
 			rows = append(rows, [2]string{clip(s.loan.Name, 18), s.sched.Rows[0].Payment.String()})
 		}
 	}
-	return "<b>" + i18n.T(l, "reminder.title", when) + "</b>\n" + strings.TrimRight(figures(rows), "\n")
+	required := "Required payment"
+	if l != i18n.EN {
+		required = "Պարտադիր վճարում"
+	}
+	text := "<b>" + required + "</b>\n<b>" + i18n.T(l, "reminder.title", when) + "</b>\n" + strings.TrimRight(figures(rows), "\n")
+	if book.pending[d.LoanID] {
+		text += "\n" + i18n.T(l, "payment.reconcile")
+	}
+	return text
 }
 
 // instalmentOn finds the scheduled payment falling on the reminder's date.

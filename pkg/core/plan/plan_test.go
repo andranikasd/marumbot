@@ -238,27 +238,15 @@ func TestP3BudgetMonotone(t *testing.T) {
 	}
 }
 
-// P4: BudgetFor returns the minimum settlement-unit budget meeting the date.
-func TestP4BudgetForIsMinimal(t *testing.T) {
+// P4: the former three-loan inverse search has no monotonicity proof.
+// Successful bisection and a local boundary alone cannot prove global minimality.
+// The supported-domain minimum is checked independently in inverse_domain_test.go.
+func TestP4BudgetForRefusesUnprovenAllocation(t *testing.T) {
 	in := input(three(), 250_000, 1)
-	pol := avalanche(3, plan.OnReceipt)
-	by := date.MustNew(2027, 1, 15)
-	b, err := plan.BudgetFor(in, pol, by)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ok := func(m money.Amount) bool {
-		trial := in
-		trial.Cash.Monthly = m
-		r, err := plan.Run(trial, pol)
-		return err == nil && !r.PayoffDate.After(by)
-	}
-	if !ok(b) {
-		t.Fatalf("%s does not clear by %s", b, by)
-	}
-	unit := money.DefaultPolicy(amd).Unit
-	if ok(money.FromMinor(b.Minor()-unit, amd)) {
-		t.Fatalf("%s minus one unit also clears", b)
+	_, err := plan.BudgetFor(in, avalanche(3, plan.OnReceipt), date.MustNew(2027, 1, 15))
+	var refusal *plan.NonMonotoneError
+	if !errors.As(err, &refusal) {
+		t.Fatalf("unproven inverse result: %v", err)
 	}
 }
 
@@ -372,10 +360,10 @@ func TestCertificateStrengths(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := rep.Certificate
-	if c.Strength != plan.ProvenOptimal {
-		t.Fatalf("vanilla three-loan case is %s (%s), want proven", c.Strength, c.Truncation)
+	if c.Strength != plan.ExhaustiveStaticOrder {
+		t.Fatalf("rounded three-loan case is %s (%s), want exhaustive static", c.Strength, c.Truncation)
 	}
-	if c.Eligibility == "" || c.Policies == 0 || c.EngineVersion == "" || len(c.Fingerprints) != 3 {
+	if c.Policies == 0 || c.EngineVersion == "" || len(c.Fingerprints) != 3 {
 		t.Fatalf("certificate incomplete: %+v", c)
 	}
 	// Six free-choice loans: exhaustive orders cap exceeded → bounded.
@@ -390,14 +378,14 @@ func TestCertificateStrengths(t *testing.T) {
 	if rep.Certificate.Strength == plan.ProvenOptimal || rep.Certificate.Truncation == "" {
 		t.Fatalf("six loans claimed %s with no truncation note", rep.Certificate.Strength)
 	}
-	// Fees present → bounded heuristic with a lower bound and gap.
+	// Fees present → bounded heuristic; no admissible relaxation was solved.
 	fee := three()
 	fee[1].Contract.Prepayment.Charges = []model.PrepaymentCharge{{ThroughYear: 3, PercentBP: 60}}
 	rep, err = plan.Search(input(fee, 250_000, 1), plan.Goal{Kind: plan.LeastInterest})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Certificate.Strength != plan.BoundedHeuristic || rep.Certificate.LowerBound == nil || rep.Certificate.Gap == nil {
+	if rep.Certificate.Strength != plan.BoundedHeuristic || rep.Certificate.LowerBound != nil || rep.Certificate.Gap != nil {
 		t.Fatalf("fee case: %s lb=%v gap=%v", rep.Certificate.Strength, rep.Certificate.LowerBound, rep.Certificate.Gap)
 	}
 }

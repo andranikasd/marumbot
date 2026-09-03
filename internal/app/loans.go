@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/andranikasd/marumbot/pkg/core/allocation"
+	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
@@ -16,7 +17,9 @@ import (
 // projection, and storing one would create a second source of truth that can
 // disagree with replay.
 type LoanDraft struct {
-	UserID string
+	Icon             string
+	OptionalExcluded bool
+	UserID           string
 	// Title is what the borrower calls this loan. Marum does not ask which bank
 	// issued it: the arithmetic does not need a lender's name, and a name it
 	// does not need is a name it should not hold beside a balance.
@@ -48,10 +51,15 @@ type LoanWriter interface {
 // balance and a rate, which made every number the engine can produce
 // unreachable from the bot.
 type UserLoan struct {
-	ID          string
-	Name        string
-	Description string
-	Contract    model.Contract
+	MutationVersion int64
+
+	UnreconciledPayments bool
+	Icon                 string
+	OptionalExcluded     bool
+	ID                   string
+	Name                 string
+	Description          string
+	Contract             model.Contract
 	// Balance is the latest anchor: what was owed on AsOf, by whoever said so.
 	Balance money.Amount
 	// OriginalPrincipal is the earliest recorded balance: what the loan
@@ -80,8 +88,36 @@ type LoanReader interface {
 	LoansForUser(ctx context.Context, userID string, limit int32) ([]UserLoan, error)
 }
 
+// BudgetFunding is an explicitly declared source of funds. Amounts are minor
+// units; omission preserves the pre-v2 funded-budget interpretation.
+type BudgetFunding struct {
+	// SpentPeriodStart identifies an explicitly stated user-cycle spending total.
+	// Empty retains calendar-month semantics for existing reconciliation callers.
+	SpentPeriodStart string `json:"spent_period_start,omitempty"`
+
+	CashThrough  string            `json:"cash_through,omitempty"`
+	MonthlyMinor int64             `json:"monthly_minor"`
+	SpentMinor   int64             `json:"spent_minor"`
+	Events       []BudgetCashEvent `json:"events"`
+}
+
+// BudgetCashEvent records a dated source declaration, not a payment.
+type BudgetCashEvent struct {
+	ID          string             `json:"id,omitempty"`
+	Routing     *BudgetCashRouting `json:"routing,omitempty"`
+	FromOpening bool               `json:"from_opening,omitempty"`
+	On          string             `json:"on"`
+	Minor       int64              `json:"minor"`
+	Expected    bool               `json:"expected"`
+}
+
 // Budget is how much a borrower can put towards loans each month.
 type Budget struct {
+	Policies []BudgetPolicy
+	Releases []BudgetReleaseFact
+
+	Version  int64
+	Funding  *BudgetFunding
 	Currency string
 	Monthly  money.Amount
 	// PayDay is the day of the month the money arrives, 1..31, or 0 when the
@@ -104,6 +140,14 @@ type Budget struct {
 // valuation date. Opening cash counts only within the month it was stated
 // and never from the future: a January figure says nothing about March.
 func (b Budget) CashPlan(valuation date.Date) plan.CashPlan {
+	if len(b.Policies) > 0 {
+		cp, _, err := b.CashPlans(valuation)
+		if err != nil {
+			cp.Spending = &plan.SpendingPlan{Monthly: b.Monthly, RuleError: "invalid budget policy"}
+		}
+		return cp
+	}
+
 	cp := plan.CashPlan{Monthly: b.Monthly, PayDay: b.PayDay}
 	if b.Opening.Sign() > 0 && !b.OpeningAsOf.IsZero() &&
 		plan.MonthKey(b.OpeningAsOf) == plan.MonthKey(valuation) &&
@@ -124,6 +168,26 @@ func (b Budget) CashPlan(valuation date.Date) plan.CashPlan {
 			cp.MonthlyOverrides[k] = money.FromMinor(v, cur)
 		}
 	}
+	if b.Funding != nil {
+		cp.Spending = &plan.SpendingPlan{Monthly: b.Monthly, Overrides: cp.MonthlyOverrides}
+		cp.MonthlyOverrides = nil
+		cp.Monthly = money.FromMinor(b.Funding.MonthlyMinor, b.Monthly.Currency())
+		cp.ReserveFloor = b.Reserve
+		cp.OpeningCash = money.Zero(b.Monthly.Currency())
+		if !b.OpeningAsOf.IsZero() && plan.MonthKey(b.OpeningAsOf) == plan.MonthKey(valuation) && !b.OpeningAsOf.After(valuation) {
+			cp.OpeningCash = b.Opening
+			if through, err := date.Parse(b.Funding.CashThrough); err == nil {
+				cp.CashThrough = through
+			}
+			cp.Spending.Spent = money.FromMinor(b.Funding.SpentMinor, b.Monthly.Currency())
+		}
+		for _, e := range b.Funding.Events {
+			on, err := date.Parse(e.On)
+			if err == nil && (e.Routing != nil || (!on.Before(valuation) && (cp.CashThrough.IsZero() || on.After(cp.CashThrough)))) {
+				cp.Lumps = append(cp.Lumps, e.cashEvent(b.Monthly.Currency()))
+			}
+		}
+	}
 	return cp
 }
 
@@ -137,14 +201,17 @@ type BudgetStore interface {
 // BudgetConfiguration is the complete budget form after boundary validation.
 // Keeping it whole lets persistence commit one user action atomically.
 type BudgetConfiguration struct {
-	UserID       string
-	Currency     string
-	MonthlyMinor int64
-	PayDay       int
-	OpeningMinor int64
-	ReserveMinor int64
-	OpeningAsOf  date.Date
-	Overrides    map[string]int64
+	Key             string
+	Funding         *BudgetFunding
+	ExpectedVersion *int64
+	UserID          string
+	Currency        string
+	MonthlyMinor    int64
+	PayDay          int
+	OpeningMinor    int64
+	ReserveMinor    int64
+	OpeningAsOf     date.Date
+	Overrides       map[string]int64
 }
 
 // BudgetConfigurator records a complete budget form in one operation.
@@ -215,4 +282,27 @@ var ErrTooManyLoans = errors.New("app: too many active loans")
 // against a fact.
 type RequiredReader interface {
 	RequiredThisMonth(ctx context.Context, userID string) (money.Amount, money.Currency, error)
+}
+
+// ErrConflict means the form was based on an older aggregate version.
+var ErrConflict = errors.New("app: stale version")
+
+// LoanIcon validates an explicit choice. Names never determine an icon.
+func LoanIcon(value string) (string, error) {
+	switch value {
+	case "":
+		return "bank", nil
+	case "bank", "car", "home", "phone", "document", "wallet":
+		return value, nil
+	default:
+		return "", errors.New("app: unknown loan icon")
+	}
+}
+
+// Schedule refuses projections that would ignore an unreconciled payment fact.
+func (l UserLoan) Schedule() (amortisation.Schedule, error) {
+	if l.UnreconciledPayments {
+		return amortisation.Schedule{}, ErrPaymentReconciliation
+	}
+	return amortisation.Build(l.Contract, l.Balance, l.AsOf)
 }

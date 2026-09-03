@@ -34,16 +34,78 @@ type Position struct {
 	// bank_confirmed or imported_verified. The engine plans either way; the
 	// report says when the figures rest on what the borrower typed.
 	Trust string
+	// OptionalExcluded keeps the debt in exposure and required-payment guards,
+	// but never allocates discretionary payments to it.
+	OptionalExcluded bool
 }
 
 // CashEvent is money that becomes available on a date.
 type CashEvent struct {
-	On     date.Date
-	Amount money.Amount
+	// ID is required for routed events; FromOpening reclassifies confirmed
+	// retained money already included in OpeningCash, without a second receipt.
+	ID          string
+	Routing     *CashRouting
+	FromOpening bool
+	On          date.Date
+	Amount      money.Amount
+	// Expected cash is a scenario assumption, never base-plan funding.
+	Expected bool
+}
+
+// SpendingChange replaces spending permission on an exact business date.
+type SpendingChange struct {
+	On           date.Date
+	Limit        money.Amount
+	CarryRule    string
+	CarryMinimum money.Amount
+	CarryUntil   date.Date
+}
+
+// BudgetReleaseSource retains verified source facts for immutable scenario replay.
+// The amounts are stated instalments, never derived release totals.
+type BudgetReleaseSource struct {
+	PolicyVersion int64
+	SourceID      string
+	PriorSourceID string
+	On            date.Date
+	Before        *money.Amount
+	After         *money.Amount
+}
+
+// SpendingPlan is monthly permission independent of cash. A nil Spending on
+// CashPlan preserves the legacy funded-budget interpretation.
+type SpendingPlan struct {
+	// ReleaseSources identifies the verified statement pairs used to reduce limits.
+	// ConfirmedReleaseOnly preserves approved permission through projected closures.
+	ConfirmedReleaseOnly bool
+	ReleaseSources       []string
+	ReleaseFacts         []BudgetReleaseSource
+
+	// CycleDay is 0/1 for calendar months, otherwise a clamped monthly anchor.
+	CycleDay int
+	// Changes are sorted, dated replacement permissions, not cash receipts.
+	Changes []SpendingChange
+	// RuleError makes legacy CashPlan callers refuse invalid policy inputs.
+	RuleError string
+	// CarryRule governs optional cash; spending permission still expires.
+	CarryRule    string
+	CarryMinimum money.Amount
+	CarryUntil   date.Date
+
+	Monthly   money.Amount
+	Overrides map[string]money.Amount
+	// Spent is debt spending already made in the valuation month. Anchored
+	// balances must already reflect it; it is not a second ledger payment.
+	Spent money.Amount
 }
 
 // CashPlan is what the borrower has to spend and when.
 type CashPlan struct {
+	// CashThrough is the last date whose receipts are already included in OpeningCash.
+	CashThrough date.Date
+	// Spending opts into independently declared funding and spending. Monthly
+	// then means confirmed recurring funding, not permission to spend it.
+	Spending *SpendingPlan
 	// Monthly is the debt budget: the most the borrower puts towards loans
 	// per cycle, arriving on PayDay. It must cover the required instalments.
 	Monthly money.Amount
@@ -102,6 +164,12 @@ func (in Input) Validate() error {
 		return fmt.Errorf("plan: pay day %d out of range", in.Cash.PayDay)
 	}
 	cur := in.Cash.Monthly.Currency()
+	if err := in.validateCashRouting(); err != nil {
+		return err
+	}
+	if err := in.Cash.validateFunding(in.ValuationDate); err != nil {
+		return err
+	}
 	for _, l := range in.Loans {
 		if l.Contract.Currency.Code != cur.Code {
 			return &MixedCurrencyError{Have: l.Contract.Currency.Code, Want: cur.Code}

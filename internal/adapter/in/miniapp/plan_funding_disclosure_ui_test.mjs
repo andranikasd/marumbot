@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import vm from 'node:vm';
+const source=await readFile(new URL('./web/js/screens/plan.js',import.meta.url),'utf8');
+const fields=new Map();const field=id=>{if(!fields.has(id))fields.set(id,{hidden:false,dataset:{},textContent:'',onclick:null});return fields.get(id);};
+let response={blocked:'funding_required'},destination;
+const env={$:field,T:k=>k,getJSON:async(path,cb)=>cb(response),go:(screen,params)=>{destination={screen,params};},sub:k=>k,fmtDate:String,fmtMoney:String,fmtFull:String};
+vm.createContext(env);vm.runInContext('let loadVersion=0;'+source.slice(source.indexOf('function blocked('),source.indexOf('const paidOf =')),env);
+await env.load();assert.equal(field('plan-blocked-title').textContent,'plan.funding');assert.equal(field('plan-body').hidden,true);
+assert.equal(field('plan-blocked-fix').dataset.go,undefined,'avoid a second delegated navigation without section');
+field('plan-blocked-fix').onclick();assert.equal(destination.screen,'budget-edit');assert.equal(destination.params.section,'funding');
+response={blocked:'cash_routing_stale'};await env.load();assert.equal(field('plan-blocked-title').textContent,'plan.cash_stale');assert.equal(field('plan-blocked-why').textContent,'plan.cash_stale.why');field('plan-blocked-fix').onclick();assert.equal(destination.params.section,'funding');
+response={blocked:'balance_stale',as_of:'2026-01-01'};await env.load();assert.equal(field('plan-blocked-fix').onclick,null,'funding callback must not leak into other resolution cards');assert.equal(field('plan-blocked-fix').dataset.go,'loans');
+console.log('Funding refusal opens the exact funding section and does not alter other resolution links.');

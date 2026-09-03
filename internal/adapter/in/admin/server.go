@@ -2,9 +2,10 @@ package admin
 
 import (
 	"bytes"
-	"crypto/subtle"
+	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -34,10 +35,11 @@ const (
 // the server refuses to start, so a misconfigured deployment has no admin
 // interface rather than an open one.
 type Config struct {
-	User         string
-	PasswordHash string
-	Version      string
-	Env          string
+	PolicySigningKey []byte
+	User             string
+	PasswordHash     string
+	Version          string
+	Env              string
 
 	// Now supplies the current instant. Session expiry is a business decision,
 	// so the clock is injected rather than read here - the same reason every
@@ -47,13 +49,14 @@ type Config struct {
 
 // Server is the private admin interface.
 type Server struct {
-	admin *app.Admin
-	cfg   Config
-	key   []byte
-	pages map[string]*template.Template
-	thr   *throttle
-	log   *slog.Logger
-	now   func() time.Time
+	admin    *app.Admin
+	cfg      Config
+	key      []byte
+	pages    map[string]*template.Template
+	thr      *throttle
+	log      *slog.Logger
+	now      func() time.Time
+	sessions sessions
 }
 
 // New builds the interface. It returns an error rather than a disabled server
@@ -65,13 +68,23 @@ func New(a *app.Admin, cfg Config, log *slog.Logger) (*Server, error) {
 	if cfg.Now == nil {
 		return nil, fmt.Errorf("admin interface needs a clock")
 	}
+	if !a.SecurityReady() {
+		return nil, app.ErrAdminSecurityUnavailable
+	}
+	if err := a.BootstrapIdentity(context.Background(), app.AdminIdentity{ID: cfg.User, Username: cfg.User, PasswordHash: cfg.PasswordHash}); err != nil {
+		return nil, err
+	}
+	if len(cfg.PolicySigningKey) >= 32 {
+		a.WithPolicySigner(policySigner(cfg.PolicySigningKey))
+	}
+	a.WithCorpus(embeddedCorpus{})
 	pages, err := parsePages()
 	if err != nil {
 		return nil, err
 	}
 	return &Server{
 		admin: a, cfg: cfg, key: sessionKey(cfg.PasswordHash),
-		pages: pages, thr: newThrottle(), log: log, now: cfg.Now,
+		pages: pages, thr: newThrottle(), log: log, now: cfg.Now, sessions: sessions{values: map[string]browserSession{}},
 	}, nil
 }
 
@@ -108,32 +121,69 @@ func parsePages() (map[string]*template.Template, error) {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /login", s.loginForm)
-	mux.HandleFunc("POST /login", s.login)
+	mux.HandleFunc("POST /login", s.securityLogin)
+	mux.HandleFunc("GET /setup", s.setup)
+	mux.HandleFunc("POST /setup", s.setup)
 	mux.HandleFunc("POST /logout", s.logout)
 	mux.HandleFunc("GET /style.css", s.stylesheet)
 
 	guarded := map[string]http.HandlerFunc{
-		"GET /{$}":                  s.dashboard,
-		"GET /search":               s.search,
-		"GET /loans":                s.loans,
-		"GET /loans/{id}":           s.loan,
-		"POST /loans/{id}/rename":   s.renameLoan,
-		"GET /users":                s.users,
-		"GET /users/{id}":           s.user,
-		"GET /engine":               s.engine,
-		"POST /engine":              s.engine,
-		"GET /policies":             s.policies,
-		"POST /policies":            s.addPolicy,
-		"GET /commands":             s.commands,
-		"POST /commands/{id}/retry": s.retryCommand,
-		"POST /commands/purge-dead": s.purgeDead,
-		"POST /users/{id}/pause":    s.pauseUser,
-		"POST /users/{id}/restore":  s.restoreUser,
-		"POST /users/{id}/erase":    s.eraseUser,
-		"POST /loans/{id}/archive":  s.archiveLoan,
-		"POST /loans/{id}/restore":  s.restoreLoan,
-		"GET /deliveries":           s.deliveries,
-		"GET /reconciliation":       s.reconciliation,
+		"GET /corpus":                                  s.corpusPage,
+		"GET /corpus/{name}":                           s.corpusPage,
+		"GET /identities":                              s.identitiesPage,
+		"GET /identities/{id}":                         s.identitiesPage,
+		"POST /identities":                             s.saveIdentityPage,
+		"GET /policies/published":                      s.policies,
+		"GET /policies/new":                            s.policyDetailPage,
+		"GET /policies/{id}":                           s.policyDetailPage,
+		"POST /policies/save":                          s.savePolicyPage,
+		"POST /policies/{id}/review":                   s.advancePolicyPage,
+		"POST /policies/{id}/publish":                  s.advancePolicyPage,
+		"GET /cases":                                   s.casesPage,
+		"GET /cases/{id}":                              s.caseDetailPage,
+		"POST /cases":                                  s.saveCasePage,
+		"GET /flags":                                   s.flagsPage,
+		"POST /flags":                                  s.saveFlagPage,
+		"GET /audit":                                   s.auditPage,
+		"GET /history":                                 s.historyPage,
+		"GET /users/{id}/history":                      s.historyPage,
+		"POST /users/{id}/history/{report}/replay":     s.historyPage,
+		"GET /entitlements":                            s.entitlementsPage,
+		"GET /api/users/{id}/history":                  s.historyAPI,
+		"POST /api/users/{id}/history/{report}/replay": s.historyAPI,
+		"GET /api/cases/{id}":                          s.caseAPI,
+		"POST /api/cases":                              s.caseAPI,
+		"POST /api/profile-flags":                      s.flagAPI,
+		"GET /security":                                s.securityManagementPage,
+		"POST /purpose":                                s.purpose,
+		"POST /step-up":                                s.stepUp,
+		"POST /api/identities":                         s.identityAPI,
+		"POST /api/policies":                           s.policyAPI,
+		"GET /api/policies/{id}":                       s.policyAPI,
+		"POST /api/policies/{id}/review":               s.policyAPI,
+		"POST /api/policies/{id}/publish":              s.policyAPI,
+		"GET /api/audit":                               s.auditAPI,
+		"GET /{$}":                                     s.dashboard,
+		"GET /search":                                  s.search,
+		"GET /loans":                                   s.loans,
+		"GET /loans/{id}":                              s.loan,
+		"POST /loans/{id}/rename":                      s.renameLoan,
+		"GET /users":                                   s.users,
+		"GET /users/{id}":                              s.user,
+		"GET /engine":                                  s.engine,
+		"POST /engine":                                 s.engine,
+		"GET /policies":                                s.registryPage,
+		"POST /policies":                               s.addPolicy,
+		"GET /commands":                                s.commands,
+		"POST /commands/{id}/retry":                    s.retryCommand,
+		"POST /commands/purge-dead":                    s.purgeDead,
+		"POST /users/{id}/pause":                       s.pauseUser,
+		"POST /users/{id}/restore":                     s.restoreUser,
+		"POST /users/{id}/erase":                       s.eraseUser,
+		"POST /loans/{id}/archive":                     s.archiveLoan,
+		"POST /loans/{id}/restore":                     s.restoreLoan,
+		"GET /deliveries":                              s.deliveries,
+		"GET /reconciliation":                          s.reconciliation,
 	}
 	for pattern, h := range guarded {
 		mux.Handle(pattern, s.requireSession(h))
@@ -146,6 +196,22 @@ func (s *Server) Handler() http.Handler {
 // script, font or image, so the policy can be absolute rather than negotiated.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			if origin := r.Header.Get("Origin"); origin != "" {
+				scheme := "https"
+				if r.TLS == nil {
+					scheme = "http"
+				}
+				if origin != scheme+"://"+r.Host && origin != "https://"+r.Host {
+					http.Error(w, "origin denied", http.StatusForbidden)
+					return
+				}
+			}
+			if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+				http.Error(w, "origin denied", http.StatusForbidden)
+				return
+			}
+		}
 		h := w.Header()
 		h.Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
@@ -157,15 +223,21 @@ func securityHeaders(next http.Handler) http.Handler {
 
 func (s *Server) requireSession(next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie(cookieName)
-		if err != nil || !valid(s.key, c.Value, s.now()) {
+		v, ok := s.session(r)
+		if !ok || !v.Strong {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
+		identity, err := s.admin.LoginIdentity(r.Context(), v.Username)
+		if err != nil || !identity.Enabled || identity.Version != v.Version {
+			http.Error(w, "session revoked", http.StatusUnauthorized)
+			return
+		}
+		r = sessionContext(r, v)
 		// SERVER, and under the admin service name: this is the entry point of
 		// the admin component, so the graph shows traffic arriving at it
 		// rather than at an undifferentiated "marum".
-		ctx, span := obs.ComponentAdmin.Enter(r.Context(), strings.TrimPrefix(r.URL.Path, "/"))
+		ctx, span := obs.ComponentAdmin.Enter(r.Context(), "admin.request")
 		defer span.End()
 		next(w, r.WithContext(ctx))
 	})
@@ -175,47 +247,12 @@ func (s *Server) loginForm(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "login.html", map[string]any{keyTitle: "Sign in"})
 }
 
-func (s *Server) login(w http.ResponseWriter, r *http.Request) {
-	addr := clientAddr(r)
-	if blocked, wait := s.thr.blocked(addr, s.now()); blocked {
-		s.render(w, r, "login.html", map[string]any{
-			keyTitle: "Sign in",
-			"Error":  fmt.Sprintf("Too many attempts. Try again in %s.", wait),
-		})
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad form", http.StatusBadRequest)
-		return
-	}
-	user, pass := r.PostFormValue("user"), r.PostFormValue("password")
-	// Both checks always run: failing early on the username would leak which
-	// half was wrong through the response time.
-	userOK := subtle.ConstantTimeCompare([]byte(user), []byte(s.cfg.User)) == 1
-	passOK := verifyPassword(s.cfg.PasswordHash, pass)
-	if !userOK || !passOK {
-		s.thr.fail(addr, s.now())
-		s.log.WarnContext(r.Context(), "admin sign-in refused", "addr", addr)
-		s.render(w, r, "login.html", map[string]any{
-			keyTitle: "Sign in", "Error": "Those details were not accepted.",
-		})
-		return
-	}
-	s.thr.succeed(addr)
-	http.SetCookie(w, &http.Cookie{
-		Name: cookieName, Value: issue(s.key, s.now()), Path: "/",
-		HttpOnly: true, SameSite: http.SameSiteStrictMode,
-		// Not r.TLS: TLS terminates at the edge and the container only ever
-		// sees plain HTTP, so that test would never mark the cookie Secure in
-		// exactly the deployment where it matters.
-		Secure: s.cfg.Env == "prod" || r.TLS != nil,
-		MaxAge: int(sessionTTL.Seconds()),
-	})
-	s.log.InfoContext(r.Context(), "admin signed in", "addr", addr)
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	if c, err := r.Cookie(cookieName); err == nil {
+		s.sessions.mu.Lock()
+		delete(s.sessions.values, c.Value)
+		s.sessions.mu.Unlock()
+	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true})
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
@@ -257,7 +294,7 @@ func (s *Server) eraseUser(w http.ResponseWriter, r *http.Request) {
 		s.act(w, r, "/users", func(id string) error { return s.admin.RequestDeletion(r.Context(), id) })
 		return
 	}
-	if r.FormValue("sure") != "yes" {
+	if r.FormValue("sure") != formYes {
 		s.fail(w, r, fmt.Errorf("erasure needs the confirmation box ticked"))
 		return
 	}
@@ -276,7 +313,7 @@ func (s *Server) restoreLoan(w http.ResponseWriter, r *http.Request) {
 // marked dead, and the count removed is shown on the redirect so the operator
 // sees what happened rather than a page that merely reloaded.
 func (s *Server) purgeDead(w http.ResponseWriter, r *http.Request) {
-	if r.FormValue("sure") != "yes" {
+	if r.FormValue("sure") != formYes {
 		http.Redirect(w, r, "/commands?status=dead", http.StatusSeeOther)
 		return
 	}
@@ -428,6 +465,10 @@ func (s *Server) user(w http.ResponseWriter, r *http.Request) {
 // first thing an operator sees is a working schedule rather than a blank
 // form; POST projects whatever was typed.
 func (s *Server) engine(w http.ResponseWriter, r *http.Request) {
+	if err := s.admin.CheckAccess(r.Context(), app.AdminCapabilityFixtureReview, "engine"); err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	in := app.PlaygroundInput{
 		Currency: "AMD", Principal: "3000000", Rate: "18", Method: "annuity", DayCount: "act365",
 		Start: "2026-01-15", Maturity: "2031-01-15", Day: "15", Unit: "10",
@@ -566,11 +607,11 @@ func (s *Server) addPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	id := newUUID()
 	if err := s.admin.AddPolicy(r.Context(), id, key, version, definition, excess, source); err != nil {
-		redirectBack(w, r, "error", err.Error())
+		s.fail(w, r, err)
 		return
 	}
-	s.log.InfoContext(r.Context(), "allocation policy recorded", "key", key, "version", version)
-	redirectBack(w, r, "notice", fmt.Sprintf("Recorded %s v%d.", key, version))
+	s.log.InfoContext(r.Context(), "allocation policy drafted")
+	redirectBack(w, r, "notice", fmt.Sprintf("Drafted %s v%d; evidence and independent review are required before publication.", key, version))
 }
 
 func (s *Server) commands(w http.ResponseWriter, r *http.Request) {
@@ -658,6 +699,9 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, page string, dat
 	// against the injected instant rather than a wall the template reads.
 	data["Now"] = s.now()
 	data["SignedIn"] = false
+	data["Operator"] = ""
+	data["Can"] = map[string]bool{}
+	data["ActorID"] = ""
 	data["Badges"] = app.Overview{}
 	if _, ok := data[keyQuery]; !ok {
 		data[keyQuery] = ""
@@ -665,8 +709,13 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, page string, dat
 	if _, ok := data[keyNav]; !ok {
 		data[keyNav] = ""
 	}
-	if c, err := r.Cookie(cookieName); err == nil && valid(s.key, c.Value, s.now()) {
+	if v, ok := s.session(r); ok && v.Strong {
 		data["SignedIn"] = true
+		data["Operator"] = v.Username
+		data["ActorID"] = v.IdentityID
+		if grants, err := s.admin.GrantedCapabilities(r.Context()); err == nil {
+			data["Can"] = capabilityNavigation(grants)
+		}
 		// The sidebar carries live queue counts. One counting query per page
 		// is cheap, and a dead command showing up wherever the operator is
 		// looking is the point of having a sidebar.
@@ -695,9 +744,24 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, page string, dat
 // fail shows the operator what broke. This interface has one user, who is also
 // the person who would read the log, so hiding the detail helps nobody.
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
-	s.log.ErrorContext(r.Context(), "admin request failed", "path", r.URL.Path, "err", err)
-	w.WriteHeader(http.StatusInternalServerError)
-	s.render(w, r, "error.html", map[string]any{keyTitle: "Something broke", "Err": err.Error()})
+	status := http.StatusInternalServerError
+	switch {
+	case errors.Is(err, app.ErrAdminAccessDenied), errors.Is(err, app.ErrAdminActorInvalid), errors.Is(err, app.ErrAdminStepUpRequired), errors.Is(err, app.ErrAdminPurposeRequired):
+		status = http.StatusForbidden
+	case errors.Is(err, app.ErrHistoricalEngine):
+		http.Error(w, app.ErrHistoricalEngine.Error(), http.StatusConflict)
+		return
+	case errors.Is(err, app.ErrAdminSecurityUnavailable):
+		status = http.StatusServiceUnavailable
+	case errors.Is(err, app.ErrNotFound):
+		status = http.StatusNotFound
+	case errors.Is(err, app.ErrAdminConflict), errors.Is(err, app.ErrConflict):
+		status = http.StatusConflict
+	case errors.Is(err, app.ErrAdminEvidenceRequired):
+		status = http.StatusUnprocessableEntity
+	}
+	s.log.WarnContext(r.Context(), "admin request refused or failed")
+	http.Error(w, http.StatusText(status), status)
 }
 
 // redirectBack returns the operator to the page they submitted from, carrying
