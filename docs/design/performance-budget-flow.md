@@ -1,7 +1,7 @@
 # Responsive app and clearer budget flow
 
-Implementation notes for the changes after development v2.0.3. This document
-records the patch, not a claim that a new release has already been deployed.
+Shipped to development in **v2.0.4**, from PR #101. The exact-version deployment
+and smoke checks passed; see the [release record](../operations/releases.md).
 
 ## Borrower flow
 

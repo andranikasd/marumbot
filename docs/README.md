@@ -2,7 +2,7 @@
 
 ## Start here
 
-**Current release: v2.0.3, development only** (verified 2026-09-03).
+**Current release: v2.0.4, development only** (verified 2026-09-03).
 Start with [current state](current-state.md), [budgeting](product/budgeting.md),
 [development acceptance](design/v3/development-acceptance.md) and
 [release evidence](design/v3/release-checklist.md). There is no production environment.
@@ -42,7 +42,7 @@ explain why the code is shaped the way it is.
 | --- | --- |
 | [Correctness corpus](../testdata/golden/README.md) | The real lender schedules the engine is measured against, and what each one currently proves |
 | [Engineering guide](engineering-guide.md) | How code is written: structure, style, testing, the five invariants |
-| [Current interface conventions](design/ui-v1.1.md) | v2.0.3 navigation, tokens, localization and recovery; legacy filename |
+| [Current interface conventions](design/ui-v1.1.md) | v2.0.4 navigation, tokens, localization and recovery; legacy filename |
 | [MVP system and architecture design](design/Marum-MVP-System-and-Architecture-Design.pdf) | Archived original design; not current deployment evidence |
 | [Reliable MVP design v0.3.1](design/reliable-mvp-design.md) | Historical proposal; use migrations/current architecture for implemented behavior |
 | [Diagrams](diagrams/) | Archived draw.io figures and exports for the original design |

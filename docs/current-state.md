@@ -1,13 +1,13 @@
 # Current state
 
-Verified on **2026-09-03**, against application release **v2.0.3**. This is a
+Verified on **2026-09-03**, against application release **v2.0.4**. This is a
 release snapshot; future changes must update it alongside the affected guides.
 
 | Item | Verified state |
 | --- | --- |
 | Environment | Development only; no production environment |
-| Application | Mini App, bot/backend and admin deployed as 2.0.3 |
-| Source | `main` at tag `v2.0.3`, commit `8d34606852f5d88ef31b8b32df757e37f0cce203` |
+| Application | Mini App, bot/backend and admin deployed as 2.0.4 |
+| Source | Release tag `v2.0.4`, commit `e6814ce406d2a7aea86b09c76429292165f0273f` |
 | Database | Schema 22 |
 | Planning engine | `plan/5` |
 | Public endpoint | https://dev.marum.loan |
@@ -33,7 +33,25 @@ The [acceptance record](design/v3/development-acceptance.md) contains detailed
 behavior and test evidence. The [budget guide](product/budgeting.md) explains
 what each declaration means without changing the engine's rules.
 
-## What v2.0.3 fixes
+## What v2.0.4 improves
+
+Budget editing now uses **Each month / Today / Extras**, with separate spending
+limit and available-money declarations. The requested screen opens immediately
+while account language loads; late language responses preserve edits.
+
+Production assets are minified and secondary tools load on demand: about 168 KB
+initial JavaScript, or 43 KB gzip. The backend reuses policy timelines and
+request-local profile lookups. Bot commands avoid unnecessary menu/typing calls,
+outbound Telegram calls are paced, and local polling is implemented. Database
+pool settings and bounded performance metrics are available. Due reminders drain
+before the bounded generation pass, with dates batched per loan.
+
+[Performance evidence and limits](design/performance-budget-flow.md) separates
+local measurements from live latency and records remaining scaling work.
+PR #101 is merged. Release tests and exact-version dev deployment passed; see the
+[release record](operations/releases.md).
+
+## Earlier v2.0.3 fixes
 
 The release addresses iPhone feedback: native date/time field overflow,
 compressed Retry text, checkbox and save-button styling, and difficult budget

@@ -35,7 +35,7 @@ notification outbox alone is not a complete reminder-delivery view.
    bank-confirmed balance where required; do not substitute a confident estimate.
 3. Reproduce using the stored inputs, application revision and recorded engine
    metadata. Current planning certificates/manifests use `plan/5`, independently
-   of the application version `2.0.3`.
+   of the application version `2.0.4`.
 4. Use authorized plan-history replay where available; check its engine/version
    compatibility result. It is not a generic loan-state rebuild command.
 5. If inputs are wrong, correct them through supported user/admin flows. If the
