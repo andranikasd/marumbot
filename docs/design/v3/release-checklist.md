@@ -9,7 +9,9 @@ The first expanded rollout (`2.0.1`, commit `7c5062d`) reached schema 22,
 then failed a malformed smoke probe: GET requests incorrectly carried a JSON
 body, which the edge Fetch proxy rejected. The rollback step ran; do not infer
 complete container rollback from the Worker rollback alone. A normal unsigned
-GET returned 401. The probe has a reproducing regression and is corrected.
+GET returned 401. The probe has a reproducing regression and is corrected. Rollback now pins
+the pre-release Worker version before deployment and secret synchronization,
+rather than selecting the immediately previous revision implicitly.
 The fresh `2.0.2` rollout remains pending. The last fully verified deployment
 before this attempt was `2.0.0`, commit `219cac1a89dd00a829a28cd683c8447d89f4a36e`.
 Changed assets must use a new version; existing `2.0.0` URLs remain immutable.

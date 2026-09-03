@@ -85,7 +85,9 @@ jobs:
             node "$test"
           done
       - name: Smoke rollout regressions
-        run: python3 deploy/cloudflare/smoke_test.py
+        run: |
+          python3 deploy/cloudflare/smoke_test.py
+          node --test deploy/cloudflare/rollback-target.test.mjs
       # node --check misses real syntax errors in this codebase (a stray
       # Armenian identifier parsed as a property shorthand); esbuild parses
       # the whole module graph the way a browser will, and fails the build

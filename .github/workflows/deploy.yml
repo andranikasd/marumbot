@@ -101,25 +101,6 @@ jobs:
           goose -dir migrations up
           goose -dir migrations status
 
-      # Rolling back is only meaningful if there is something to roll back to.
-      # On a first deploy the previous version is whatever half-configured
-      # attempt came before it, so a rollback there replaces a working release
-      # with a broken one -- which is exactly what happened the first time this
-      # pipeline went green.
-      - name: Is there a previous deployment?
-        id: prior
-        working-directory: deploy/cloudflare
-        continue-on-error: true
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          if npx wrangler deployments list --env ${{ inputs.wrangler_env }} 2>/dev/null | grep -q 'Version(s)'; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
       # wrangler bundles the Worker with esbuild, which resolves imports from
       # node_modules, and wrangler-action installs nothing. Without this the
       # build fails on `Could not resolve "@cloudflare/containers"` -- after the
@@ -136,6 +117,18 @@ jobs:
       - name: Install Worker dependencies
         working-directory: deploy/cloudflare
         run: npm ci
+
+      # Capture before deployment AND secret sync: both create Worker revisions.
+      # Without an explicit target, rollback can select this same release.
+      - name: Remember pre-release Worker version
+        id: prior
+        working-directory: deploy/cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --no-install wrangler deployments list --env ${{ inputs.wrangler_env }} --json > "$RUNNER_TEMP/marum-prior-deployments.json"
+          node rollback-target.mjs < "$RUNNER_TEMP/marum-prior-deployments.json" >> "$GITHUB_OUTPUT"
 
       # 2. Deploy the code that reads both the old and the new schema.
       - name: Deploy Worker and container
@@ -223,13 +216,13 @@ jobs:
       #    deployment exists. The schema stays expanded, which is safe precisely
       #    because it is backward compatible.
       - name: Roll back on failure
-        if: failure() && steps.smoke.outcome == 'failure' && steps.prior.outputs.exists == 'true'
+        if: failure() && steps.smoke.outcome == 'failure' && steps.prior.outputs.version_id != ''
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: deploy/cloudflare
-          command: rollback --env ${{ inputs.wrangler_env }} --message smoke-failed --yes
+          command: rollback ${{ steps.prior.outputs.version_id }} --env ${{ inputs.wrangler_env }} --message smoke-failed --yes
 
       # Best-effort: a deploy is not less deployed because a marker is missing.
       # -f alone exits 22 on any HTTP error and hides the status, which made
