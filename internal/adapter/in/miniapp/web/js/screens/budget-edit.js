@@ -8,9 +8,9 @@ import { fundingHTML, createFunding, majorAmount, validMonth, validDate, minorTe
 addStrings({
   "budget.editing": "Խմբագրել բյուջեն", "budget.save": "Պահպանել բյուջեն",
   "be.policyActive": "Բյուջեն ունի հաստատված կանոններ։ Սահմանաչափը փոխեք Բյուջեի կանոններ բաժնում։ Գումարի և ծախսերի նոր քաղվածքը ներկայացրեք համադրման միջոցով։",
-  "be.budget": "Բյուջե", "be.funding": "Ֆինանսավորում", "be.months": "Ամիսներ",
+  "be.budget": "Բյուջե", "be.funding": "Գումար", "be.months": "Ամիսներ",
   "be.permission": "Ամսական ծախսի սահմանաչափ",
-  "be.permissionHint": "Վարկերի համար ամսական թույլատրելի ծախսը։ Հասանելի գումարը նշեք Ֆինանսավորում բաժնում։",
+  "be.permissionHint": "Վարկերի համար ամսական թույլատրելի ծախսը։ Հասանելի գումարը նշեք Գումար բաժնում։",
   "be.retry": "Կրկնել պահպանումը", "be.uncertain": "Պահպանման արդյունքը հայտնի չէ։ Կրկնեք նույն հարցումը՝ նախքան փոփոխելը։",
   "be.reload": "Վերբեռնել՝ չպահպանված փոփոխությունները հեռացնելով",
   "be.conflict": "Բյուջեն այլ տեղ փոփոխվել է։ Ձեր մուտքագրածը պահպանվել է այս ձևում։ Վերբեռնեք վերջին տարբերակը՝ փոփոխությունները նորից կատարելու համար։",
@@ -19,9 +19,9 @@ addStrings({
 }, {
   "budget.editing": "Edit budget", "budget.save": "Save budget",
   "be.policyActive": "Approved rules govern this budget. Change permission in Budget rules. Update cash and spending statements through reconciliation.",
-  "be.budget": "Budget", "be.funding": "Funding", "be.months": "Months",
+  "be.budget": "Budget", "be.funding": "Money", "be.months": "Months",
   "be.permission": "Monthly spending limit",
-  "be.permissionHint": "How much may be spent on loans each month. Set available cash in Funding.",
+  "be.permissionHint": "How much may be spent on loans each month. Tell us when your money is available in Money.",
   "be.retry": "Retry save", "be.uncertain": "The save outcome is unknown. Retry the same request before editing.",
   "be.reload": "Reload and discard unsaved changes",
   "be.conflict": "The budget changed elsewhere. Your entries are still here. Reload the latest version before making your changes again.",
@@ -29,12 +29,15 @@ addStrings({
   "be.rejected": "The values were not accepted. Check amounts, dates and limits.",
 });
 
+import { budgetHelpHTML } from "./budget-help.js";
+
 const HTML = `
+  ${budgetHelpHTML}
   <form id="budget-form" novalidate class="stack">
     <p id="budget-status" class="error" role="alert"></p>
     <button type="button" class="alink" data-go="budget-policy" data-i18n="bp.title"></button>
     <button type="button" id="budget-reload" class="alink" data-i18n="be.reload" hidden></button>
-    <button type="button" id="budget-retry" class="cta" data-i18n="be.retry" hidden></button>
+    <button type="button" id="budget-save-retry" class="cta" data-i18n="be.retry" hidden></button>
     <fieldset id="budget-fields" class="stack" style="border:0;padding:0;margin:0;min-width:0" disabled>
     <div class="chart-controls" role="tablist" aria-label="Budget">
       <button type="button" id="budget-tab-budget" role="tab" aria-controls="budget-panel-budget" aria-selected="true" aria-pressed="true" data-section="budget" data-i18n="be.budget"></button>
@@ -126,8 +129,8 @@ function controls() {
   $("budget-fields").disabled = busy || loading || !!pending || !loaded;
   $("budget-save").disabled = busy || loading || !!pending || !loaded || conflict;
   $("budget-reload").disabled = busy || loading || !!pending;
-  $("budget-retry").hidden = !pending;
-  $("budget-retry").disabled = busy || loading;
+  $("budget-save-retry").hidden = !pending;
+  $("budget-save-retry").disabled = busy || loading;
   $("budget-form").setAttribute("aria-busy", String(busy || loading));
 }
 function changed() { if(pending||busy)return; dirty = true; revision++; validate(); }
@@ -350,7 +353,7 @@ register({
       const row = overrideRow(); $("override-list").append(row); changed(); row.querySelector("input").focus();
     };
     $("budget-reload").onclick = () => load(true);
-    $("budget-retry").onclick = save;
+    $("budget-save-retry").onclick = save;
     form.addEventListener("submit", save);
   },
   onShow(_el, params) { if (params?.section === "funding") showSection("funding"); return load(); },

@@ -5,7 +5,7 @@ const source=(await readFile(new URL('./web/js/api.js',import.meta.url),'utf8'))
 const fields=new Map(),events=new Map();
 const field=id=>{if(!fields.has(id))fields.set(id,{hidden:true,addEventListener:(name,fn)=>events.set(id+':'+name,fn)});return fields.get(id);};
 let fail=false;let version=1;
-const env={Map,Set,Date,Error,TypeError,Event,addStrings(){},tg:null,T:x=>x,
+const env={AbortController,setTimeout,clearTimeout,Map,Set,Date,Error,TypeError,Event,addStrings(){},tg:null,T:x=>x,
  document:{getElementById:field,dispatchEvent(){}},window:{addEventListener:(name,fn)=>events.set(name,fn)},
  fetch:async()=>{if(fail)throw new TypeError('offline');return {ok:true,json:async()=>({version})};}};
 vm.createContext(env);vm.runInContext(source,env);env.watchOffline();
@@ -25,3 +25,9 @@ await assert.rejects(env.getJSON('api/plan'),/http 503/);assert.equal(field('off
 assert.equal(field('offline-text').textContent,'offline.stale','connected but stale is not falsely labelled offline');
 env.fetch=async()=>({ok:true,json:async()=>({version:3})});await env.getJSON('api/plan');assert.equal(field('offline').hidden,true);
 env.invalidate('api/plan');assert.equal(field('offline').hidden,false,'a mutation invalidates the displayed financial snapshot immediately');
+env.beginView();assert.equal(field('offline').hidden,true,'hidden stale screens do not warn on another page');
+let finish;env.fetch=()=>new Promise(resolve=>finish=resolve);
+const returning=env.getJSON('api/plan');
+assert.equal(field('offline').hidden,false,'returning to stale figures labels them while refreshing');
+finish({ok:true,json:async()=>({version:4})});await returning;
+assert.equal(field('offline').hidden,true);

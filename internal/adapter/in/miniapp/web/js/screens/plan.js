@@ -19,7 +19,7 @@ addStrings({"evidence.proven_optimal":"Ծախսի նվազագույնը հաս�
 addStrings({'plan.funding':'Նշեք հասանելի գումարը','plan.funding.why':'Ծախսման սահմանը հասանելի գումար չէ։ Նշեք հաստատված ամսական ֆինանսավորումը՝ ներառյալ զրոն, և այժմ հասանելի գումարը։','plan.funding.fix':'Նշել ֆինանսավորումը'}, {'plan.funding':'Declare available cash','plan.funding.why':'Your spending limit is not cash. Enter confirmed monthly funding, including zero, and cash available now.','plan.funding.fix':'Declare funding'});
 addStrings({'plan.cash_stale':'Ստուգեք պահված գումարը','plan.cash_stale.why':'Ուղղորդված մուտքը նախորդ օրվանից է։ Հաստատեք դեռ պահված գումարը կամ հստակ հեռացրեք սահմանափակումը։ Հին մուտքը մի հաշվեք որպես նոր գումար։'},{'plan.cash_stale':'Review retained cash','plan.cash_stale.why':'A routed receipt is from an earlier day. Confirm the amount still held, or explicitly remove its restriction. Do not count an old receipt as new money.'});
 const HTML = `
- <div id="plan-loading" hidden><div class="skel hero-skel"></div></div>
+ <div id="plan-loading" hidden><p class="hint" role="status" data-i18n="loading"></p><div class="skel hero-skel" aria-hidden="true"></div></div>
  <div id="plan-blocked" class="card stack" hidden><b id="plan-blocked-title"></b><p id="plan-blocked-why"></p><button class="cta" id="plan-blocked-fix" type="button"></button></div>
  <div class="state" id="plan-empty" hidden><b data-i18n="plan.empty.title"></b><p data-i18n="plan.empty"></p><button class="cta" data-go="add" data-i18n="plan.empty.add"></button></div>
  <div id="plan-body" class="stack" hidden>
@@ -63,8 +63,12 @@ function chips(active) {
 // cleared. Fetched per goal from the plan the server already caches, and
 // filled in as each answer lands; a row without an answer stays quiet.
 function consequences() {
+  const version=loadVersion;
   for (const g of goals) {
+    const aside=document.querySelector('#plan-goals .opt[data-goal="'+g+'"] em');
+    if(aside)aside.textContent="";
     getJSON("api/plan?goal=" + g, (d) => {
+      if(version!==loadVersion)return;
       const em = document.querySelector('#plan-goals .opt[data-goal="' + g + '"] em');
       if (!em || !d || d.empty || d.blocked || !d.summary) return;
       const m = (minor) => fmtMoney(minor / 10**(d.currency_exponent??2), d.currency);
@@ -122,7 +126,8 @@ async function load(g) {
       chips(normalise(d.goal));
       render(d);
       $("plan-body").hidden = false;
-      consequences();
+      if(!$("plan-layer").hidden&&!$("plan-goals").hidden)consequences();
+
     });
   } catch {
     if (version !== loadVersion) return;
@@ -319,7 +324,7 @@ register({
   titleKey: "plan.title",
   html: HTML,
   onMount() {
-    for(const b of document.querySelectorAll("[data-layer]")) b.onclick=()=>{ $("plan-overview").hidden=true;$("plan-layer").hidden=false;for(const s of document.querySelectorAll("[data-plan-layer]"))s.hidden=s.dataset.planLayer!==b.dataset.layer; };
+    for(const b of document.querySelectorAll("[data-layer]")) b.onclick=()=>{ if(b.dataset.layer==="strategy")consequences(); $("plan-overview").hidden=true;$("plan-layer").hidden=false;for(const s of document.querySelectorAll("[data-plan-layer]"))s.hidden=s.dataset.planLayer!==b.dataset.layer; };
     $("plan-layer-back").onclick=()=>{$("plan-overview").hidden=false;$("plan-layer").hidden=true;};
     for (const b of document.querySelectorAll("#plan-goals .opt")) {
       b.addEventListener("click", () => { haptic.pick(); chips(b.dataset.goal); load(b.dataset.goal); });
@@ -333,5 +338,5 @@ register({
       try{const r=await api("api/plan/timeline?format=csv&proposal="+encodeURIComponent(displayedPlan.proposal));if(!r.ok)throw new Error("export");const blob=await r.blob(),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="marum-plan.csv";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}catch{toast(T("err.load"));}finally{b.disabled=false;}
     };
   },
-  onShow(_el,params) { if(params?.resetGoal)goal="";load(goal); },
+  onShow(_el,params) { $("plan-overview").hidden=false;$("plan-layer").hidden=true; if(params?.resetGoal)goal="";load(goal); },
 });

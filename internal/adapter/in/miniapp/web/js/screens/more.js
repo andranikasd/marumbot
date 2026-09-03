@@ -7,7 +7,7 @@ import {icon} from '../icons.js';
 import {lang,setLanguage} from '../core.js';
 import {api} from '../api.js';
 addStrings({'tab.more':'Ավելին','more.budget':'Խմբագրել բյուջեն','more.loan':'Ավելացնել վարկ','settings.language':'Լեզու / Language'},{'tab.more':'More','more.budget':'Edit budget','more.loan':'Add loan','settings.language':'Language / Լեզու'});
-register({id:'more',icon:icon('wallet'),labelKey:'tab.more',html:`<div class="stack">${preferencesHTML}<div class="card field"><label for="settings-language" data-i18n="settings.language"></label><select id="settings-language"><option value="hy">Հայերեն</option><option value="en">English</option></select><p id="settings-error" class="error" role="alert"></p></div><button class="card" data-go="budget-edit" data-i18n="more.budget"></button><button class="card" data-go="add" data-i18n="more.loan"></button></div>`,onMount(){
+register({id:'more',icon:icon('wallet'),labelKey:'tab.more',html:`<div class="stack"><div class="card field"><label for="settings-language" data-i18n="settings.language"></label><select id="settings-language"><option value="hy">Հայերեն</option><option value="en">English</option></select><p id="settings-error" class="error" role="alert"></p></div><button class="card" data-go="budget-edit" data-i18n="more.budget"></button><button class="card" data-go="add" data-i18n="more.loan"></button><details class="fold"><summary data-i18n="prefs.title"></summary><div class="fold-body">${preferencesHTML}</div></details></div>`,onMount(){
  mountPreferences();
  const select=document.getElementById('settings-language');select.addEventListener('change',async()=>{
   const want=select.value;select.disabled=true;document.getElementById('settings-error').textContent='';

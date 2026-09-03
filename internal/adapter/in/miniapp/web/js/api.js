@@ -5,14 +5,45 @@ import { T, addStrings } from "./i18n.js";
 
 addStrings({'offline.stale':'Նախկինում բեռնված որոշ տվյալներ թարմացման կարիք ունեն։'}, {'offline.stale':'Some previously loaded figures need refreshing.'});
 
-export const api = (path, init = {}) => fetch(path, {
-  ...init,
-  headers: {
-    "Content-Type": "application/json",
-    "X-Telegram-Init-Data": tg?.initData || "",
-    ...(init.headers || {}),
-  },
-});
+// Bound both connection and response-body waits. Mutations are never retried
+// automatically: their screen retains the original idempotency key.
+const REQUEST_TIMEOUT = 20_000;
+async function bounded(operation, controller) {
+  let timer;
+  try {
+    return await Promise.race([
+      operation(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error("request timed out"));
+        }, REQUEST_TIMEOUT);
+      }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
+export async function api(path, init = {}) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (init.signal?.aborted) abort();
+  init.signal?.addEventListener("abort", abort, {once:true});
+  try {
+    const response = await bounded(() => fetch(path, {
+      ...init, signal:controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Telegram-Init-Data": tg?.initData || "",
+        ...(init.headers || {}),
+      },
+    }), controller);
+    for (const method of ["json", "text", "blob"]) {
+      if (typeof response[method] !== "function") continue;
+      const read = response[method].bind(response);
+      response[method] = () => bounded(read, controller);
+    }
+    return response;
+  } finally { init.signal?.removeEventListener("abort", abort); }
+}
 
 const cache = new Map(); // path -> { body, at }
 const TTL = 30_000;
@@ -21,10 +52,13 @@ let generation=0;
 const stalePaths=new Set();
 const displayedPaths=new Set();
 let disconnected=false;
+let visiblePaths=null;
+// Hidden screens retain their stale state, but their warning belongs to them.
+export function beginView() { visiblePaths=new Set(); updateOffline(); }
 function updateOffline(){
  const label=document.getElementById('offline-text');
  if(label)label.textContent=T(disconnected?'offline':'offline.stale');
- offline(disconnected||stalePaths.size>0);
+ offline(disconnected||[...stalePaths].some(path=>!visiblePaths||visiblePaths.has(path)));
 }
 function fresh(path){
  if(inFlight.has(path))return inFlight.get(path);
@@ -36,6 +70,8 @@ function fresh(path){
 
 // Return current data, or a labeled recent offline fallback.
 export async function getJSON(path, onData) {
+  visiblePaths?.add(path);
+  updateOffline();
   const hit = cache.get(path);
   const stamp=generation;
   // Financial values are rendered only after a fresh response.

@@ -7,10 +7,12 @@ import "./budget-policy.js";
 import { haptic, fmtMoney, fmtMonth, fmtFull } from "../core.js";
 import { T, sub, addStrings } from "../i18n.js";
 import { getJSON } from "../api.js";
-import { register, go, setAction } from "../nav.js";
+import { register, go, setAction, currentScreen } from "../nav.js";
 
 addStrings({'budget.cashdate':'Գումարի ամսաթիվը','budget.cashdate.unknown':'Ամսաթիվը նշված չէ'},{'budget.cashdate':'Cash as of','budget.cashdate.unknown':'Date not supplied'});
+import { budgetHelpHTML } from "./budget-help.js";
 const HTML = `
+  ${budgetHelpHTML}
   <div id="budget-view" class="stack" hidden>
     <div class="hero">
       <div class="k"><span data-i18n="budget.monthly">Ամսական բյուջե</span><span class="pill" id="bo-state"></span></div>
@@ -54,7 +56,7 @@ function render(b) {
   const set = b.monthly_major != null;
   $("budget-view").hidden = !set;
   $("budget-none").hidden = set;
-  setAction(set ? T("budget.edit") : null, () => go("budget-edit"));
+  if(currentScreen()==="budget")setAction(set ? T("budget.edit") : null, () => go("budget-edit"));
   if (!set) return;
   const cur = b.currency;
   const monthly = b.monthly_major;

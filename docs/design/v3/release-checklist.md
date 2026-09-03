@@ -70,3 +70,22 @@ language, aligned numbers, chart labels, Loans, editing, payments and reminders.
 Participant usability trials and two months of bank reconciliation additionally
 require real people, source statements and elapsed time. Automated tests and the
 synthetic three-loan example do not replace that field evidence.
+
+## v2.0.3 iPhone feedback follow-up
+
+The next tagged development release addresses the screenshots from the 2.0.2
+field check: native date/time field overflow, compressed Retry text, oversized
+checkboxes and the reminder save button. Budget and Money now have a collapsed
+English/Armenian explanation of spending limits, available cash and payments
+already made. Reminder settings are collapsed below the language selector.
+
+Read and response-body waits are bounded, with explicit loading/error/retry
+states. No financial write is automatically retried. Stale warnings follow the
+visible screen, while hidden snapshots remain marked stale until reread. Plan
+strategy comparisons load on demand and cannot retain old figures on reopening.
+Budget view and save retries have distinct element IDs.
+
+Validation: all Mini App behavioral suites, adapter race tests and synthetic
+320px/390px English/Armenian browser checks. These checks do not replace testing
+inside Telegram's iPhone webview. The user has authorized merging PR #99 and
+publishing a new tag to development; production remains out of scope.

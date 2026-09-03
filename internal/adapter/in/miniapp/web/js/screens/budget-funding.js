@@ -3,22 +3,28 @@ import { T, addStrings } from "../i18n.js";
 import { createCashRouting } from "./budget-cash-routing.js";
 
 addStrings({
-  "bf.mode": "Գումարի հասանելիությունը", "bf.legacy": "Գումարի աղբյուրը դեռ նշված չէ",
-  "bf.separate": "Առանձին նշել ֆինանսավորումը", "bf.monthly": "Հաստատված ամսական ֆինանսավորում",
-  "bf.spent": "Այս ամիս արդեն ծախսված", "bf.events": "Լրացուցիչ մուտքեր",
+  "bf.mode": "Վարկերի համար գումար", "bf.legacy": "Գումարը դեռ նշված չէ",
+  "bf.separate": "Առանձին նշել գումարը", "bf.monthly": "Վարկերի ամսական գումար",
+  "bf.spent": "Արդեն վճարված", "bf.events": "Լրացուցիչ գումար",
   "bf.date": "Մուտքի ամսաթիվ", "bf.amount": "Գումար", "bf.expected": "Սպասվող, դեռ չհաստատված",
-  "bf.add": "Ավելացնել մուտք", "bf.remove": "Հեռացնել մուտքը",
-  "bf.hint": "Ֆինանսավորումը հասանելի գումարն է։ Բյուջեն սահմանում է՝ որքան կարելի է ծախսել։ Սպասվող մուտքերը ենթադրություններ են։",
+  "bf.add": "Ավելացնել լրացուցիչ գումար", "bf.remove": "Հեռացնել գումարը",
+  "bf.hint": "Նշեք՝ վարկերի համար ինչ գումար է հասանելի և երբ։ Բյուջեն սահմանում է՝ որքան ծախսել։",
+  "bf.monthlyHint": "Վարկերի համար ամեն ամիս առանձնացվող հաստատված գումարը՝ հասանելի ձեր նշած մուտքի օրը։",
+  "bf.spentHint": "Ընթացիկ բյուջետային ժամանակահատվածում վարկերին արդեն վճարած գումարը։ Գումարի մուտքի օրը այն չի զրոյանում։",
+  "bf.eventsHint": "Առանձին լրացուցիչ գումար։ Չհաստատված գումարը նշեք որպես սպասվող․ այն երաշխավորված չէ։",
   "bf.money": "Նշեք ոչ բացասական գումար՝ արժույթի թույլատրած ճշտությամբ և անվտանգ սահմաններում։ Տասնորդական բաժանիչը կետ կամ ստորակետ է։",
   "bf.dateError": "Ընտրեք այսօրվա կամ ապագա ամսաթիվ՝ ձեր ժամային գոտով։",
   "bf.limit": "Կարելի է նշել առավելագույնը 36 մուտք։",
 }, {
-  "bf.mode": "Funding availability", "bf.legacy": "Funding not declared",
-  "bf.separate": "Set funding separately", "bf.monthly": "Confirmed monthly funding",
-  "bf.spent": "Spent this month", "bf.events": "Additional receipts",
-  "bf.date": "Receipt date", "bf.amount": "Amount", "bf.expected": "Expected, not yet confirmed",
-  "bf.add": "Add receipt", "bf.remove": "Remove receipt",
-  "bf.hint": "Funding is available cash. Budget is permission to spend. Expected receipts are assumptions.",
+  "bf.mode": "Money for loans", "bf.legacy": "Money not entered yet",
+  "bf.separate": "Enter money separately", "bf.monthly": "Monthly loan money",
+  "bf.spent": "Already paid", "bf.events": "Extra money",
+  "bf.date": "Available on", "bf.amount": "Amount", "bf.expected": "Expected, not yet confirmed",
+  "bf.add": "Add extra money", "bf.remove": "Remove extra money",
+  "bf.hint": "Enter what money is available for loans and when. Your budget sets how much to spend.",
+  "bf.monthlyHint": "Confirmed money set aside for loans each month, available on your payday.",
+  "bf.spentHint": "Loan payments already made in the current budget period. Payday does not reset this.",
+  "bf.eventsHint": "Separate extra money. Mark uncertain money as expected; it is not guaranteed.",
   "bf.money": "Enter a non-negative amount within safe limits and the currency’s precision. Use a dot or comma for decimals.",
   "bf.dateError": "Choose today or a future date in your account timezone.", "bf.limit": "You can specify at most 36 receipts.",
 });
@@ -59,9 +65,9 @@ export const fundingHTML = `
     <select id="funding-mode"><option value="legacy" data-i18n="bf.legacy"></option><option value="separate" data-i18n="bf.separate"></option></select>
     <p class="hint" data-i18n="bf.hint"></p></div>
   <div id="funding-separate" class="stack" hidden>
-    <div class="field"><label for="funding-monthly" data-i18n="bf.monthly"></label><input id="funding-monthly" inputmode="decimal" aria-describedby="e-funding-monthly"><p class="error" id="e-funding-monthly"></p></div>
-    <div class="field"><label for="funding-spent" data-i18n="bf.spent"></label><input id="funding-spent" inputmode="decimal" aria-describedby="e-funding-spent"><p class="error" id="e-funding-spent"></p></div>
-    <span class="lbl" data-i18n="bf.events"></span><div id="funding-events" class="stack"></div>
+    <div class="field"><label for="funding-monthly" data-i18n="bf.monthly"></label><input id="funding-monthly" inputmode="decimal" aria-describedby="h-funding-monthly e-funding-monthly"><p class="hint" id="h-funding-monthly" data-i18n="bf.monthlyHint"></p><p class="error" id="e-funding-monthly"></p></div>
+    <div class="field"><label for="funding-spent" data-i18n="bf.spent"></label><input id="funding-spent" inputmode="decimal" aria-describedby="h-funding-spent e-funding-spent"><p class="hint" id="h-funding-spent" data-i18n="bf.spentHint"></p><p class="error" id="e-funding-spent"></p></div>
+    <span class="lbl" data-i18n="bf.events"></span><p class="hint" data-i18n="bf.eventsHint"></p><div id="funding-events" class="stack"></div>
     <p class="error" id="e-funding-events" role="alert"></p>
     <button class="alink" type="button" id="funding-add" data-i18n="bf.add"></button>
   </div>`;

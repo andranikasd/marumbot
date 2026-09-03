@@ -10,6 +10,8 @@
 import { haptic, mainButton, backButton } from "./core.js";
 import { applyI18n, T } from "./i18n.js";
 
+import { beginView } from "./api.js";
+
 const screens = new Map();
 let current = null;
 let params = null;
@@ -68,6 +70,7 @@ export function go(id, withParams) {
   else backButton.hide();
   mainButton.hide();
   window.scrollTo(0, 0);
+  beginView();
   s.onShow?.(s.el, params);
 }
 
