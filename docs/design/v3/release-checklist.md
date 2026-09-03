@@ -2,7 +2,7 @@
 
 ## Current status
 
-Target: **2.0.2 — development only** on
+Deployed: **2.0.2 — development only** on
 `feature/v1.1.0-complete-ui-redesign`.
 
 The first expanded rollout (`2.0.1`, commit `7c5062d`) reached schema 22,
@@ -12,14 +12,19 @@ complete container rollback from the Worker rollback alone. A normal unsigned
 GET returned 401. The probe has a reproducing regression and is corrected. Rollback now pins
 the pre-release Worker version before deployment and secret synchronization,
 rather than selecting the immediately previous revision implicitly.
-The fresh `2.0.2` rollout remains pending. The last fully verified deployment
-before this attempt was `2.0.0`, commit `219cac1a89dd00a829a28cd683c8447d89f4a36e`.
+The fresh `2.0.2` rollout succeeded on 2026-09-03 from application commit
+`45169b620ba143ff2e7bd1714792a5cc535e3df5`. Live API and Mini App version
+checks report `2.0.2`; readiness reports schema 22; admin login reports `2.0.2`.
+The deployment smoke verified that the Telegram menu opens version `2.0.2`.
 Changed assets must use a new version; existing `2.0.0` URLs remain immutable.
 No production deployment, merge to main, Git tag or GitHub Release is requested.
 
-Previous live evidence:
-[CI](https://github.com/andranikasd/marumbot/actions/runs/33733922684) and
-[development deployment](https://github.com/andranikasd/marumbot/actions/runs/33734213874).
+Release evidence:
+[exact-commit CI](https://github.com/andranikasd/marumbot/actions/runs/33766922851) and
+[successful development deployment](https://github.com/andranikasd/marumbot/actions/runs/33767241888).
+An independent live smoke run also passed. The optional Grafana deployment
+annotation returned HTTP 401 (invalid API key); its annotation token needs
+replacement. This did not block deployment or application health checks.
 
 ## Software scope
 
@@ -53,10 +58,10 @@ advanced engine domain described in the exploratory specification.
 - [x] Final PostgreSQL integration tests through migration 22.
 - [x] Lint, frontend behavioral tests, bundle and rollout-smoke regressions.
 - [x] Preservation-only rollback/reapplication of the latest migration.
-- [ ] Commit and push the verified implementation on the requested branch.
-- [ ] CI passes for that exact commit, including both architecture reports.
-- [ ] Deploy that branch with manual **CD · dev**, version `2.0.2`.
-- [ ] Verify live version, schema, assets, unsigned-call rejection and bot menu.
+- [x] Commit and push the verified implementation on the requested branch.
+- [x] CI passes for that exact commit, including both architecture reports.
+- [x] Deploy that branch with manual **CD · dev**, version `2.0.2`.
+- [x] Verify live version, schema, assets, unsigned-call rejection and bot menu.
 
 ## User-owned field check
 
