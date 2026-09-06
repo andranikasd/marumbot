@@ -13,6 +13,14 @@ var ErrHistoricalEngine = errors.New("historical calculation engine unavailable"
 
 // PlanManifest contains original source inputs and the selected action policy.
 // Results are deliberately not persisted: replay is the correctness check.
+// PlanManifest is a stored plan and the proof it can be reproduced.
+//
+// Input is the engine's own struct, persisted verbatim: its Go field and type
+// names are this record's JSON keys, and InputHash covers those names too. So
+// the engine cannot be renamed without invalidating every manifest already
+// written. Giving this package its own input type, mapped explicitly, is what
+// would break that coupling; doing so needs a migration for the rows that
+// already exist, so it is a decision rather than a cleanup.
 type PlanManifest struct {
 	Sources       string      `json:"sources"`
 	Schema        int         `json:"schema"`

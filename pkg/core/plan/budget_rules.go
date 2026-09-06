@@ -8,13 +8,13 @@ import (
 	"github.com/andranikasd/marumbot/pkg/core/money"
 )
 
-// BudgetGrowth increases spending permission, never income or funding.
+// SpendingLimitGrowth increases spending permission, never income or funding.
 // StartsOn is the first increase and must be the first day of a month.
 // A zero EndsOn means no end. Fixed and
 // Maximum are absent only when they are zero Amounts without a currency.
 // PercentPPB is parts per billion (30_000_000 means 3%); zero means no growth.
 // Fixed and a nonzero PercentPPB are mutually exclusive.
-type BudgetGrowth struct {
+type SpendingLimitGrowth struct {
 	EveryMonths int
 	StartsOn    date.Date
 	EndsOn      date.Date
@@ -23,22 +23,22 @@ type BudgetGrowth struct {
 	Maximum     money.Amount
 }
 
-// BudgetAdjustment changes one calendar month's grown limit. Exactly one
+// SpendingLimitAdjustment changes one calendar month's grown limit. Exactly one
 // pointer must be set; a replacement may be zero and a delta may be negative.
-type BudgetAdjustment struct {
+type SpendingLimitAdjustment struct {
 	Month       string
 	Replacement *money.Amount
 	Delta       *money.Amount
 }
 
-// ExpandBudgetRules returns replacement limits for 1..600 calendar months
+// ExpandSpendingLimits returns replacement limits for 1..600 calendar months
 // beginning with from's month. Growth is limited to calendar-month boundaries;
 // callers must normalize other spending cycles separately. Each recurrence
 // affects its entire month;
 // earlier recurrences are compounded from base, including those before from.
 // Growth stops after EndsOn but its last limit persists. Month adjustments do
 // not compound and may exceed a growth cap. Inputs are never mutated.
-func ExpandBudgetRules(base money.Amount, from date.Date, months int, growth *BudgetGrowth, adjustments []BudgetAdjustment) (map[string]money.Amount, error) {
+func ExpandSpendingLimits(base money.Amount, from date.Date, months int, growth *SpendingLimitGrowth, adjustments []SpendingLimitAdjustment) (map[string]money.Amount, error) {
 	if months < 1 || months > 600 || !budgetRuleDateValid(from) {
 		return nil, fmt.Errorf("plan: invalid budget horizon")
 	}
@@ -82,7 +82,7 @@ func ExpandBudgetRules(base money.Amount, from date.Date, months int, growth *Bu
 			}
 		}
 	}
-	byMonth := make(map[string]BudgetAdjustment, len(adjustments))
+	byMonth := make(map[string]SpendingLimitAdjustment, len(adjustments))
 	for _, a := range adjustments {
 		d, err := date.Parse(a.Month + "-01")
 		if err != nil || !budgetRuleDateValid(d) || MonthKey(d) != a.Month {
@@ -119,7 +119,7 @@ func ExpandBudgetRules(base money.Amount, from date.Date, months int, growth *Bu
 				next = date.Date{}
 				break
 			}
-			grown, err = growBudgetLimit(grown, *growth)
+			grown, err = growSpendingLimit(grown, *growth)
 			if err != nil {
 				return nil, err
 			}
@@ -157,7 +157,7 @@ func budgetRuleDateValid(d date.Date) bool {
 	return !d.IsZero() && d.Year() >= 1 && d.Year() <= 9999
 }
 
-func growBudgetLimit(current money.Amount, growth BudgetGrowth) (money.Amount, error) {
+func growSpendingLimit(current money.Amount, growth SpendingLimitGrowth) (money.Amount, error) {
 	// Exact integer intermediates allow a representable capped result even when
 	// the uncapped product exceeds int64. Round the total once per recurrence,
 	// using the currency's settled half-up default, before applying the cap.

@@ -61,8 +61,8 @@ type BudgetPolicyAdjustment struct {
 	DeltaMinor       *int64 `json:"delta_minor,omitempty"`
 }
 
-func (p BudgetPolicy) rules(cur money.Currency, noGrowth bool) (*plan.BudgetGrowth, []plan.BudgetAdjustment, error) {
-	var growth *plan.BudgetGrowth
+func (p BudgetPolicy) rules(cur money.Currency, noGrowth bool) (*plan.SpendingLimitGrowth, []plan.SpendingLimitAdjustment, error) {
+	var growth *plan.SpendingLimitGrowth
 	if p.Growth != nil {
 		g := p.Growth
 		if (g.FixedMinor == nil) == (g.PercentPPB == nil) {
@@ -72,7 +72,7 @@ func (p BudgetPolicy) rules(cur money.Currency, noGrowth bool) (*plan.BudgetGrow
 		if err != nil {
 			return nil, nil, fmt.Errorf("budget: invalid growth start")
 		}
-		growth = &plan.BudgetGrowth{EveryMonths: g.EveryMonths, StartsOn: start}
+		growth = &plan.SpendingLimitGrowth{EveryMonths: g.EveryMonths, StartsOn: start}
 		if g.EndsOn != "" {
 			growth.EndsOn, err = date.Parse(g.EndsOn)
 			if err != nil {
@@ -99,9 +99,9 @@ func (p BudgetPolicy) rules(cur money.Currency, noGrowth bool) (*plan.BudgetGrow
 		}
 		growth.StartsOn = date.OnDayOfMonth(growth.StartsOn, 1)
 	}
-	adjustments := make([]plan.BudgetAdjustment, 0, len(p.Adjustments))
+	adjustments := make([]plan.SpendingLimitAdjustment, 0, len(p.Adjustments))
 	for _, a := range p.Adjustments {
-		item := plan.BudgetAdjustment{Month: a.Month}
+		item := plan.SpendingLimitAdjustment{Month: a.Month}
 		if a.ReplacementMinor != nil {
 			n := money.FromMinor(*a.ReplacementMinor, cur)
 			item.Replacement = &n
@@ -169,7 +169,7 @@ func (p BudgetPolicy) Validate(currency string) error {
 	if g != nil && p.Growth.StartsOn < effective.String() {
 		return fmt.Errorf("budget: growth precedes policy")
 	}
-	_, err = plan.ExpandBudgetRules(money.FromMinor(p.MonthlyMinor, cur), effective, plan.DefaultHorizon, g, a)
+	_, err = plan.ExpandSpendingLimits(money.FromMinor(p.MonthlyMinor, cur), effective, plan.DefaultHorizon, g, a)
 	return err
 }
 
@@ -300,7 +300,7 @@ func (b Budget) policySpending(valuation date.Date, noGrowth bool, spent money.A
 			if err != nil {
 				return nil, err
 			}
-			limits, err := plan.ExpandBudgetRules(money.FromMinor(active.MonthlyMinor, b.Monthly.Currency()), p.PeriodStart(d), 1, g, nil)
+			limits, err := plan.ExpandSpendingLimits(money.FromMinor(active.MonthlyMinor, b.Monthly.Currency()), p.PeriodStart(d), 1, g, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -309,7 +309,7 @@ func (b Budget) policySpending(valuation date.Date, noGrowth bool, spent money.A
 			if err != nil {
 				return nil, err
 			}
-			adjusted, err := plan.ExpandBudgetRules(limit, p.PeriodStart(d), 1, nil, a)
+			adjusted, err := plan.ExpandSpendingLimits(limit, p.PeriodStart(d), 1, nil, a)
 			if err != nil {
 				return nil, err
 			}

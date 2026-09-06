@@ -10,6 +10,25 @@ import (
 	"github.com/andranikasd/marumbot/pkg/core/money"
 )
 
+// The names in this file are a stored schema, not just Go identifiers.
+//
+// A caller persists an Input verbatim (see app.PlanManifest) and guards it with
+// a fingerprint that hashes each field's *name* and each type's *name*, so
+// renaming a field or a type here does two things at once: it changes the JSON
+// key of every stored record, and it changes the hash those records are checked
+// against. Stored plans then fail to replay -- as a conflict, which reads like
+// data corruption rather than like a rename.
+//
+// This is a real constraint on refactoring this package, and it is worth
+// removing: it exists because a caller chose to store the engine's own struct
+// instead of mapping it to a type that caller owns. Until that changes, treat
+// every identifier below as a wire name. Renaming one needs its stored form
+// pinned first, and a decision about the records already written.
+//
+// It binds Input and everything reachable from it, and Result, which is hashed
+// the same way. It does not bind Report, Certificate or the ladder, none of
+// which are stored.
+
 // MaxLoans is the most loans one plan covers. It is a product limit enforced
 // where loans are filed, and the planner refuses a portfolio that exceeds it
 // rather than silently planning a subset.

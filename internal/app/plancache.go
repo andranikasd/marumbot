@@ -54,6 +54,13 @@ type searchEntry struct {
 // searchFingerprint encodes raw values, never display strings or addresses.
 // The schema prefix versions the encoding independently of the engine.
 //
+// It walks by reflection and writes each field's name and each type's name, so
+// the fingerprint moves when the shape of plan.Input moves, not only when its
+// values do. That is deliberate for the cache -- a restructured input is a
+// different question -- but it is also why ReplayManifest refuses a stored
+// manifest after any rename inside plan.Input. See the note at the top of
+// pkg/core/plan/input.go before renaming anything there.
+//
 // The encoding streams straight into the hash. Building the whole encoded
 // tree as one string first produced the same digest and threw away tens of
 // kilobytes per call -- a cost paid on cache hits too, where it was the only
