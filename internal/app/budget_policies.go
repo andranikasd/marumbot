@@ -12,6 +12,24 @@ import (
 
 // BudgetPolicy is an approved declaration. Version is assigned by persistence.
 // It changes permission only: cash statements and spending facts are separate.
+//
+// The optional fields are parameters of a rule, not defaults. Absent means
+// "this rule does not take that parameter" and is refused when the rule needs
+// it; present means the borrower stated it, and a stated zero is a real
+// figure, not an absence. CarryRule decides which of CarryMinimumMinor and
+// CarryUntil may appear, ReleasedPaymentRule decides between RetainMinor and
+// RetainPercentPPB, and each rule refuses the parameters belonging to the
+// others. Validate is the authority; this is the summary:
+//
+//	CarryRule            carry_minimum_minor  carry_until
+//	  carry_cash, none   absent               absent
+//	  batch_until        required, above zero absent
+//	  carry_to_date      absent               required, not before effective_from
+//
+//	ReleasedPaymentRule  retain_minor         retain_percent_ppb
+//	  roll_all, release  absent               absent
+//	  roll_amount        required, zero or up absent
+//	  roll_percent       absent               required, 0..1_000_000_000
 type BudgetPolicy struct {
 	CarryMinimumMinor *int64 `json:"carry_minimum_minor,omitempty"`
 	CarryUntil        string `json:"carry_until,omitempty"`
@@ -159,11 +177,12 @@ func (p BudgetPolicy) Validate(currency string) error {
 // invents funding. Existing CashPlan callers get the growth input, and invalid
 // declarations become a typed planner refusal through Spending.RuleError.
 func (b Budget) CashPlans(valuation date.Date) (plan.CashPlan, plan.CashPlan, error) {
-	legacy := b
-	legacy.Policies = nil
-	base := legacy.CashPlan(valuation)
+	base := b.declaredCashPlan(valuation)
 	if len(b.Policies) == 0 {
-		return base, legacy.CashPlan(valuation), nil
+		// Nothing approved: growth and no-growth are the same declaration.
+		// Two independently built values, not one shared twice, because the
+		// caller holds both and each owns its own overrides and events.
+		return base, b.declaredCashPlan(valuation), nil
 	}
 	if b.Funding == nil {
 		return base, base, &plan.UnsupportedError{Feature: "budget policies require explicit funding"}
@@ -184,7 +203,7 @@ func (b Budget) CashPlans(valuation date.Date) (plan.CashPlan, plan.CashPlan, er
 	if err != nil {
 		return base, base, err
 	}
-	fallback := legacy.CashPlan(valuation)
+	fallback := b.declaredCashPlan(valuation)
 	restoreCash(&fallback)
 	fallback.Spending, err = b.policySpending(valuation, true, fallback.Spending.Spent)
 	return base, fallback, err

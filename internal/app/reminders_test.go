@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -157,7 +158,7 @@ type reminderTickFake struct {
 	walks, reads int
 }
 
-func (f *reminderTickFake) ActiveLoanUsers(context.Context, int32) ([]string, error) {
+func (f *reminderTickFake) ActiveLoanUsers(context.Context, string, int32) ([]string, error) {
 	f.walks++
 	return nil, nil
 }
@@ -197,7 +198,7 @@ type stalledReminderWalk struct {
 	order []string
 }
 
-func (f *stalledReminderWalk) ActiveLoanUsers(ctx context.Context, _ int32) ([]string, error) {
+func (f *stalledReminderWalk) ActiveLoanUsers(ctx context.Context, _ string, _ int32) ([]string, error) {
 	f.order = append(f.order, "generation")
 	<-ctx.Done()
 	return nil, ctx.Err()
@@ -229,4 +230,58 @@ func TestSlowReminderGenerationCannotStarveDueDelivery(t *testing.T) {
 			t.Fatal("incomplete generation marked complete")
 		}
 	})
+}
+
+// pagedWalk hands out one full page and then a short one, and records the
+// cursor it was asked to resume from.
+type pagedWalk struct {
+	reminderTickFake
+	asked []string
+	page  int
+}
+
+func (f *pagedWalk) ActiveLoanUsers(_ context.Context, after string, limit int32) ([]string, error) {
+	f.asked = append(f.asked, after)
+	f.page++
+	if f.page > 1 {
+		return []string{"tail"}, nil // a short page: the list is exhausted
+	}
+	ids := make([]string, limit)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("u%04d", i)
+	}
+	return ids, nil
+}
+
+// The account walk is a cursor, not a fresh start. Before it was ordered and
+// resumable, an unordered LIMIT meant accounts past the limit were never
+// reached at all.
+func TestReminderWalkResumesFromTheLastAccount(t *testing.T) {
+	f := &pagedWalk{}
+	w := reviseWorker(t, &f.reviseFakes)
+	w.Reminders = f
+	clock := &fixedClock{at: time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)}
+	w.Clock = clock
+
+	if _, err := w.TickReminders(t.Context(), f); err != nil {
+		t.Fatal(err)
+	}
+	clock.at = clock.at.Add(time.Hour)
+	if _, err := w.TickReminders(t.Context(), f); err != nil {
+		t.Fatal(err)
+	}
+	clock.at = clock.at.Add(time.Hour)
+	if _, err := w.TickReminders(t.Context(), f); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"", fmt.Sprintf("u%04d", remindPage-1), ""}
+	if len(f.asked) != len(want) {
+		t.Fatalf("want %d walks, got %d: %v", len(want), len(f.asked), f.asked)
+	}
+	for i := range want {
+		if f.asked[i] != want[i] {
+			t.Fatalf("walk %d resumed from %q, want %q (all: %v)", i+1, f.asked[i], want[i], f.asked)
+		}
+	}
 }

@@ -125,7 +125,7 @@ func Compare(req ComparisonRequest) (ComparisonReport, error) {
 	}
 	out.SharedInputHash = inputHash(norm)
 	out.AssumedPayments = assumed
-	u := &Universe{Input: norm, assumed: assumed, cache: cache{}, runs: map[string]cachedPolicyRun{}}
+	u := &Universe{Input: norm, assumed: assumed, cache: newCache(), runs: map[string]cachedPolicyRun{}}
 	if len(req.OptimizedGoals) > 0 {
 		u, err = exploreNormalized(norm, assumed, true)
 		if err != nil {

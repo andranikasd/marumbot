@@ -89,9 +89,14 @@ type Worker struct {
 	// prevents the race and makes the overlapping tick a no-op.
 	lastRemind atomic.Int64
 	reminding  atomic.Bool
+	// remindCursor is the last account the generation walk finished, so a walk
+	// cut short by its deadline resumes rather than restarts. It holds a
+	// string; the zero Value means the beginning of the list.
+	remindCursor atomic.Value
 	// lastShadow is the same gate for the shadow walk; see shadow.go.
-	lastShadow atomic.Int64
-	shadowing  atomic.Bool
+	lastShadow   atomic.Int64
+	shadowing    atomic.Bool
+	shadowCursor atomic.Value
 
 	// DefaultCurrency is what a bare number means. AMD here; a user with a
 	// dollar loan writes the code and it is honoured.
@@ -396,8 +401,8 @@ func (w *Worker) listLoans(ctx context.Context, userID string, chat int64, l i18
 		if ln.Description != "" {
 			b.WriteString("<i>" + html.EscapeString(ln.Description) + "</i>\n")
 		}
-		if s, err := ln.Schedule(); err == nil && len(s.Rows) > 0 {
-			b.WriteString(i18n.T(l, "loan.line", bare(ln.Balance), percent(ln.Contract.NominalRate), shortDate(l, s.Rows[0].Due, today)) + "\n")
+		if next, err := ln.NextInstalment(); err == nil {
+			b.WriteString(i18n.T(l, "loan.line", bare(ln.Balance), percent(ln.Contract.NominalRate), shortDate(l, next.Due, today)) + "\n")
 		} else {
 			// Say the schedule is unavailable rather than omitting the line: a
 			// silently missing number reads as a number of zero.
@@ -436,12 +441,12 @@ func (w *Worker) nextInstalment(loans []UserLoan) (date.Date, money.Amount, bool
 		if ln.Balance.Sign() <= 0 {
 			continue
 		}
-		s, err := ln.Schedule()
-		if err != nil || len(s.Rows) == 0 {
+		next, err := ln.NextInstalment()
+		if err != nil {
 			continue
 		}
-		if !found || s.Rows[0].Due.Before(due) {
-			due, pay, found = s.Rows[0].Due, s.Rows[0].Payment, true
+		if !found || next.Due.Before(due) {
+			due, pay, found = next.Due, next.Payment, true
 		}
 	}
 	return due, pay, found

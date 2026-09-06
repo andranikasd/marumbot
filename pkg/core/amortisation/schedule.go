@@ -108,6 +108,12 @@ func RemainingDates(c model.Contract, from date.Date) ([]date.Date, error) {
 	if err != nil {
 		return nil, err
 	}
+	return remainingFrom(c, dates, from)
+}
+
+// remainingFrom applies the rule above to a calendar already resolved, so a
+// caller holding a Calendar never rebuilds the contract's dates.
+func remainingFrom(c model.Contract, dates []date.Date, from date.Date) ([]date.Date, error) {
 	if from.IsZero() && c.NotBeforeDue.IsZero() {
 		return dates, nil
 	}
@@ -130,28 +136,78 @@ func RemainingDates(c model.Contract, from date.Date) ([]date.Date, error) {
 // schedule that ends on a level payment and a stray balance of 3 dram is wrong
 // in the way a borrower notices.
 func Project(c model.Contract, principal money.Amount, instalment money.Amount, from date.Date) (Schedule, error) {
-	if principal.Sign() < 0 {
-		return Schedule{}, fmt.Errorf("%w: negative principal", ErrUnsolvable)
+	cal, err := NewCalendar(c)
+	if err != nil {
+		if checked := checkProjection(principal, instalment); checked != nil {
+			return Schedule{}, checked
+		}
+		return Schedule{}, err
 	}
-	if instalment.Sign() <= 0 {
-		return Schedule{}, fmt.Errorf("%w: instalment must be positive", ErrUnsolvable)
+	return cal.Project(principal, instalment, from)
+}
+
+// Project runs the schedule on an already-resolved calendar.
+func (cal Calendar) Project(principal money.Amount, instalment money.Amount, from date.Date) (Schedule, error) {
+	if err := checkProjection(principal, instalment); err != nil {
+		return Schedule{}, err
 	}
-	if principal.Currency() != instalment.Currency() {
-		return Schedule{}, fmt.Errorf("%w: principal in %s, instalment in %s",
-			ErrUnsolvable, principal.Currency(), instalment.Currency())
-	}
-	dates, err := RemainingDates(c, from)
+	dates, err := cal.Dates(from)
 	if err != nil {
 		return Schedule{}, err
 	}
-
-	cur := principal.Currency()
-	s := Schedule{
-		Rows:          make([]Row, 0, len(dates)),
-		Instalment:    instalment,
-		TotalPaid:     money.Zero(cur),
-		TotalInterest: money.Zero(cur),
+	s := Schedule{Rows: make([]Row, 0, len(dates)), Instalment: instalment}
+	out, err := project(cal.contract, principal, instalment, from, dates, &s.Rows)
+	if err != nil {
+		return Schedule{}, err
 	}
+	s.TotalPaid, s.TotalInterest, s.FinalPayment = out.TotalPaid, out.TotalInterest, out.FinalPayment
+	return s, nil
+}
+
+// checkProjection rejects money arguments a projection cannot mean, before any
+// calendar work. The order of these checks is part of the package's behaviour:
+// callers match on the sentinel and the message.
+func checkProjection(principal, instalment money.Amount) error {
+	if principal.Sign() < 0 {
+		return fmt.Errorf("%w: negative principal", ErrUnsolvable)
+	}
+	if instalment.Sign() <= 0 {
+		return fmt.Errorf("%w: instalment must be positive", ErrUnsolvable)
+	}
+	if principal.Currency() != instalment.Currency() {
+		return fmt.Errorf("%w: principal in %s, instalment in %s",
+			ErrUnsolvable, principal.Currency(), instalment.Currency())
+	}
+	return nil
+}
+
+// outcome is what a projection produces once its rows are dropped: enough to
+// decide whether an instalment clears the loan, and nothing that has to be
+// allocated per candidate.
+type outcome struct {
+	Periods int
+	// The first row, which is the next obligation: every planner question
+	// about "what is owed next" is answered from these three fields.
+	FirstDue       date.Date
+	FirstInterest  money.Amount
+	FirstPrincipal money.Amount
+	FirstPayment   money.Amount
+	// The last row, which is what a bisection and a maturity check read.
+	FinalPayment  money.Amount
+	FinalClosing  money.Amount
+	TotalPaid     money.Amount
+	TotalInterest money.Amount
+}
+
+// project walks the dates once and is the only place the arithmetic lives.
+//
+// rows is nil for callers that want the outcome alone. Solve bisects over this
+// about twenty-five times per loan and reads only the last closing balance;
+// building a schedule for each probe made the discarded rows the largest
+// single source of allocation in the engine.
+func project(c model.Contract, principal, instalment money.Amount, from date.Date, dates []date.Date, rows *[]Row) (outcome, error) {
+	cur := principal.Currency()
+	out := outcome{TotalPaid: money.Zero(cur), TotalInterest: money.Zero(cur)}
 
 	balance := principal
 	prev := from
@@ -165,18 +221,18 @@ func Project(c model.Contract, principal money.Amount, instalment money.Amount, 
 		}
 		days := date.DaysBetween(prev, due)
 		if days < 0 {
-			return Schedule{}, fmt.Errorf("%w: instalment %s precedes %s", ErrUnsolvable, due, prev)
+			return outcome{}, fmt.Errorf("%w: instalment %s precedes %s", ErrUnsolvable, due, prev)
 		}
 		interest, err := money.Accrue(balance, c.NominalRate, int64(days), c.DayCount, c.Rounding)
 		if err != nil {
-			return Schedule{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
+			return outcome{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
 		}
 
 		// Settling the loan on this date costs the balance plus the interest
 		// that has accrued to it.
 		owed, err := balance.Add(interest)
 		if err != nil {
-			return Schedule{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
+			return outcome{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
 		}
 		pay := instalment
 		if pay.Cmp(owed) >= 0 {
@@ -187,31 +243,35 @@ func Project(c model.Contract, principal money.Amount, instalment money.Amount, 
 
 		principalPart, err := pay.Sub(interest)
 		if err != nil {
-			return Schedule{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
+			return outcome{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
 		}
 		closing, err := balance.Sub(principalPart)
 		if err != nil {
-			return Schedule{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
+			return outcome{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
 		}
 
-		s.Rows = append(s.Rows, Row{
-			N: i + 1, Due: due, Days: days,
-			Opening: balance, Interest: interest,
-			Principal: principalPart, Payment: pay, Closing: closing,
-		})
-		if s.TotalPaid, err = s.TotalPaid.Add(pay); err != nil {
-			return Schedule{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
+		if rows != nil {
+			*rows = append(*rows, Row{
+				N: i + 1, Due: due, Days: days,
+				Opening: balance, Interest: interest,
+				Principal: principalPart, Payment: pay, Closing: closing,
+			})
 		}
-		if s.TotalInterest, err = s.TotalInterest.Add(interest); err != nil {
-			return Schedule{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
+		if out.TotalPaid, err = out.TotalPaid.Add(pay); err != nil {
+			return outcome{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
+		}
+		if out.TotalInterest, err = out.TotalInterest.Add(interest); err != nil {
+			return outcome{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
 		}
 
+		out.Periods++
+		if out.Periods == 1 {
+			out.FirstDue, out.FirstInterest = due, interest
+			out.FirstPrincipal, out.FirstPayment = principalPart, pay
+		}
+		out.FinalPayment, out.FinalClosing = pay, closing
 		balance = closing
 		prev = due
 	}
-
-	if n := len(s.Rows); n > 0 {
-		s.FinalPayment = s.Rows[n-1].Payment
-	}
-	return s, nil
+	return out, nil
 }

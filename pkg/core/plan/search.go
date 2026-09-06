@@ -1,13 +1,13 @@
 package plan
 
 import (
-	"errors"
 	"fmt"
-	"sort"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/andranikasd/marumbot/pkg/core/allocation"
-	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
 )
@@ -35,72 +35,6 @@ const (
 	NamedStrategiesOnly Strength = "named_strategies_only"
 )
 
-// Certificate says how the answer was found and how far to trust it. The
-// borrower sees one sentence; the admin sees all of it.
-type Certificate struct {
-	Strength    Strength
-	Eligibility string // the rule a proof relied on, when Strength is ProvenOptimal
-	// Policies counts candidate simulation attempts, including infeasible
-	// policies, across all rollovers explored so far (at most 4096 each).
-	// FeasiblePolicies counts their successful results. Both exclude the
-	// report's named baselines, minimum and budget ladder runs.
-	Policies         int
-	FeasiblePolicies int
-	// DynamicStates and DynamicExpansions are only populated by SearchDynamic;
-	// dynamic state/branch work is not reported as simulated static policies.
-	DynamicStates     int
-	DynamicExpansions int
-	// Axis sizes describe the candidate set after vector/order fallback;
-	// the attempt cap may stop before every axis entry is visited.
-	Orders          int
-	EffectVectors   int
-	TimingVectors   int
-	Truncation      string
-	BestCost        money.Amount
-	LowerBound      *money.Amount // nil unless an admissible bound was established
-	Gap             *money.Amount
-	Quantum         int64
-	CandidateDates  []date.Date // distinct dates on which optional payments were considered
-	EngineVersion   string
-	Fingerprints    []string
-	AssumedPayments map[string]int
-	// Positions records each loan's identity and how far its balance can be
-	// trusted, so a report can carry its own caveat.
-	Positions []CertifiedPosition
-}
-
-// CertifiedPosition is one loan as the certificate records it.
-type CertifiedPosition struct {
-	ID    string
-	Trust string
-}
-
-// Rung is one step of the budget ladder.
-type Rung struct {
-	Budget   money.Amount
-	Months   int
-	Payoff   date.Date
-	Interest money.Amount
-}
-
-// Report is the answer to "how should I pay".
-type Report struct {
-	Goal                 Goal
-	Best                 Result
-	Ranked               []Result
-	Avalanche            Result // verified fee-free marginal-rate baseline, on due
-	HighestRate          Result // nominal-rate baseline, including fee-bearing domains
-	AvalancheUnsupported string // nonempty when Avalanche is unavailable
-	Snowball             Result // smallest balance first, on due, budget kept
-	Minimum              Result // only what the contracts require
-	Ladder               []Rung
-	Ties                 []string
-	Certificate          Certificate
-	// TimingSaving is the cost of the best policy paid on due dates minus
-	// its cost as ranked; what the payday is worth.
-	TimingSaving money.Amount
-}
-
 // Caps on the candidate set. Orders are exhaustive up to five loans (120);
 // per-loan vectors up to four free loans each (16). Beyond those the search
 // labels itself bounded and says which axis was capped.
@@ -125,7 +59,7 @@ type Universe struct {
 	nTimings  int
 	trunc     string
 	assumed   map[string]int
-	cache     cache
+	cache     *cache
 	feeBearer bool
 	attempted int
 	runs      map[string]cachedPolicyRun
@@ -144,6 +78,12 @@ func (u *Universe) truncate(reason string) {
 // explore attempts at most maxPolicies candidates for one rollover.
 // Freed-cash behaviour is a policy dimension explored on demand: the
 // least-interest family never needs the kept-cash runs and vice versa.
+//
+// The candidate set is enumerated first and simulated second. Enumeration is
+// the part that has to be deterministic — which candidates are attempted, in
+// which order, and where the cap falls — and separating it means the
+// simulations, which are pure and independent, can run on every core while
+// the results are still merged in candidate order.
 func (u *Universe) explore(r Rollover) error {
 	if u.explored == nil {
 		u.explored = map[Rollover]bool{}
@@ -152,7 +92,30 @@ func (u *Universe) explore(r Rollover) error {
 		return nil
 	}
 	u.explored[r] = true
-	attempted := 0
+
+	policies, capped := u.candidates(r)
+	if capped {
+		u.truncate(fmt.Sprintf("policies: attempted simulation cap of %d per rollover; candidate prefix only", maxPolicies))
+	}
+	u.attempted += len(policies)
+
+	results, err := u.simulateAll(policies)
+	if err != nil {
+		return err
+	}
+	for _, res := range results {
+		res.Assumed = u.assumed
+		u.Results = append(u.Results, res)
+	}
+	return nil
+}
+
+// candidates enumerates the deterministic prefix of the candidate set for one
+// rollover, stopping at the attempt cap. The second return says whether the
+// cap truncated it. Infeasible policies are counted here, not discovered here:
+// the cap charges attempts, not successes.
+func (u *Universe) candidates(r Rollover) ([]Policy, bool) {
+	out := make([]Policy, 0, len(u.orders)*len(u.effects)*len(u.timings)*len(u.batches))
 	for _, o := range u.orders {
 		for _, e := range u.effects {
 			for _, t := range u.timings {
@@ -160,27 +123,112 @@ func (u *Universe) explore(r Rollover) error {
 					// Bound actual attempts even when dropping permutations was
 					// insufficient. Keep the deterministic order/effect/timing/batch
 					// prefix, and charge infeasible runs against the same cap.
-					if attempted == maxPolicies {
-						u.truncate(fmt.Sprintf("policies: attempted simulation cap of %d per rollover; candidate prefix only", maxPolicies))
-						return nil
+					if len(out) == maxPolicies {
+						return out, true
 					}
-					attempted++
-					u.attempted++
-					pol := Policy{Name: o.name, Order: o.idx, Timing: t, Effect: e, Rollover: r, MinPrepay: b}
-					res, err := u.simulate(pol)
-					if err != nil {
-						if isInfeasible(err) {
-							continue // this policy cannot be followed; others may
-						}
-						return err
-					}
-					res.Assumed = u.assumed
-					u.Results = append(u.Results, res)
+					out = append(out, Policy{Name: o.name, Order: o.idx, Timing: t, Effect: e, Rollover: r, MinPrepay: b})
 				}
 			}
 		}
 	}
-	return nil
+	return out, false
+}
+
+// simulateAll runs every candidate and returns the feasible results in
+// candidate order.
+//
+// A policy that cannot be followed is dropped -- others may still work -- but
+// any other failure is arithmetic, and the first one in candidate order is
+// returned so a fault does not depend on which worker reached it first.
+func (u *Universe) simulateAll(policies []Policy) ([]Result, error) {
+	if u.runs != nil {
+		// Compare memoises identical canonical policies across goals, which is
+		// a sequential dependency. That path simulates far fewer candidates,
+		// so it keeps the memo rather than the cores.
+		out := make([]Result, 0, len(policies))
+		for _, pol := range policies {
+			res, err := u.simulate(pol)
+			if err != nil {
+				if isInfeasible(err) {
+					continue
+				}
+				return nil, err
+			}
+			out = append(out, res)
+		}
+		return out, nil
+	}
+
+	workers := runtime.GOMAXPROCS(0)
+	if workers > len(policies) {
+		workers = len(policies)
+	}
+	if workers < 2 {
+		return u.simulateSerially(policies)
+	}
+
+	type slot struct {
+		res Result
+		ok  bool
+		err error
+	}
+	slots := make([]slot, len(policies))
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// One memo per worker. The obligation and calendar caches are
+			// plain maps, and sharing them would need a lock on the hottest
+			// path in the engine; a worker simulates hundreds of policies
+			// over the same loans, so it warms its own within a few of them.
+			c := newCache()
+			for {
+				i := int(next.Add(1)) - 1
+				if i >= len(policies) {
+					return
+				}
+				res, err := run(u.Input, policies[i], c)
+				if err != nil {
+					slots[i].err = err
+					continue
+				}
+				slots[i].res, slots[i].ok = res, true
+			}
+		}()
+	}
+	wg.Wait()
+
+	out := make([]Result, 0, len(policies))
+	for i := range slots {
+		if slots[i].err != nil {
+			if isInfeasible(slots[i].err) {
+				continue // this policy cannot be followed; others may
+			}
+			return nil, slots[i].err
+		}
+		if slots[i].ok {
+			out = append(out, slots[i].res)
+		}
+	}
+	return out, nil
+}
+
+func (u *Universe) simulateSerially(policies []Policy) ([]Result, error) {
+	out := make([]Result, 0, len(policies))
+	c := newCache()
+	for _, pol := range policies {
+		res, err := run(u.Input, pol, c)
+		if err != nil {
+			if isInfeasible(err) {
+				continue
+			}
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
 }
 
 // Explore simulates the bounded candidate set for an input with RollFreed.
@@ -193,7 +241,7 @@ func Explore(in Input) (*Universe, error) {
 }
 
 func exploreNormalized(norm Input, assumed map[string]int, memoize bool) (*Universe, error) {
-	u := &Universe{Input: norm, assumed: assumed, cache: cache{}}
+	u := &Universe{Input: norm, assumed: assumed, cache: newCache()}
 	if memoize {
 		u.runs = map[string]cachedPolicyRun{}
 	}
@@ -276,92 +324,6 @@ func asInfeasible(err error, target **InfeasibleError) bool {
 	return ok
 }
 
-// Rank orders a universe for a goal and assembles the report.
-func (u *Universe) Rank(goal Goal) (Report, error) {
-	if err := goal.Validate(); err != nil {
-		return Report{}, err
-	}
-	in := u.Input
-	cur := in.Cash.Monthly.Currency()
-	baseline, err := requiredNow(in, u.cache)
-	if err != nil {
-		return Report{}, err
-	}
-	// Relief goals are only meaningful when freed money is kept; the other
-	// goals only when it is redeployed. Filter rather than mix, so a
-	// comparator never has to guess what a policy meant.
-	want := RollFreed
-	if goal.Kind == Relief {
-		want = KeepFreed
-	}
-	if err := u.explore(want); err != nil {
-		return Report{}, err
-	}
-	var ranked []Result
-	for _, r := range u.Results {
-		if r.Policy.Rollover == want {
-			ranked = append(ranked, r)
-		}
-	}
-	if len(ranked) == 0 {
-		return Report{}, fmt.Errorf("plan: no feasible policy for %s", goal)
-	}
-	sort.SliceStable(ranked, func(i, j int) bool { return better(goal, baseline, ranked[i], ranked[j]) })
-	rep := Report{Goal: goal, Best: ranked[0], Ranked: ranked, Ties: nil}
-	rep.AvalancheUnsupported = avalancheDomain(in)
-
-	base := rep.Best.Policy
-	for _, o := range u.orders {
-		for _, name := range o.also {
-			pol := Policy{Name: name, Order: o.idx, Timing: uniform(len(in.Loans), OnDue), Effect: base.Effect, Rollover: RollFreed}
-			switch name {
-			case nameAvalanche, string(StrategyHighestRate):
-				if rep.HighestRate, err = run(in, pol, u.cache); err != nil && !isInfeasible(err) {
-					return Report{}, err
-				}
-				if name == nameAvalanche {
-					rep.Avalanche = rep.HighestRate
-				}
-
-			case nameSnowball:
-				if rep.Snowball, err = run(in, pol, u.cache); err != nil && !isInfeasible(err) {
-					return Report{}, err
-				}
-			}
-		}
-	}
-	if rep.Minimum, err = minimum(in, u.cache); err != nil && !isInfeasible(err) {
-		return Report{}, err
-	}
-
-	// The payday's worth is best-against-best: the winner among plans that
-	// pay only on due dates, minus the overall winner. Re-timing just the
-	// winning policy understates it -- a different order might be the best
-	// way to live without the payday, and the ranked list already holds it.
-	rep.TimingSaving = money.Zero(cur)
-	if t, ok := uniformTiming(base.Timing); !ok || t != OnDue {
-		for _, r := range ranked {
-			if t, ok := uniformTiming(r.Policy.Timing); ok && t == OnDue {
-				if rep.TimingSaving, err = r.Cost().Sub(rep.Best.Cost()); err != nil {
-					return Report{}, err
-				}
-				break
-			}
-		}
-		if rep.TimingSaving.Sign() < 0 {
-			rep.TimingSaving = money.Zero(cur)
-		}
-	}
-	if goal.Kind != Relief {
-		if rep.Ladder, err = ladder(in, base, u.cache); err != nil {
-			return Report{}, err
-		}
-	}
-	rep.Ties = ties(in, rep)
-	rep.Certificate = u.certificate(goal, rep)
-	return rep, nil
-}
-
 func isInfeasible(err error) bool {
 	var inf *InfeasibleError
 	return asInfeasible(err, &inf)
@@ -374,595 +336,4 @@ func Search(in Input, goal Goal) (Report, error) {
 		return Report{}, err
 	}
 	return u.Rank(goal)
-}
-
-// certificate states what the search covered and what it may claim.
-func (u *Universe) certificate(goal Goal, rep Report) Certificate {
-	in := u.Input
-	c := Certificate{
-		Policies: u.attempted, FeasiblePolicies: len(u.Results), Orders: u.nOrders, EffectVectors: u.nEffects, TimingVectors: u.nTimings,
-		Truncation: u.trunc, BestCost: rep.Best.Cost(), Quantum: money.DefaultPolicy(in.Cash.Monthly.Currency()).Unit,
-		EngineVersion: EngineVersion, AssumedPayments: u.assumed,
-	}
-	for _, l := range in.Loans {
-		c.Fingerprints = append(c.Fingerprints, fingerprint(l.Contract))
-		c.Positions = append(c.Positions, CertifiedPosition{ID: l.ID, Trust: l.Trust})
-	}
-	c.CandidateDates = candidateDates(rep.Ranked)
-
-	switch {
-	case u.trunc != "":
-		c.Strength = BoundedHeuristic
-		if len(in.Loans) > maxExhaustiveOrders && u.nEffects == 1 && u.nTimings == 1 {
-			c.Strength = NamedStrategiesOnly
-		}
-	case u.feeBearer:
-		c.Strength = BoundedHeuristic
-		c.Truncation = "fees: batching thresholds are sampled at contract breakpoints, not solved"
-	default:
-		c.Strength = ExhaustiveStaticOrder
-	}
-	// Winner interest is not an admissible lower bound across other policies.
-	// Leave both bound and gap unknown until a relaxation has been solved.
-	if rule, ok := u.provable(goal, rep); ok {
-		c.Strength, c.Eligibility = ProvenOptimal, rule
-	}
-	return c
-}
-
-// provable only claims a global least-cost proof when a feasible policy has
-// reached the nonnegative zero-cost floor. Continuous exchange arguments do
-// not establish optimality under per-event discrete rounding, even for one loan.
-func (u *Universe) provable(goal Goal, rep Report) (string, bool) {
-	if goal.Kind != LeastInterest || u.feeBearer || u.trunc != "" || u.Input.Cash.Spending != nil || rep.Best.Cost().Sign() != 0 {
-		return "", false
-	}
-	for _, l := range u.Input.Loans {
-		if l.Contract.NominalRate < 0 || l.OptionalExcluded {
-			return "", false
-		}
-	}
-	return "feasible zero interest and fees reaches the nonnegative cost floor; payoff/tie-break optimality is not claimed", true
-}
-
-// better is the written comparator for each goal.
-func better(goal Goal, baseline money.Amount, a, b Result) bool {
-	cc := a.Cost().Cmp(b.Cost())
-	pd := a.PayoffDate.Compare(b.PayoffDate)
-	switch goal.Kind {
-	case Fastest:
-		if pd != 0 {
-			return pd < 0
-		}
-		if cc != 0 {
-			return cc < 0
-		}
-		if pr := a.PeakRequired.Cmp(b.PeakRequired); pr != 0 {
-			return pr < 0
-		}
-	case Relief:
-		ra, rb := reliefMonth(goal, baseline, a), reliefMonth(goal, baseline, b)
-		if ra != rb {
-			return ra < rb
-		}
-		if cc != 0 {
-			return cc < 0
-		}
-	case FirstWin:
-		fa, fb := a.FirstClearOn, b.FirstClearOn
-		if fa.IsZero() != fb.IsZero() {
-			return !fa.IsZero()
-		}
-		if c := fa.Compare(fb); c != 0 {
-			return c < 0
-		}
-		if cc != 0 {
-			return cc < 0
-		}
-	default:
-		if cc != 0 {
-			return cc < 0
-		}
-		if pd != 0 {
-			return pd < 0
-		}
-		if a.Prepayments != b.Prepayments {
-			return a.Prepayments < b.Prepayments
-		}
-	}
-	// Total order: a named strategy before a bare permutation, then the
-	// canonical policy identifier.
-	if (a.Policy.Name == namePermuted) != (b.Policy.Name == namePermuted) {
-		return a.Policy.Name != namePermuted
-	}
-	return a.Policy.ID() < b.Policy.ID()
-}
-
-// ReliefMonth is the first cycle from which the contractual required total
-// stays at or under the goal's target for the rest of the run; a very large
-// number when it never does. It reads required amounts only: voluntary
-// extras and the small final instalment do not count as relief.
-func ReliefMonth(goal Goal, baseline money.Amount, r Result) int {
-	return reliefMonth(goal, baseline, r)
-}
-
-func reliefMonth(goal Goal, baseline money.Amount, r Result) int {
-	const never = 1 << 30
-	target := goal.Cap
-	if goal.Free.Sign() > 0 {
-		t, err := baseline.Sub(goal.Free)
-		if err != nil {
-			return never
-		}
-		target = t
-	}
-	if target.Sign() < 0 {
-		return never
-	}
-	// Walk from the end: the relief month is the first index of the final
-	// run of cycles whose required total is within the target.
-	n := len(r.Timeline)
-	if n == 0 {
-		return never
-	}
-	i := n
-	for i > 0 && r.Timeline[i-1].Required.Cmp(target) <= 0 {
-		i--
-	}
-	if i == n {
-		return never
-	}
-	return r.Timeline[i].Month
-}
-
-// minimum pays only what the contracts require, on their dates, with no
-// optional payment. Explicit spending preserves the declared cash and
-// permissions; legacy inputs retain the required-instalment budget baseline.
-func minimum(in Input, c cache) (Result, error) {
-	n := len(in.Loans)
-	pol := Policy{Name: "minimum", RequiredOnly: true, Order: identity(n), Timing: uniform(n, OnDue), Effect: uniform(n, model.PrepayReduceInstalment), Rollover: KeepFreed}
-	if in.Cash.Spending != nil {
-		// Funding and permission are independent in this domain. Preserve
-		// all dated cash, reserves and spending declarations; suppress extras
-		// explicitly rather than manufacturing a required-payment budget.
-		return run(in, pol, c)
-	}
-	req, err := requiredNow(in, c)
-	if err != nil {
-		return Result{}, err
-	}
-	// Under KeepFreed the budget falls as loans close; between closures the
-	// required total of an annuity is level, so the first cycle's figure
-	// carries. Declining-principal loans require less each month; the
-	// surplus that creates is not spent because RequiredOnly forbids extras,
-	// including closing payments that would bypass MinPrepay.
-	// Overrides ride along: a month the borrower stated as tight can be too
-	// tight even for the required instalments, and the minimum run is where
-	// that becomes a typed refusal with the date instead of a generic "no
-	// feasible policy". In a feasible plan they change nothing here -- the
-	// minimum spends only what is required, and spare income idles.
-	inMin := in
-	inMin.Cash = CashPlan{
-		Monthly: req, PayDay: in.Cash.PayDay, OpeningCash: in.Cash.OpeningCash,
-		MonthlyOverrides: in.Cash.MonthlyOverrides,
-	}
-	pol.MinPrepay = money.FromMinor(1<<62, req.Currency())
-	return run(inMin, pol, c)
-}
-
-// requiredNow totals the next instalment of every live loan.
-func requiredNow(in Input, c cache) (money.Amount, error) {
-	total := money.Zero(in.Cash.Monthly.Currency())
-	for _, l := range in.Loans {
-		if l.Balance.Sign() <= 0 {
-			continue
-		}
-		ls := &loanState{pos: l, fp: fingerprint(l.Contract), effect: model.PrepayReduceInstalment, balance: l.Balance, from: l.From}
-		o, err := c.next(ls)
-		if err != nil {
-			return money.Amount{}, err
-		}
-		if total, err = total.Add(o.required); err != nil {
-			return money.Amount{}, err
-		}
-	}
-	return total, nil
-}
-
-// ladder runs the best policy at a few larger budgets.
-func ladder(in Input, pol Policy, c cache) ([]Rung, error) {
-	cur := in.Cash.Monthly.Currency()
-	var out []Rung
-	for _, pct := range []int64{100, 110, 125, 150, 200} {
-		b := money.Quantise(money.FromMinor(in.Cash.Monthly.Minor()*pct/100, cur), money.DefaultPolicy(cur))
-		more := in
-		more.Cash.Monthly = b
-		r, err := run(more, pol, c)
-		if err != nil {
-			if isInfeasible(err) {
-				continue
-			}
-			return nil, err
-		}
-		out = append(out, Rung{Budget: b, Months: r.Months, Payoff: r.PayoffDate, Interest: r.TotalInterest})
-	}
-	return out, nil
-}
-
-// NonMonotoneError refuses an inverse search whose monotonicity is unproven.
-type NonMonotoneError struct {
-	Reason string
-}
-
-func (e *NonMonotoneError) Error() string {
-	return "plan: inverse budget monotonicity not established: " + e.Reason
-}
-
-// BudgetFor finds the smallest monthly settlement quantum meeting by for a
-// single zero-interest, fee-free annuity paid on its due dates. With aligned
-// principal and instalments, no payment is rounded and the post-due balance is
-// max(0, balance-budget) whenever the required payment can be met. Increasing
-// budget cannot increase that balance or turn a met obligation into a shortfall.
-// Positive interest is excluded: allocation-dependent accrual splits invalidate
-// the unrounded exchange argument, even with descending rates and shared units.
-// This proof covers only the current immediate-credit model, which has no
-// notice periods, allowed payment windows or delayed-credit fields.
-func BudgetFor(in Input, pol Policy, by date.Date) (money.Amount, error) {
-	norm, _, err := Normalize(in)
-	if err != nil {
-		return money.Amount{}, err
-	}
-	if by.IsZero() || by.Before(norm.ValuationDate) {
-		return money.Amount{}, fmt.Errorf("plan: invalid inverse target date")
-	}
-	if err := inverseDomain(norm, pol); err != nil {
-		return money.Amount{}, err
-	}
-	c := cache{}
-	cur := norm.Cash.Monthly.Currency()
-	hi, err := requiredNow(norm, c)
-	if err != nil {
-		return money.Amount{}, err
-	}
-	for _, l := range norm.Loans {
-		if hi, err = hi.Add(l.Balance); err != nil {
-			return money.Amount{}, err
-		}
-	}
-	unit := money.DefaultPolicy(cur).Unit
-	clears := func(b money.Amount) (bool, error) {
-		trial := norm
-		trial.Cash.Monthly = b
-		r, runErr := run(trial, pol, c)
-		return runErr == nil && !r.PayoffDate.After(by), runErr
-	}
-	h := hi.Minor() / unit
-	if hi.Minor()%unit != 0 {
-		h++
-	}
-	if h > (1<<63-1)/unit {
-		return money.Amount{}, fmt.Errorf("plan: inverse budget bound overflow")
-	}
-	if ok, runErr := clears(money.FromMinor(h*unit, cur)); runErr != nil {
-		return money.Amount{}, runErr
-	} else if !ok {
-		return money.Amount{}, fmt.Errorf("plan: inverse budget bound misses target")
-	}
-	miss := func(ok bool, runErr error) (bool, error) {
-		if runErr != nil && !isInfeasible(runErr) && !errors.Is(runErr, ErrHorizon) {
-			return false, runErr
-		}
-		return !ok, nil
-	}
-	l := int64(0)
-	for l < h {
-		mid := l + (h-l)/2
-		failed, runErr := miss(clears(money.FromMinor(mid*unit, cur)))
-		if runErr != nil {
-			return money.Amount{}, runErr
-		}
-		if failed {
-			l = mid + 1
-		} else {
-			h = mid
-		}
-	}
-	budget := money.FromMinor(h*unit, cur)
-	if ok, runErr := clears(budget); runErr != nil {
-		return money.Amount{}, runErr
-	} else if !ok {
-		return money.Amount{}, &NonMonotoneError{Reason: "result budget misses target"}
-	}
-	if h > 0 {
-		failed, runErr := miss(clears(money.FromMinor((h-1)*unit, cur)))
-		if runErr != nil {
-			return money.Amount{}, runErr
-		}
-		if !failed {
-			return money.Amount{}, &NonMonotoneError{Reason: "one quantum less also succeeds"}
-		}
-	}
-	return budget, nil
-}
-
-func inverseDomain(in Input, pol Policy) error {
-	refuse := func(reason string) error { return &NonMonotoneError{Reason: reason} }
-	cash := in.Cash
-	if !cash.CashThrough.IsZero() || cash.Spending != nil || len(cash.MonthlyOverrides) != 0 || len(cash.Lumps) != 0 ||
-		cash.OpeningCash.Sign() != 0 || cash.ReserveFloor.Sign() != 0 {
-		return refuse("funding or spending varies independently of the budget")
-	}
-	if pol.Rollover != RollFreed || pol.RequiredOnly || pol.MinPrepay.Sign() != 0 {
-		return refuse("rollover, required-only policy or batching")
-	}
-	n := len(in.Loans)
-	if len(pol.Order) != n || len(pol.Timing) != n || len(pol.Effect) != n {
-		return refuse("policy dimensions")
-	}
-	if n != 1 {
-		return refuse("multiple-loan allocation is unproven")
-	}
-	if pol.Order[0] != 0 {
-		return refuse("priority must be a permutation")
-	}
-	p := in.Loans[0]
-	ct := p.Contract
-	if ct.NominalRate != 0 {
-		return refuse("rounded interest is outside the proven domain")
-	}
-	if ct.Prepayment.FeeBP != 0 || len(ct.Prepayment.Charges) != 0 || ct.Prepayment.MinAmount.Sign() != 0 {
-		return refuse("prepayment fees or thresholds")
-	}
-	effect := ct.Prepayment.Effect
-	if effect == model.PrepayBorrowerChooses {
-		effect = pol.Effect[0]
-	}
-	if ct.Type != model.Annuity || (effect != model.PrepayShortenTerm && effect != model.PrepayBorrowerChooses) ||
-		p.OptionalExcluded || p.Excess != allocation.ExcessReducePrincipal {
-		return refuse("requires fixed instalments and unrestricted principal reduction")
-	}
-	rounding := money.DefaultPolicy(cash.Monthly.Currency())
-	if ct.Rounding != rounding || p.Balance.Sign() < 0 || p.Balance.Minor()%rounding.Unit != 0 ||
-		!ct.HasScheduled || ct.ScheduledPayment.Sign() <= 0 || ct.ScheduledPayment.Minor()%rounding.Unit != 0 {
-		return refuse("requires quantum-aligned principal and supplied instalment")
-	}
-	if pol.Timing[0] != OnDue || cash.PayDay != 0 || !p.From.Equal(in.ValuationDate) {
-		return refuse("requires funding and payment on the due calendar without anchor advancement")
-	}
-	return nil
-}
-
-// ties names the reasons candidates coincide.
-func ties(in Input, rep Report) []string {
-	var out []string
-	live := 0
-	credits := false
-	for _, l := range in.Loans {
-		if l.Balance.Sign() > 0 {
-			live++
-		}
-		if l.Excess == allocation.ExcessReducePrincipal {
-			credits = true
-		}
-	}
-	if live == 1 {
-		out = append(out, "one loan: the order cannot matter")
-	}
-	if rep.Goal.Kind != Relief && rep.Minimum.PayoffDate.Equal(rep.Best.PayoffDate) && rep.Best.Cost().Cmp(rep.Minimum.Cost()) == 0 {
-		out = append(out, "no surplus: every plan pays only what is required")
-	}
-	if live > 1 {
-		os := namedOrders(in.Loans)
-		if fmt.Sprint(os[0].idx) == fmt.Sprint(os[1].idx) {
-			out = append(out, "the highest rate is also the smallest balance: highest rate and snowball are the same order")
-		}
-	}
-	switch {
-	case !credits:
-		out = append(out, "no lender credits early payment: timing cannot matter")
-	case in.Cash.PayDay == 0:
-		out = append(out, "no payday given: early payment was not simulated")
-	}
-	return out
-}
-
-// candidateDates lists the distinct dates optional payments were made on
-// across the ranked results' first cycles.
-func candidateDates(rs []Result) []date.Date {
-	seen := map[date.Date]bool{}
-	var out []date.Date
-	for _, r := range rs {
-		for _, a := range r.Actions {
-			if a.Kind == Extra && !seen[a.On] {
-				seen[a.On] = true
-				out = append(out, a.On)
-			}
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Before(out[j]) })
-	return out
-}
-
-// effectVectors enumerates the prepayment effect per loan whose contract
-// leaves the choice to the borrower, up to maxVectorLoans free loans;
-// beyond that only the two uniform vectors are tried.
-func effectVectors(loans []Position) [][]model.PrepaymentEffect {
-	n := len(loans)
-	var free []int
-	for i, l := range loans {
-		if l.Contract.Prepayment.Effect == model.PrepayBorrowerChooses && l.Contract.Type == model.Annuity && l.Balance.Sign() > 0 {
-			free = append(free, i)
-		}
-	}
-	if len(free) == 0 {
-		return [][]model.PrepaymentEffect{uniform(n, model.PrepayBorrowerChooses)}
-	}
-	if len(free) > maxVectorLoans {
-		return [][]model.PrepaymentEffect{uniform(n, model.PrepayShortenTerm), uniform(n, model.PrepayReduceInstalment)}
-	}
-	var out [][]model.PrepaymentEffect
-	for mask := 0; mask < 1<<len(free); mask++ {
-		v := uniform(n, model.PrepayBorrowerChooses)
-		for k, i := range free {
-			if mask&(1<<k) != 0 {
-				v[i] = model.PrepayReduceInstalment
-			} else {
-				v[i] = model.PrepayShortenTerm
-			}
-		}
-		out = append(out, v)
-	}
-	return out
-}
-
-// timingVectors enumerates on_receipt/on_due per loan that a lender would
-// credit early, when a payday is known. Loans that cannot be credited early
-// are always on_due.
-//
-// Without fees or thresholds the per-loan mixes are dominated: interest is
-// non-increasing in each payment's date, so on_receipt for every creditable
-// loan weakly beats every mix. Only the two uniform vectors are run then —
-// the second so the report can price the payday. With fees the mixes are
-// enumerated, because a fee can make waiting right for one loan and wrong
-// for another.
-func timingVectors(in Input, loans []Position) [][]Timing {
-	n := len(loans)
-	var free []int
-	fees := false
-	if in.Cash.PayDay > 0 {
-		for i, l := range loans {
-			if l.Excess == allocation.ExcessReducePrincipal && l.Balance.Sign() > 0 {
-				free = append(free, i)
-			}
-			if len(l.Contract.Prepayment.Charges) > 0 || l.Contract.Prepayment.FeeBP > 0 || l.Contract.Prepayment.MinAmount.Sign() > 0 {
-				fees = true
-			}
-		}
-	}
-	if len(free) == 0 {
-		return [][]Timing{uniform(n, OnDue)}
-	}
-	if len(free) > maxVectorLoans || !fees {
-		all := uniform(n, OnDue)
-		for _, i := range free {
-			all[i] = OnReceipt
-		}
-		return [][]Timing{uniform(n, OnDue), all}
-	}
-	var out [][]Timing
-	for mask := 0; mask < 1<<len(free); mask++ {
-		v := uniform(n, OnDue)
-		for k, i := range free {
-			if mask&(1<<k) != 0 {
-				v[i] = OnReceipt
-			}
-		}
-		out = append(out, v)
-	}
-	return out
-}
-
-// batchThresholds are the amounts worth waiting for when fees apply: each
-// loan's free allowance, and the amount at which a fixed fee is one per
-// cent of the payment. They are contract breakpoints, not a grid.
-func batchThresholds(in Input) []money.Amount {
-	cur := in.Cash.Monthly.Currency()
-	seen := map[int64]bool{}
-	var out []money.Amount
-	add := func(a money.Amount) {
-		if a.Sign() > 0 && !seen[a.Minor()] {
-			seen[a.Minor()] = true
-			out = append(out, a)
-		}
-	}
-	for _, l := range in.Loans {
-		for _, r := range l.Contract.Prepayment.Charges {
-			add(r.FreeAllowance)
-			if r.Fixed.Sign() > 0 {
-				add(money.FromMinor(r.Fixed.Minor()*100, cur))
-			}
-		}
-		add(l.Contract.Prepayment.MinAmount)
-	}
-	return out
-}
-
-// Named strategies. Anything else in the candidate set is a bare permutation.
-const (
-	nameAvalanche = "avalanche"
-	nameSnowball  = "snowball"
-	namePermuted  = "order"
-)
-
-type order struct {
-	name string
-	idx  []int
-	also []string
-}
-
-func namedOrders(loans []Position) []order {
-	av := identity(len(loans))
-	sort.SliceStable(av, func(a, b int) bool {
-		ra, rb := loans[av[a]].Contract.NominalRate, loans[av[b]].Contract.NominalRate
-		if ra != rb {
-			return ra > rb
-		}
-		if c := loans[av[a]].Balance.Cmp(loans[av[b]].Balance); c != 0 {
-			return c < 0
-		}
-		return loans[av[a]].ID < loans[av[b]].ID
-	})
-	sn := identity(len(loans))
-	sort.SliceStable(sn, func(a, b int) bool {
-		c := loans[sn[a]].Balance.Cmp(loans[sn[b]].Balance)
-		if c != 0 {
-			return c < 0
-		}
-		if r1, r2 := loans[sn[a]].Contract.NominalRate, loans[sn[b]].Contract.NominalRate; r1 != r2 {
-			return r1 > r2
-		}
-		return loans[sn[a]].ID < loans[sn[b]].ID
-	})
-	name := nameAvalanche
-	if avalancheDomain(Input{Loans: loans}) != "" {
-		name = string(StrategyHighestRate)
-	}
-	return []order{{name: name, idx: av}, {name: nameSnowball, idx: sn}}
-}
-
-func permutations(n int) []order {
-	var out []order
-	cur := identity(n)
-	var rec func(k int)
-	rec = func(k int) {
-		if k == n {
-			cp := make([]int, n)
-			copy(cp, cur)
-			out = append(out, order{name: namePermuted, idx: cp})
-			return
-		}
-		for i := k; i < n; i++ {
-			cur[k], cur[i] = cur[i], cur[k]
-			rec(k + 1)
-			cur[k], cur[i] = cur[i], cur[k]
-		}
-	}
-	rec(0)
-	return out
-}
-
-func dedupeOrders(os []order) []order {
-	seen := map[string]int{}
-	var out []order
-	for _, o := range os {
-		k := fmt.Sprint(o.idx)
-		if i, ok := seen[k]; ok {
-			out[i].also = append(out[i].also, o.name)
-			continue
-		}
-		seen[k] = len(out)
-		o.also = []string{o.name}
-		out = append(out, o)
-	}
-	return out
 }

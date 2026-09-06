@@ -45,10 +45,17 @@ type ReminderDateBatcher interface {
 // enough that a scheduling bug is visible rather than buried.
 const remindHorizon = 14 * 24 * time.Hour
 
-// UserLister names the accounts the reminder tick walks.
+// UserLister names the accounts the reminder and shadow walks cover, one
+// ordered page at a time. after is the last account of the previous page, or
+// empty to start from the beginning.
 type UserLister interface {
-	ActiveLoanUsers(ctx context.Context, limit int32) ([]string, error)
+	ActiveLoanUsers(ctx context.Context, after string, limit int32) ([]string, error)
 }
+
+// remindPage is how many accounts one generation walk covers. The walk resumes
+// from where the last one stopped, so this bounds a single tick rather than the
+// number of accounts that ever get reminders.
+const remindPage = 500
 
 // remindEvery is how often the tick generates occurrences. The scheduler
 // calls every few minutes to keep the container warm; generating occurrences
@@ -93,7 +100,12 @@ func (w *Worker) generateReminders(ctx context.Context, users UserLister, now ti
 			w.Log.InfoContext(ctx, "purged completed commands", "rows", n)
 		}
 	}
-	ids, err := users.ActiveLoanUsers(ctx, 500)
+	// The walk is a resumable cursor, not a fresh start. A page cut short by
+	// the stage deadline leaves the cursor on the last account it finished, so
+	// the next tick continues from there instead of covering the same accounts
+	// again and never reaching the rest.
+	after, _ := w.remindCursor.Load().(string)
+	ids, err := users.ActiveLoanUsers(ctx, after, remindPage)
 	if err != nil {
 		return fmt.Errorf("listing accounts for reminders: %w", err)
 	}
@@ -106,6 +118,13 @@ func (w *Worker) generateReminders(ctx context.Context, users UserLister, now ti
 			// reminders; it is logged and the walk continues.
 			w.Log.WarnContext(ctx, "scheduling reminders failed", "error", err)
 		}
+		w.remindCursor.Store(id)
+	}
+	if len(ids) < remindPage {
+		// The end of the account list: the next walk starts over. The cursor
+		// lives in memory only, so a restart also starts over -- which repeats
+		// work but never skips an account.
+		w.remindCursor.Store("")
 	}
 	if err := ctx.Err(); err != nil {
 		return err

@@ -4,111 +4,10 @@ import (
 	"fmt"
 
 	"github.com/andranikasd/marumbot/pkg/core/allocation"
-	"github.com/andranikasd/marumbot/pkg/core/amortisation"
 	"github.com/andranikasd/marumbot/pkg/core/date"
 	"github.com/andranikasd/marumbot/pkg/core/model"
 	"github.com/andranikasd/marumbot/pkg/core/money"
 )
-
-// ActionKind labels one payment in the first cycle.
-type ActionKind uint8
-
-const (
-	// Instalment is a contractual required payment.
-	Instalment ActionKind = iota
-	// Extra is an optional payment the policy chose.
-	Extra
-)
-
-func (k ActionKind) String() string {
-	if k == Extra {
-		return "extra"
-	}
-	return "instalment"
-}
-
-// Action is one dated payment the policy makes in the first cycle, in the
-// order the borrower must make them.
-type Action struct {
-	On     date.Date
-	LoanID string
-	Loan   string
-	Kind   ActionKind
-	Amount money.Amount // cash out, fee included
-	Fee    money.Amount
-	// Saves is the interest this cycle that paying on this date rather than
-	// on the due date avoids. Zero on the due date, and zero when the lender
-	// does not credit early payment.
-	Saves money.Amount
-}
-
-// MonthLoan is one loan's share of a cycle: what it was paid and where it
-// ended, so a sheet can answer "whom do I pay, how much, in month seven".
-type MonthLoan struct {
-	Fees    money.Amount // cash fees paid this cycle, excluded from Extra
-	ID      string
-	Name    string
-	Paid    money.Amount // everything handed to this loan this cycle, fees included
-	Extra   money.Amount // the optional part, fees excluded
-	Owed    money.Amount // balance after the cycle
-	Cleared bool
-	// Freed is the instalment this loan stops requiring, set on the cycle
-	// it clears: the number a win is worth every month after it.
-	Freed money.Amount
-}
-
-// MonthState is one cycle of a run, for timelines and comparators.
-type MonthState struct {
-	// HouseholdCash is transferred out of the debt pool under no_carry.
-	HouseholdCash money.Amount
-	Month         int
-	On            date.Date    // the income date that opened the cycle
-	Required      money.Amount // contractual instalments paid this cycle
-	Extra         money.Amount // optional payments, fees excluded
-	Fees          money.Amount
-	Interest      money.Amount // settled this cycle
-	Owed          money.Amount // balances at the end of the cycle
-	Cash          money.Amount // physical cash carried, including restricted routed buckets
-	Cleared       string       // a loan that reached zero this cycle, by name
-	Loans         []MonthLoan  // per loan, in input order
-}
-
-// Result is what one policy produces over a whole run.
-type Result struct {
-	// HouseholdCash is retained outside the debt plan, never spent or erased.
-	HouseholdCash money.Amount
-	Policy        Policy
-	PayoffDate    date.Date
-	Months        int
-	TotalInterest money.Amount
-	TotalFees     money.Amount
-	TotalPaid     money.Amount // required + extra + fees
-	NextMonthOwed money.Amount // balances after the first cycle
-	FirstClear    string
-	FirstClearOn  date.Date
-	FirstClearAt  int          // cycle
-	FirstFreed    money.Amount // the instalment that loan no longer requires
-	Actions       []Action
-	Timeline      []MonthState
-	// PeakRequired and FinalRequired bracket the contractual outflow: what
-	// the borrower must pay in the heaviest cycle and in the last one. Extra
-	// payments are excluded; relief is about obligations, not choices.
-	PeakRequired  money.Amount
-	FinalRequired money.Amount
-	Prepayments   int
-	// TimingCredited is true when at least one early payment was credited
-	// by a lender that reduces principal on the day of payment.
-	TimingCredited bool
-	// Assumed is the number of instalments assumed paid to bring each loan
-	// to the valuation date, when the anchor was older.
-	Assumed map[string]int
-}
-
-// Cost is what the least-cost comparator minimises: interest plus fees.
-func (r Result) Cost() money.Amount {
-	c, _ := r.TotalInterest.Add(r.TotalFees)
-	return c
-}
 
 // eventKind orders same-day events: money arrives, then instalments fall
 // due, then optional payments are made from what is left.
@@ -153,75 +52,9 @@ type loanState struct {
 	cycleFreed   money.Amount
 }
 
-// obligation is the memoised next instalment for one loan state.
-type obligation struct {
-	due        date.Date
-	required   money.Amount
-	instalment money.Amount
-}
-
-type oblKey struct {
-	fp      string
-	balance int64
-	from    date.Date
-	effect  model.PrepaymentEffect
-	carried int64
-}
-
-// cache memoises contract projections across policies. The key is every
-// input the projection depends on; a false hit would corrupt money, so the
-// contract itself is fingerprinted rather than identified by index.
-type cache map[oblKey]obligation
-
-// fingerprint is every contract term the projection reads.
-func fingerprint(c model.Contract) string {
-	return fmt.Sprintf("%s|%d|%s|%s|%s|%s|%s|%d|%v|%s|%d|%d|%s|%d",
-		c.LoanID, c.Version, c.Currency.Code, c.NominalRate, c.DayCount, c.Type,
-		c.StartDate, c.PaymentDay, c.HasScheduled, c.ScheduledPayment,
-		c.Rounding.Mode, c.Rounding.Unit, c.MaturityDate, c.Prepayment.Effect)
-}
-
-// next projects one loan's next obligation from its current state.
-//
-// Under reduce_instalment the schedule is rebuilt from the balance to
-// maturity, which is what a lender does when it re-issues the schedule
-// after a prepayment. Under shorten_term the instalment fixed at the anchor
-// is carried and the loan ends when the balance does. Declining-principal
-// loans are always rebuilt: their principal part is a term of the contract.
-func (m cache) next(ls *loanState) (obligation, error) {
-	fixed := ls.effect == model.PrepayShortenTerm && ls.pos.Contract.Type == model.Annuity && ls.carried.Sign() > 0
-	k := oblKey{fp: ls.fp, balance: ls.balance.Minor(), from: ls.from, effect: ls.effect}
-	if fixed {
-		k.carried = ls.carried.Minor()
-	}
-	if v, ok := m[k]; ok {
-		return v, nil
-	}
-	var o obligation
-	if fixed {
-		dates, err := amortisation.RemainingDates(ls.pos.Contract, ls.from)
-		if err != nil {
-			// Past the last contractual date with a balance left: the next
-			// monthly occurrence, rather than pretending it vanished.
-			o.due = date.Occurrence(ls.from, ls.pos.Contract.PaymentDay, 1)
-		} else {
-			o.due = dates[0]
-		}
-		o.required, o.instalment = ls.carried, ls.carried
-	} else {
-		s, err := amortisation.Build(ls.pos.Contract, ls.balance, ls.from)
-		if err != nil || len(s.Rows) == 0 {
-			return o, fmt.Errorf("plan: projecting %s: %w", ls.pos.ID, err)
-		}
-		o = obligation{due: s.Rows[0].Due, required: s.Rows[0].Payment, instalment: s.Instalment}
-	}
-	m[k] = o
-	return o, nil
-}
-
 // Run follows one policy on one dated timeline until every loan is clear.
 func Run(in Input, pol Policy) (Result, error) {
-	return run(in, pol, cache{})
+	return run(in, pol, newCache())
 }
 
 type sim struct {
@@ -232,7 +65,7 @@ type sim struct {
 	actionSink      *[]Action
 	in              Input
 	pol             Policy
-	cache           cache
+	cache           *cache
 	cur             money.Currency
 	loans           []*loanState
 	cash            money.Amount
@@ -260,21 +93,21 @@ type sim struct {
 // leaves this collector disabled so thousands of candidates do not retain it.
 func PaymentTimeline(in Input, pol Policy) (Result, []Action, error) {
 	actions := []Action{}
-	result, err := runWithActions(in, pol, cache{}, &actions)
+	result, err := runWithActions(in, pol, newCache(), &actions)
 	return result, actions, err
 }
 
-func run(in Input, pol Policy, c cache) (Result, error) {
+func run(in Input, pol Policy, c *cache) (Result, error) {
 	return runWithActions(in, pol, c, nil)
 }
 
-func runWithActions(in Input, pol Policy, c cache, sink *[]Action) (Result, error) {
+func runWithActions(in Input, pol Policy, c *cache, sink *[]Action) (Result, error) {
 	return runConfigured(in, pol, c, sink, 0)
 }
 
 // runConfigured changes only the stress replay's receipt clock. Production
 // searches always pass zero; no source field or spending date is rewritten.
-func runConfigured(in Input, pol Policy, c cache, sink *[]Action, incomeDelayDays int) (Result, error) {
+func runConfigured(in Input, pol Policy, c *cache, sink *[]Action, incomeDelayDays int) (Result, error) {
 	if err := in.Validate(); err != nil {
 		return Result{}, err
 	}
@@ -285,7 +118,7 @@ func runConfigured(in Input, pol Policy, c cache, sink *[]Action, incomeDelayDay
 	cur := in.Cash.Monthly.Currency()
 	zero := money.Zero(cur)
 	s := &sim{incomeDelayDays: incomeDelayDays, actionSink: sink, in: in, pol: pol, cache: c, cur: cur, cash: in.Cash.OpeningCash, budget: in.Cash.Monthly, inflow: zero}
-	if in.Cash.Spending != nil {
+	if in.Cash.SeparateSpending() {
 		s.budget = in.Cash.Spending.Monthly
 	}
 	if s.cash.Currency().Code == "" {
@@ -328,7 +161,7 @@ func runConfigured(in Input, pol Policy, c cache, sink *[]Action, incomeDelayDay
 			s.lumps = append(s.lumps, event)
 		}
 	}
-	if in.Cash.Spending != nil {
+	if in.Cash.SeparateSpending() {
 		s.nextPeriod = in.ValuationDate
 	}
 	s.nextIncome = s.firstIncome()
@@ -541,10 +374,10 @@ func (s *sim) lump(i int) {
 // due date before any income opens the first, so nothing is counted twice
 // and no empty cycle precedes the money.
 func (s *sim) income(on date.Date) {
-	if s.in.Cash.Spending == nil && s.cycle > 0 && !s.cycleIncome.Equal(on) {
+	if !s.in.Cash.SeparateSpending() && s.cycle > 0 && !s.cycleIncome.Equal(on) {
 		s.closeCycle()
 	}
-	if s.cycle == 0 || (s.in.Cash.Spending == nil && !s.cycleIncome.Equal(on)) {
+	if s.cycle == 0 || (!s.in.Cash.SeparateSpending() && !s.cycleIncome.Equal(on)) {
 		s.openCycle(on)
 	}
 	credit := s.credit(on)
@@ -567,7 +400,7 @@ func (s *sim) credit(on date.Date) money.Amount {
 	if v, ok := s.in.Cash.MonthlyOverrides[MonthKey(on)]; ok {
 		return v
 	}
-	if s.in.Cash.Spending != nil {
+	if s.in.Cash.SeparateSpending() {
 		return s.in.Cash.Monthly
 	}
 	return s.budget
@@ -618,7 +451,7 @@ func (s *sim) allocate(on date.Date) {
 		if q.Outflow.Sign() <= 0 {
 			continue
 		}
-		if s.in.Cash.Spending != nil && s.carryRule == BatchUntil && q.Principal.Cmp(s.carryMinimum) < 0 && !q.Closes {
+		if s.in.Cash.SeparateSpending() && s.carryRule == BatchUntil && q.Principal.Cmp(s.carryMinimum) < 0 && !q.Closes {
 			continue
 		}
 		if s.pol.MinPrepay.Sign() > 0 && q.Principal.Cmp(s.pol.MinPrepay) < 0 && !q.Closes {
@@ -717,7 +550,7 @@ func (s *sim) accrueTo(ls *loanState, on date.Date) error {
 // prepay applies a quoted optional payment.
 func (s *sim) prepay(ls *loanState, on date.Date, q Quote, early bool) {
 	c := ls.pos.Contract
-	if s.in.Cash.Spending != nil {
+	if s.in.Cash.SeparateSpending() {
 		s.spendPermission(q.Outflow)
 	}
 	s.cash = s.sub(s.cash, q.Outflow)
@@ -775,7 +608,14 @@ func (s *sim) due(ls *loanState, on date.Date) {
 	required := ls.required
 	// The last contractual date settles whatever is owed: a residue of one
 	// rounding unit left by two accrual pieces must not outlive the loan.
-	if _, err := amortisation.RemainingDates(ls.pos.Contract, on); err != nil {
+	// The memoised calendar answers "is any date still ahead" without
+	// rebuilding the contract's dates on every due event.
+	cal, calErr := s.cache.calendar(ls)
+	if calErr != nil {
+		s.err = calErr
+		return
+	}
+	if _, err := cal.Dates(on); err != nil {
 		required = owed
 	}
 	if required.Cmp(owed) > 0 {
@@ -784,7 +624,7 @@ func (s *sim) due(ls *loanState, on date.Date) {
 	if s.err != nil {
 		return
 	}
-	if s.in.Cash.Spending != nil && s.periodLeft.Cmp(required) < 0 {
+	if s.in.Cash.SeparateSpending() && s.periodLeft.Cmp(required) < 0 {
 		short := s.sub(required, s.periodLeft)
 		s.err = &InfeasibleError{On: on, LoanID: ls.pos.ID, Required: required, Available: s.periodLeft, Shortfall: short, Constraint: "spending_limit"}
 		return
@@ -794,7 +634,7 @@ func (s *sim) due(ls *loanState, on date.Date) {
 		s.err = &InfeasibleError{On: on, LoanID: ls.pos.ID, Required: required, Available: s.cash, Shortfall: short}
 		return
 	}
-	if s.in.Cash.Spending != nil {
+	if s.in.Cash.SeparateSpending() {
 		s.spendPermission(required)
 	}
 	s.cash = s.sub(s.cash, required)
@@ -816,7 +656,7 @@ func (s *sim) due(ls *loanState, on date.Date) {
 		return
 	}
 	// Money held for this date, re-quoted against what is owed now.
-	if s.in.Cash.Spending != nil {
+	if s.in.Cash.SeparateSpending() {
 		if err := s.refresh(ls); err != nil {
 			s.err = err
 			return
@@ -826,7 +666,7 @@ func (s *sim) due(ls *loanState, on date.Date) {
 		want := ls.pending
 		ls.pending = money.Zero(s.cur)
 		available := s.cash
-		if s.in.Cash.Spending != nil {
+		if s.in.Cash.SeparateSpending() {
 			available = s.optionalCash(on)
 		}
 		if want.Cmp(available) > 0 {
@@ -869,7 +709,7 @@ func (s *sim) close(ls *loanState, on date.Date) {
 	if s.res.FirstClear == "" {
 		s.res.FirstClear, s.res.FirstClearOn, s.res.FirstClearAt, s.res.FirstFreed = ls.pos.Name, on, s.cycle, freed
 	}
-	if s.pol.Rollover == KeepFreed && (s.in.Cash.Spending == nil || !s.in.Cash.Spending.ConfirmedReleaseOnly) {
+	if s.pol.Rollover == KeepFreed && (!s.in.Cash.SeparateSpending() || !s.in.Cash.Spending.ConfirmedReleaseOnly) {
 		b := s.sub(s.budget, freed)
 		if b.Sign() < 0 {
 			b = money.Zero(s.cur)

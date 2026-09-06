@@ -90,7 +90,7 @@ func StressCases(in Input, pol Policy, options StressOptions) (StressReport, err
 	if err := in.Validate(); err != nil {
 		return out, err
 	}
-	baseResult, baseErr := run(in, pol, cache{})
+	baseResult, baseErr := run(in, pol, newCache())
 	base, err := stressOutcome("base", StressExactReplay, baseResult, baseErr)
 	if err != nil {
 		return out, err
@@ -98,7 +98,7 @@ func StressCases(in Input, pol Policy, options StressOptions) (StressReport, err
 	out.Base = base
 	income := StressCase{ID: "income_three_days_late", Status: StressCaseUnknown, Reason: StressPaydayUnknown}
 	if in.Cash.PayDay > 0 {
-		result, runErr := runConfigured(in, pol, cache{}, nil, 3)
+		result, runErr := runConfigured(in, pol, newCache(), nil, 3)
 		income, err = stressOutcome(income.ID, StressLateIncome, result, runErr)
 		if err != nil {
 			return out, err

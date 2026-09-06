@@ -162,7 +162,7 @@ func dynamicDomain(in Input) error {
 		return refuse("at most three loans")
 	}
 	cash := in.Cash
-	if cash.Spending != nil || len(cash.MonthlyOverrides) > 0 || len(cash.Lumps) > 0 || cash.ReserveFloor.Sign() != 0 || !cash.CashThrough.IsZero() {
+	if cash.SeparateSpending() || len(cash.MonthlyOverrides) > 0 || len(cash.Lumps) > 0 || cash.ReserveFloor.Sign() != 0 || !cash.CashThrough.IsZero() {
 		return refuse("constant legacy funding without reserves, events or spending permissions required")
 	}
 	first := in.Loans[0].Contract

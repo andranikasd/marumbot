@@ -26,6 +26,20 @@ import (
 // Complexity is log2(range) projections, about 25 for a loan of a few million
 // dram, each of which is a few hundred rows of integer arithmetic.
 func Solve(c model.Contract, principal money.Amount, from date.Date) (money.Amount, error) {
+	cal, err := NewCalendar(c)
+	if err != nil {
+		if principal.Sign() <= 0 {
+			return money.Amount{}, fmt.Errorf("%w: principal must be positive", ErrUnsolvable)
+		}
+		return money.Amount{}, err
+	}
+	return cal.Solve(principal, from)
+}
+
+// Solve bisects on an already-resolved calendar. The whole bisection reuses
+// one calendar and materialises no schedule; see project.
+func (cal Calendar) Solve(principal money.Amount, from date.Date) (money.Amount, error) {
+	c := cal.contract
 	if principal.Sign() <= 0 {
 		return money.Amount{}, fmt.Errorf("%w: principal must be positive", ErrUnsolvable)
 	}
@@ -37,7 +51,7 @@ func Solve(c model.Contract, principal money.Amount, from date.Date) (money.Amou
 
 	// Upper bound: settle the whole loan on the first instalment. Nothing larger
 	// can be required, because that clears the balance outright.
-	dates, err := RemainingDates(c, from)
+	dates, err := cal.Dates(from)
 	if err != nil {
 		return money.Amount{}, err
 	}
@@ -59,15 +73,18 @@ func Solve(c model.Contract, principal money.Amount, from date.Date) (money.Amou
 	lo := int64(1)
 	hi := ceilDiv(hiAmount.Minor(), unit)
 
+	// Every candidate walks the same calendar, so the dates resolved above are
+	// reused rather than rebuilt per probe, and no schedule is materialised:
+	// bisection reads the closing balance and nothing else.
 	clears := func(units int64) (bool, error) {
-		s, err := Project(c, principal, money.FromMinor(units*unit, cur), from)
+		out, err := project(c, principal, money.FromMinor(units*unit, cur), from, dates, nil)
 		if err != nil {
 			return false, err
 		}
-		if len(s.Rows) == 0 {
+		if out.Periods == 0 {
 			return false, nil
 		}
-		return s.Rows[len(s.Rows)-1].Closing.Sign() <= 0, nil
+		return out.FinalClosing.Sign() <= 0, nil
 	}
 
 	// The upper bound clears by construction; assert it rather than trust it,
@@ -102,11 +119,31 @@ func Solve(c model.Contract, principal money.Amount, from date.Date) (money.Amou
 // SolveAndProject returns the instalment and the schedule it produces, which is
 // what every caller actually wants and saves projecting the loan twice.
 func SolveAndProject(c model.Contract, principal money.Amount, from date.Date) (Schedule, error) {
-	instalment, err := Solve(c, principal, from)
+	cal, err := NewCalendar(c)
 	if err != nil {
 		return Schedule{}, err
 	}
-	return Project(c, principal, instalment, from)
+	return cal.SolveAndProject(principal, from)
+}
+
+// SolveAndProject solves and projects on one already-resolved calendar, so the
+// contract's dates are walked twice but built once.
+func (cal Calendar) SolveAndProject(principal money.Amount, from date.Date) (Schedule, error) {
+	instalment, err := cal.Solve(principal, from)
+	if err != nil {
+		return Schedule{}, err
+	}
+	dates, err := cal.Dates(from)
+	if err != nil {
+		return Schedule{}, err
+	}
+	s := Schedule{Rows: make([]Row, 0, len(dates)), Instalment: instalment}
+	out, err := project(cal.contract, principal, instalment, from, dates, &s.Rows)
+	if err != nil {
+		return Schedule{}, err
+	}
+	s.TotalPaid, s.TotalInterest, s.FinalPayment = out.TotalPaid, out.TotalInterest, out.FinalPayment
+	return s, nil
 }
 
 func ceilDiv(a, b int64) int64 {

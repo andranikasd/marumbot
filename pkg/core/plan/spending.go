@@ -37,7 +37,7 @@ func (c CashPlan) validateFunding(valuation date.Date) error {
 			return err
 		}
 	}
-	if c.Spending == nil {
+	if !c.SeparateSpending() {
 		return nil
 	}
 	if c.Spending.RuleError != "" {
@@ -186,11 +186,11 @@ func (s *sim) optionalPermission(on date.Date) money.Amount {
 }
 
 func (s *sim) optionalCash(on date.Date) money.Amount {
-	if s.in.Cash.Spending != nil && s.carryRule == CarryToDate && on.Before(s.carryUntil) {
+	if s.in.Cash.SeparateSpending() && s.carryRule == CarryToDate && on.Before(s.carryUntil) {
 		return money.Zero(s.cur)
 	}
 	surplus := s.sub(s.cash, s.reserved())
-	if s.in.Cash.Spending != nil {
+	if s.in.Cash.SeparateSpending() {
 		permission := s.optionalPermission(on)
 		if permission.Cmp(surplus) < 0 {
 			surplus = permission

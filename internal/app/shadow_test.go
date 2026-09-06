@@ -30,7 +30,7 @@ func (f *shadowFakes) SetBudget(context.Context, string, string, int64, int) err
 	return nil
 }
 
-func (f *shadowFakes) ActiveLoanUsers(context.Context, int32) ([]string, error) {
+func (f *shadowFakes) ActiveLoanUsers(context.Context, string, int32) ([]string, error) {
 	return f.users, nil
 }
 

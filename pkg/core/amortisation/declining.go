@@ -22,14 +22,49 @@ import (
 // the balance falls faster, and it demands more in the early months. Which of
 // those matters is the borrower's decision, not the engine's.
 func ProjectDeclining(c model.Contract, principal money.Amount, from date.Date) (Schedule, error) {
-	if principal.Sign() <= 0 {
-		return Schedule{}, fmt.Errorf("%w: principal must be positive", ErrUnsolvable)
+	cal, err := NewCalendar(c)
+	if err != nil {
+		if principal.Sign() <= 0 {
+			return Schedule{}, fmt.Errorf("%w: principal must be positive", ErrUnsolvable)
+		}
+		return Schedule{}, err
 	}
-	dates, err := RemainingDates(c, from)
+	return cal.ProjectDeclining(principal, from)
+}
+
+// ProjectDeclining builds the equal-principal schedule on an already-resolved
+// calendar.
+func (cal Calendar) ProjectDeclining(principal money.Amount, from date.Date) (Schedule, error) {
+	dates, err := cal.decliningDates(principal, from)
 	if err != nil {
 		return Schedule{}, err
 	}
+	s := Schedule{Rows: make([]Row, 0, len(dates)), TotalPaid: money.Zero(principal.Currency()), TotalInterest: money.Zero(principal.Currency())}
+	out, err := projectDeclining(cal.contract, principal, from, dates, &s.Rows)
+	if err != nil {
+		return Schedule{}, err
+	}
+	s.TotalPaid, s.TotalInterest = out.TotalPaid, out.TotalInterest
+	if out.Periods > 0 {
+		// There is no level instalment here. Instalment reports the first and
+		// largest payment, which is the figure a borrower has to be able to
+		// afford, and FinalPayment the smallest.
+		s.Instalment, s.FinalPayment = out.FirstPayment, out.FinalPayment
+	}
+	return s, nil
+}
 
+func (cal Calendar) decliningDates(principal money.Amount, from date.Date) ([]date.Date, error) {
+	if principal.Sign() <= 0 {
+		return nil, fmt.Errorf("%w: principal must be positive", ErrUnsolvable)
+	}
+	return cal.Dates(from)
+}
+
+// projectDeclining walks the equal-principal schedule once. rows is nil for
+// callers that need only the outcome, so asking for the next obligation does
+// not allocate a schedule that is then thrown away.
+func projectDeclining(c model.Contract, principal money.Amount, from date.Date, dates []date.Date, rows *[]Row) (outcome, error) {
 	cur := principal.Currency()
 	unit := c.Rounding.Unit
 	if unit <= 0 {
@@ -42,11 +77,7 @@ func ProjectDeclining(c model.Contract, principal money.Amount, from date.Date) 
 	// leaves a remainder that the final row absorbs, which is what lenders do.
 	per := money.FromMinor(principal.Minor()/n/unit*unit, cur)
 
-	s := Schedule{
-		Rows:          make([]Row, 0, len(dates)),
-		TotalPaid:     money.Zero(cur),
-		TotalInterest: money.Zero(cur),
-	}
+	out := outcome{TotalPaid: money.Zero(cur), TotalInterest: money.Zero(cur)}
 	balance := principal
 	prev := from
 	if prev.IsZero() {
@@ -56,11 +87,11 @@ func ProjectDeclining(c model.Contract, principal money.Amount, from date.Date) 
 	for i, due := range dates {
 		days := date.DaysBetween(prev, due)
 		if days < 0 {
-			return Schedule{}, fmt.Errorf("%w: instalment %s precedes %s", ErrUnsolvable, due, prev)
+			return outcome{}, fmt.Errorf("%w: instalment %s precedes %s", ErrUnsolvable, due, prev)
 		}
 		interest, err := money.Accrue(balance, c.NominalRate, int64(days), c.DayCount, c.Rounding)
 		if err != nil {
-			return Schedule{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
+			return outcome{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
 		}
 
 		// The final row clears whatever is left, which is the rounded-down
@@ -71,27 +102,36 @@ func ProjectDeclining(c model.Contract, principal money.Amount, from date.Date) 
 		}
 		payment, err := principalPart.Add(interest)
 		if err != nil {
-			return Schedule{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
+			return outcome{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
 		}
 		if c.HasScheduled && !c.NotBeforeDue.IsZero() && due.Equal(c.NotBeforeDue) && payment.Cmp(c.ScheduledPayment) != 0 {
-			return Schedule{}, fmt.Errorf("%w: bank instalment differs from the declining schedule", ErrUnsolvable)
+			return outcome{}, fmt.Errorf("%w: bank instalment differs from the declining schedule", ErrUnsolvable)
 		}
 		closing, err := balance.Sub(principalPart)
 		if err != nil {
-			return Schedule{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
+			return outcome{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
 		}
 
-		s.Rows = append(s.Rows, Row{
-			N: i + 1, Due: due, Days: days,
-			Opening: balance, Interest: interest,
-			Principal: principalPart, Payment: payment, Closing: closing,
-		})
-		if s.TotalPaid, err = s.TotalPaid.Add(payment); err != nil {
-			return Schedule{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
+		if rows != nil {
+			*rows = append(*rows, Row{
+				N: i + 1, Due: due, Days: days,
+				Opening: balance, Interest: interest,
+				Principal: principalPart, Payment: payment, Closing: closing,
+			})
 		}
-		if s.TotalInterest, err = s.TotalInterest.Add(interest); err != nil {
-			return Schedule{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
+		if out.TotalPaid, err = out.TotalPaid.Add(payment); err != nil {
+			return outcome{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
 		}
+		if out.TotalInterest, err = out.TotalInterest.Add(interest); err != nil {
+			return outcome{}, fmt.Errorf("amortisation: row %d: %w", i+1, err)
+		}
+
+		out.Periods++
+		if out.Periods == 1 {
+			out.FirstDue, out.FirstInterest = due, interest
+			out.FirstPrincipal, out.FirstPayment = principalPart, payment
+		}
+		out.FinalPayment, out.FinalClosing = payment, closing
 
 		balance = closing
 		prev = due
@@ -99,15 +139,7 @@ func ProjectDeclining(c model.Contract, principal money.Amount, from date.Date) 
 			break
 		}
 	}
-
-	if n := len(s.Rows); n > 0 {
-		// There is no level instalment here. Instalment reports the first and
-		// largest payment, which is the figure a borrower has to be able to
-		// afford, and FinalPayment the smallest.
-		s.Instalment = s.Rows[0].Payment
-		s.FinalPayment = s.Rows[n-1].Payment
-	}
-	return s, nil
+	return out, nil
 }
 
 // Build projects a contract using whichever repayment structure it declares,
@@ -116,42 +148,9 @@ func ProjectDeclining(c model.Contract, principal money.Amount, from date.Date) 
 // This is the entry point callers should use: which method applies is a
 // contract term, and a caller that picks one is a caller that can pick wrong.
 func Build(c model.Contract, principal money.Amount, from date.Date) (Schedule, error) {
-	switch c.Type {
-	case model.DecliningPrincipal:
-		return ProjectDeclining(c, principal, from)
-	case model.Annuity:
-		if c.HasScheduled && c.ScheduledPayment.Sign() > 0 {
-			// The lender stated the instalment. Use it rather than solving:
-			// the contract is the authority on what is owed, and a solved
-			// figure that disagrees by a dram is the engine being wrong.
-			//
-			// But a stated figure the arithmetic contradicts is a typo or a
-			// misread contract, and projecting it silently produces a
-			// schedule that never clears -- or a balance that grows, when
-			// the payment does not even cover the first interest. Both are
-			// findings about the input, so they refuse by name.
-			s, err := Project(c, principal, c.ScheduledPayment, from)
-			if err != nil {
-				return Schedule{}, err
-			}
-			if n := len(s.Rows); n > 0 {
-				// The sharper finding first: a payment below the interest is
-				// a different mistake than one merely too small to finish.
-				if s.Rows[0].Principal.Sign() < 0 {
-					return Schedule{}, fmt.Errorf(
-						"%w: the stated instalment %s does not cover the first interest of %s; the balance would grow",
-						ErrUnsolvable, c.ScheduledPayment, s.Rows[0].Interest)
-				}
-				if closing := s.Rows[n-1].Closing; closing.Sign() > 0 {
-					return Schedule{}, fmt.Errorf(
-						"%w: the stated instalment %s leaves %s owed at maturity; check the figure or the dates",
-						ErrUnsolvable, c.ScheduledPayment, closing)
-				}
-			}
-			return s, nil
-		}
-		return SolveAndProject(c, principal, from)
-	default:
-		return Schedule{}, fmt.Errorf("%w: unsupported repayment type %s", ErrUnsolvable, c.Type)
+	cal, err := NewCalendar(c)
+	if err != nil {
+		return Schedule{}, err
 	}
+	return cal.Build(principal, from)
 }

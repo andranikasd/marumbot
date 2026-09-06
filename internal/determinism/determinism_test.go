@@ -107,3 +107,50 @@ func TestReportHashMatchesTheCommittedGolden(t *testing.T) {
 		t.Fatal("two runs in one process disagree")
 	}
 }
+
+// rankedOrder is every ranked candidate in the order the search merged them,
+// which is what a concurrent simulation could disturb without changing the
+// winner. The golden hash above pins the answer; this pins the ranking.
+func rankedOrder(rep plan.Report) []string {
+	out := make([]string, 0, len(rep.Ranked)+len(rep.Ties))
+	for _, r := range rep.Ranked {
+		out = append(out, r.Policy.ID()+"|"+r.Cost().String()+"|"+r.PayoffDate.String())
+	}
+	out = append(out, "ties:")
+	out = append(out, rep.Ties...)
+	return out
+}
+
+// The candidate simulations run on every core. Merging them out of candidate
+// order, or letting one worker's memo leak into another's answer, would show
+// as a ranking that moves between runs rather than a wrong total.
+func TestRankingIsStableAcrossRepeatedSearches(t *testing.T) {
+	first, err := plan.Search(fixedInput(t), plan.Goal{Kind: plan.LeastInterest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := json.Marshal(rankedOrder(first))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Ranked) == 0 {
+		t.Fatal("no ranked candidates: the test would prove nothing")
+	}
+	for i := 0; i < 12; i++ {
+		rep, err := plan.Search(fixedInput(t), plan.Goal{Kind: plan.LeastInterest})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := json.Marshal(rankedOrder(rep))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != string(want) {
+			t.Fatalf("run %d ranked differently\n got: %s\nwant: %s", i+1, got, want)
+		}
+		if c := rep.Certificate; c.Policies != first.Certificate.Policies || c.FeasiblePolicies != first.Certificate.FeasiblePolicies {
+			t.Fatalf("run %d counted %d/%d policies, first counted %d/%d",
+				i+1, c.Policies, c.FeasiblePolicies, first.Certificate.Policies, first.Certificate.FeasiblePolicies)
+		}
+	}
+}

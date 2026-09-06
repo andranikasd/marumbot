@@ -119,7 +119,7 @@ func TestSearchCapAfterPermutationFallback(t *testing.T) {
 	failed := *u
 	failed.Input.Cash.Monthly = money.Zero(cur)
 	failed.Results, failed.explored, failed.attempted = nil, nil, 0
-	failed.cache = cache{}
+	failed.cache = newCache()
 	if _, err := Run(failed.Input, u.Results[0].Policy); !isInfeasible(err) {
 		t.Fatalf("expected independent infeasibility check, got %v", err)
 	}
@@ -220,7 +220,7 @@ func TestMinimumPreservesExplicitFundingAndPermission(t *testing.T) {
 			if mode == "low permission" {
 				in.Cash.Spending.Monthly = money.FromMinor(100, cur)
 			}
-			got, err := minimum(in, cache{})
+			got, err := minimum(in, newCache())
 			if mode != "confirmed lump" {
 				if !isInfeasible(err) {
 					t.Fatalf("minimum fabricated funding or permission: %v", err)
@@ -253,7 +253,7 @@ func TestMinimumLegacyLargeOpeningCashNeverPrepays(t *testing.T) {
 	in := capInput(t, 1)
 	in.Loans[0].Contract.NominalRate = 0
 	in.Cash.OpeningCash = in.Cash.Monthly // one hundred times the balance
-	r, err := minimum(in, cache{})
+	r, err := minimum(in, newCache())
 	if err != nil {
 		t.Fatal(err)
 	}

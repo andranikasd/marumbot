@@ -3,10 +3,10 @@ package app
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"hash"
 	"reflect"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -53,27 +53,57 @@ type searchEntry struct {
 
 // searchFingerprint encodes raw values, never display strings or addresses.
 // The schema prefix versions the encoding independently of the engine.
+//
+// The encoding streams straight into the hash. Building the whole encoded
+// tree as one string first produced the same digest and threw away tens of
+// kilobytes per call -- a cost paid on cache hits too, where it was the only
+// cost.
 func searchFingerprint(in plan.Input, g plan.Goal) string {
-	var b strings.Builder
-	fingerprintToken(&b, "marum/search-fingerprint/v2")
-	fingerprintToken(&b, plan.EngineVersion)
-	fingerprintValue(&b, reflect.ValueOf(in))
-	fingerprintValue(&b, reflect.ValueOf(g))
-	sum := sha256.Sum256([]byte(b.String()))
-	return hex.EncodeToString(sum[:])
+	b := newFingerprintHash()
+	fingerprintToken(b, "marum/search-fingerprint/v2")
+	fingerprintToken(b, plan.EngineVersion)
+	fingerprintValue(b, reflect.ValueOf(in))
+	fingerprintValue(b, reflect.ValueOf(g))
+	return hex.EncodeToString(b.sum())
+}
+
+// fingerprintHash is the encoding sink: one reused block that is handed to the
+// hash whenever it fills. The digest is the same one a single concatenated
+// string would produce; the string itself is what is no longer built.
+type fingerprintHash struct {
+	h   hash.Hash
+	buf []byte
+}
+
+// blockSize is a compromise between calls into the hash and the size of the
+// one buffer a fingerprint allocates.
+const fingerprintBlock = 8192
+
+func newFingerprintHash() *fingerprintHash {
+	return &fingerprintHash{h: sha256.New(), buf: make([]byte, 0, fingerprintBlock+64)}
 }
 
 // Length framing prevents collisions between adjacent strings or containers.
-func fingerprintToken(b *strings.Builder, s string) {
-	b.WriteString(strconv.Itoa(len(s)))
-	b.WriteByte(':')
-	b.WriteString(s)
+func fingerprintToken(b *fingerprintHash, s string) {
+	b.buf = strconv.AppendInt(b.buf, int64(len(s)), 10)
+	b.buf = append(b.buf, ':')
+	b.buf = append(b.buf, s...)
+	if len(b.buf) >= fingerprintBlock {
+		b.h.Write(b.buf)
+		b.buf = b.buf[:0]
+	}
+}
+
+func (b *fingerprintHash) sum() []byte {
+	b.h.Write(b.buf)
+	b.buf = b.buf[:0]
+	return b.h.Sum(nil)
 }
 
 // Input and Goal are acyclic value trees. Walk every field, including private
 // money minor units, full currency metadata and date components, without
 // Interface or Stringer calls. New unsupported kinds are programmer errors.
-func fingerprintValue(b *strings.Builder, v reflect.Value) {
+func fingerprintValue(b *fingerprintHash, v reflect.Value) {
 	t := v.Type()
 	fingerprintToken(b, v.Kind().String())
 	fingerprintToken(b, t.PkgPath())
@@ -170,6 +200,13 @@ func (c *searchCache) search(in plan.Input, g plan.Goal, now time.Time) (plan.Re
 
 // evictLocked drops expired entries, and if none were, the oldest one. Called
 // with the lock held.
+//
+// It scans the whole map, which is a full pass per insert once the cache is
+// full. That is deliberate: the map holds at most searchCacheMax entries, so
+// the pass is a few hundred iterations against a search that takes hundreds
+// of milliseconds. An eviction order kept alongside the map would save
+// nothing measurable and would add a second structure that can drift out of
+// step with the first.
 func (c *searchCache) evictLocked(now time.Time) {
 	oldestKey := ""
 	var oldestAt time.Time

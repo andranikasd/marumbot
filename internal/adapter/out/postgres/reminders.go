@@ -59,9 +59,10 @@ func (s *Store) CancelRemindersForLoan(ctx context.Context, loanID string) error
 	return rows.Err()
 }
 
-// ActiveLoanUsers lists accounts with live loans, for the reminder tick.
-func (s *Store) ActiveLoanUsers(ctx context.Context, limit int32) ([]string, error) {
-	rows, err := s.pool.Query(ctx, q("ActiveLoanUsers"), limit)
+// ActiveLoanUsers lists one ordered page of accounts with live loans, for the
+// reminder tick. after is the last account of the previous page, or empty.
+func (s *Store) ActiveLoanUsers(ctx context.Context, after string, limit int32) ([]string, error) {
+	rows, err := s.pool.Query(ctx, q("ActiveLoanUsers"), after, limit)
 	if err != nil {
 		return nil, err
 	}

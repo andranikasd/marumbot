@@ -147,7 +147,19 @@ func (b Budget) CashPlan(valuation date.Date) plan.CashPlan {
 		}
 		return cp
 	}
+	return b.declaredCashPlan(valuation)
+}
 
+// declaredCashPlan builds the plan from the declarations alone: the amounts,
+// the statement and the events the borrower entered, with no approved policy
+// applied. Both entry points start from it.
+//
+// It is a function of its own so that neither entry point has to call the
+// other. CashPlan used to call CashPlans, which called CashPlan back on a copy
+// of the budget with the policies removed, and the recursion terminated only
+// because of that removal -- which is not a property a reader should have to
+// reconstruct to know the code halts.
+func (b Budget) declaredCashPlan(valuation date.Date) plan.CashPlan {
 	cp := plan.CashPlan{Monthly: b.Monthly, PayDay: b.PayDay}
 	if b.Opening.Sign() > 0 && !b.OpeningAsOf.IsZero() &&
 		plan.MonthKey(b.OpeningAsOf) == plan.MonthKey(valuation) &&
@@ -305,4 +317,21 @@ func (l UserLoan) Schedule() (amortisation.Schedule, error) {
 		return amortisation.Schedule{}, ErrPaymentReconciliation
 	}
 	return amortisation.Build(l.Contract, l.Balance, l.AsOf)
+}
+
+// NextInstalment is Schedule without the schedule: what falls due next, when,
+// and the instalment behind it.
+//
+// A card, a list row and a summary all read the first row and nothing else,
+// and a loan list projected every loan two or three times over to reach it.
+// The refusal is the same one Schedule makes, for the same reason.
+func (l UserLoan) NextInstalment() (amortisation.Obligation, error) {
+	if l.UnreconciledPayments {
+		return amortisation.Obligation{}, ErrPaymentReconciliation
+	}
+	cal, err := amortisation.NewCalendar(l.Contract)
+	if err != nil {
+		return amortisation.Obligation{}, err
+	}
+	return cal.Next(l.Balance, l.AsOf)
 }

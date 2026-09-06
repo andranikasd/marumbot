@@ -343,6 +343,35 @@ func publicRoutes(a *app.Operations, hook *telegram.Webhook, w *app.Worker,
 // tickHandler drains the command inbox. It is bounded rather than looping until
 // empty: a tick that runs forever holds a Worker request open past its limit,
 // and the next tick is only minutes away.
+// The tick's budget, and each stage's share of it. The stage budgets sum to
+// less than the whole so a stage that overruns is cut by its own deadline
+// rather than by the tick's, which is what makes the metric legible: a
+// "deadline" outcome names the stage that was too slow.
+const (
+	tickBudget      = 45 * time.Second
+	drainBudget     = 15 * time.Second
+	remindersBudget = 20 * time.Second
+	shadowBudget    = 8 * time.Second
+)
+
+// tickStage runs one stage under its own budget and span, and times it. Time
+// enters through the Clock port like everywhere else (I2), so a test can hold
+// it still.
+func tickStage(ctx context.Context, clock app.Clock, name string, budget time.Duration, run func(context.Context) error) error {
+	stageCtx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+	stageCtx, span := obs.ComponentScheduler.Enter(stageCtx, "tick."+name)
+	defer span.End()
+
+	started := clock.Now()
+	err := run(stageCtx)
+	obs.RecordTickStage(stageCtx, name, clock.Now().Sub(started), err)
+	if err != nil {
+		span.RecordError(err)
+	}
+	return err
+}
+
 func tickHandler(w *app.Worker, users app.UserLister, serviceToken string, log *slog.Logger) http.Handler {
 	const batch = 25
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
@@ -351,12 +380,20 @@ func tickHandler(w *app.Worker, users app.UserLister, serviceToken string, log *
 			rw.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		tickCtx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+		tickCtx, cancel := context.WithTimeout(r.Context(), tickBudget)
 		defer cancel()
 		ctx, span := obs.ComponentScheduler.Enter(tickCtx, "tick")
 		defer span.End()
 
-		n, err := w.Drain(ctx, batch)
+		// The drain is first and unconditional: it is the only stage a user
+		// can perceive, and a slow reminder or shadow walk must never be what
+		// delays a reply. A stage that fails fails alone.
+		var n int
+		err := tickStage(ctx, w.Clock, "drain", drainBudget, func(ctx context.Context) error {
+			var err error
+			n, err = w.Drain(ctx, batch)
+			return err
+		})
 		if err != nil {
 			span.RecordError(err)
 			log.ErrorContext(ctx, "tick failed", "error", err)
@@ -366,22 +403,27 @@ func tickHandler(w *app.Worker, users app.UserLister, serviceToken string, log *
 		// Reminders ride the same tick: generation is hourly, delivery is every
 		// tick. A failure is logged rather than failing the tick, because
 		// a stuck reminder must not stop the inbox draining.
-		if sent, err := w.TickReminders(ctx, users); err != nil {
+		var sent int
+		if err := tickStage(ctx, w.Clock, "reminders", remindersBudget, func(ctx context.Context) error {
+			var err error
+			sent, err = w.TickReminders(ctx, users)
+			return err
+		}); err != nil {
 			span.RecordError(err)
 			log.ErrorContext(ctx, "reminder tick failed", "error", err)
 		} else if sent > 0 {
 			log.InfoContext(ctx, "reminders sent", "count", sent)
 		}
 		// Shadow mode rides the tick too, on its own gate. Silent by design:
-		// it stores what the engine would recommend, and tells no one.
-		if _, err := w.TickShadow(ctx, users); err != nil {
+		// it stores what the engine would recommend, and tells no one. It is
+		// last and smallest for the same reason: nobody is waiting for it.
+		if err := tickStage(ctx, w.Clock, "shadow", shadowBudget, func(ctx context.Context) error {
+			_, err := w.TickShadow(ctx, users)
+			return err
+		}); err != nil {
 			span.RecordError(err)
 			log.ErrorContext(ctx, "shadow tick failed", "error", err)
 		}
-		// Logged on every tick, including the empty ones. A scheduler that is
-		// not running looks exactly like a scheduler with nothing to do, and
-		// the difference matters: the tick is also what keeps the container
-		// awake, so its absence turns every message into a cold start.
 		observeQueues(ctx, w.Inbox)
 		log.InfoContext(ctx, "tick", "handled", n)
 		writeJSON(rw, http.StatusOK, map[string]any{"handled": n})

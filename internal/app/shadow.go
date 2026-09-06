@@ -66,43 +66,30 @@ func (w *Worker) TickShadow(ctx context.Context, users UserLister) (int, error) 
 		return 0, nil // another tick won the walk
 	}
 	defer w.shadowing.Store(false)
-	ids, err := users.ActiveLoanUsers(ctx, shadowWalkLimit)
+	after, _ := w.shadowCursor.Load().(string)
+	ids, err := users.ActiveLoanUsers(ctx, after, shadowWalkLimit)
 	if err != nil {
 		return 0, fmt.Errorf("listing accounts for the shadow walk: %w", err)
 	}
 	today := date.From(w.Clock.Now(), time.UTC).String()
 	recorded := 0
+	if len(ids) < shadowWalkLimit {
+		// The end of the account list: the next walk starts over.
+		defer w.shadowCursor.Store("")
+	}
 	for _, id := range ids {
-		sh, err := w.PlanSheet(ctx, id, nil)
-		if errors.Is(err, ErrNotFound) {
-			continue // no live loans or no budget: nothing to shadow
+		if err := ctx.Err(); err != nil {
+			// Out of budget. The cursor holds the last account finished, so
+			// the next walk continues from here rather than from the top.
+			break
 		}
-		if err != nil {
-			// One account's broken plan must not silence the others' evidence.
-			w.Log.WarnContext(ctx, "shadow: computing the sheet failed", "error", err)
-			continue
-		}
-		raw, err := json.Marshal(sh)
-		if err != nil {
-			w.Log.WarnContext(ctx, "shadow: marshalling the sheet failed", "error", err)
-			continue
-		}
-		sum := sha256.Sum256(raw)
-		wrote, err := w.Shadow.RecordShadow(ctx, ShadowRecommendation{
-			UserID:      id,
-			ComputedOn:  today,
-			Goal:        sh.Goal,
-			Engine:      plan.EngineVersion,
-			Fingerprint: hex.EncodeToString(sum[:]),
-			Sheet:       raw,
-		})
-		if err != nil {
-			w.Log.WarnContext(ctx, "shadow: storing failed", "error", err)
-			continue
-		}
-		if wrote {
+		// The cursor advances once the account has had its turn, whether that
+		// produced evidence or not: an account that cannot be shadowed today
+		// must not block the accounts behind it forever.
+		if w.shadowAccount(ctx, id, today) {
 			recorded++
 		}
+		w.shadowCursor.Store(id)
 	}
 	if recorded > 0 {
 		// Counts only; never amounts or identifiers (I5).
@@ -110,4 +97,38 @@ func (w *Worker) TickShadow(ctx context.Context, users UserLister) (int, error) 
 	}
 	w.lastShadow.Store(now.UnixNano())
 	return recorded, nil
+}
+
+// shadowAccount records one account's recommendation and reports whether a new
+// one was stored. Every failure is one account's failure: it is logged and the
+// walk continues, because the evidence is worth more in aggregate than any
+// single row.
+func (w *Worker) shadowAccount(ctx context.Context, id, today string) bool {
+	sh, err := w.PlanSheet(ctx, id, nil)
+	if errors.Is(err, ErrNotFound) {
+		return false // no live loans or no budget: nothing to shadow
+	}
+	if err != nil {
+		w.Log.WarnContext(ctx, "shadow: computing the sheet failed", "error", err)
+		return false
+	}
+	raw, err := json.Marshal(sh)
+	if err != nil {
+		w.Log.WarnContext(ctx, "shadow: marshalling the sheet failed", "error", err)
+		return false
+	}
+	sum := sha256.Sum256(raw)
+	wrote, err := w.Shadow.RecordShadow(ctx, ShadowRecommendation{
+		UserID:      id,
+		ComputedOn:  today,
+		Goal:        sh.Goal,
+		Engine:      plan.EngineVersion,
+		Fingerprint: hex.EncodeToString(sum[:]),
+		Sheet:       raw,
+	})
+	if err != nil {
+		w.Log.WarnContext(ctx, "shadow: storing failed", "error", err)
+		return false
+	}
+	return wrote
 }

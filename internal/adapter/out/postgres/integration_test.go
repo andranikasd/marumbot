@@ -604,7 +604,7 @@ func TestActiveLoanUsers(t *testing.T) {
 	if _, err := s.CreateLoan(ctx, draft(userID, t)); err != nil {
 		t.Fatalf("creating the loan: %v", err)
 	}
-	ids, err := s.ActiveLoanUsers(ctx, 10_000)
+	ids, err := s.ActiveLoanUsers(ctx, "", 10_000)
 	if err != nil {
 		t.Fatalf("listing active users: %v", err)
 	}
@@ -616,6 +616,46 @@ func TestActiveLoanUsers(t *testing.T) {
 	}
 	if !found {
 		t.Error("a user with a live loan is missing from the reminder walk")
+	}
+}
+
+// The walk pages by an ordered cursor. Before it did, the unordered limit
+// picked an arbitrary subset, so past the limit some accounts were never
+// walked at all -- their reminders were simply never generated.
+func TestActiveLoanUsersPagesInOrder(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	want := map[string]bool{}
+	for range 3 {
+		id := newUser(t, s)
+		if _, err := s.CreateLoan(ctx, draft(id, t)); err != nil {
+			t.Fatalf("creating the loan: %v", err)
+		}
+		want[id] = true
+	}
+
+	// One account at a time, resuming from the last, until the walk runs out.
+	// Every account must appear exactly once and in ascending order.
+	seen := map[string]int{}
+	after := ""
+	for range 10_000 {
+		page, err := s.ActiveLoanUsers(ctx, after, 1)
+		if err != nil {
+			t.Fatalf("listing active users: %v", err)
+		}
+		if len(page) == 0 {
+			break
+		}
+		if page[0] <= after {
+			t.Fatalf("walk went backwards: %q after %q", page[0], after)
+		}
+		seen[page[0]]++
+		after = page[0]
+	}
+	for id := range want {
+		if seen[id] != 1 {
+			t.Errorf("account %s was walked %d times, want exactly once", id, seen[id])
+		}
 	}
 }
 

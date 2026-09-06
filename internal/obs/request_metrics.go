@@ -2,6 +2,7 @@ package obs
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -50,4 +51,24 @@ func RecordTelegram(ctx context.Context, method, outcome string, elapsed time.Du
 	if limited {
 		telegramLimited.Add(ctx, 1, metric.WithAttributes(attribute.String("method", method)))
 	}
+}
+
+var tickStageDuration, _ = requestMeter.Float64Histogram("marum_tick_stage_duration_seconds",
+	metric.WithUnit("s"),
+	metric.WithDescription("scheduler tick duration, per stage"))
+
+// RecordTickStage times one stage of the scheduler tick. The stage vocabulary
+// is closed -- drain, reminders, shadow -- so the label set stays bounded, and
+// the outcome distinguishes a stage that failed from one that ran out of its
+// own budget, which are different findings about the same slow tick.
+func RecordTickStage(ctx context.Context, stage string, elapsed time.Duration, err error) {
+	outcome := "ok"
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		outcome = "deadline"
+	case err != nil:
+		outcome = "error"
+	}
+	tickStageDuration.Record(ctx, elapsed.Seconds(),
+		metric.WithAttributes(attribute.String("stage", stage), attribute.String("outcome", outcome)))
 }

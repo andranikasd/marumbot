@@ -533,9 +533,9 @@ func (s *Server) listLoans() http.Handler {
 			// so the summary card and the chat cannot disagree. Absent when the
 			// schedule cannot be built; the card then shows a dash, not a zero.
 			row["needs_reconciliation"] = l.UnreconciledPayments
-			if s, err := l.Schedule(); err == nil && len(s.Rows) > 0 {
-				row["next_due"] = s.Rows[0].Due.String()
-				row["next_payment_major"] = major(s.Rows[0].Payment)
+			if next, err := l.NextInstalment(); err == nil {
+				row["next_due"] = next.Due.String()
+				row["next_payment_major"] = major(next.Payment)
 			}
 			out = append(out, row)
 		}

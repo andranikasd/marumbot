@@ -409,13 +409,24 @@ UPDATE reminder_occurrences SET status = 'canceled'
  WHERE loan_id = $1 AND status = 'scheduled' RETURNING id;
 
 -- name: ActiveLoanUsers
--- Every account that still owes something, for the reminder tick. Bounded
--- because the tick is bounded; the next tick is minutes away.
+-- One ordered page of accounts that still owe something, for the reminder and
+-- shadow walks. Bounded because the tick is bounded; the next tick is minutes
+-- away.
+--
+-- The order and the cursor are what make the walk complete. Without them the
+-- limit selected an arbitrary subset, so past the limit some accounts were
+-- never reached at all, and a walk cut short by its deadline restarted from
+-- the same end every time. $1 is the last account of the previous page, or the
+-- empty string to start. It is cast rather than compared as text: user_id is a
+-- uuid, and uuid ordering is what ORDER BY uses, so the resume point has to be
+-- read as one too.
 SELECT DISTINCT l.user_id
   FROM loans l
   JOIN users u ON u.id = l.user_id
  WHERE l.archived_at IS NULL AND u.deleted_at IS NULL AND u.access_state <> 'paused'
- LIMIT $1;
+   AND (nullif($1::text, '')::uuid IS NULL OR l.user_id > nullif($1::text, '')::uuid)
+ ORDER BY l.user_id
+ LIMIT $2;
 
 -- name: ApprovePlan
 INSERT INTO approved_plans (user_id, goal, cap_minor, policy, engine, payoff_date, months, interest_minor)

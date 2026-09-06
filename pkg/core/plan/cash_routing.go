@@ -268,7 +268,7 @@ func (s *sim) routeCash(on date.Date, dueLoan *loanState) {
 		if q.Outflow.Sign() <= 0 {
 			continue
 		}
-		if s.in.Cash.Spending != nil && s.carryRule == BatchUntil && q.Principal.Cmp(s.carryMinimum) < 0 && !q.Closes {
+		if s.in.Cash.SeparateSpending() && s.carryRule == BatchUntil && q.Principal.Cmp(s.carryMinimum) < 0 && !q.Closes {
 			continue
 		}
 		if s.pol.MinPrepay.Sign() > 0 && q.Principal.Cmp(s.pol.MinPrepay) < 0 && !q.Closes {

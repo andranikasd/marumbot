@@ -126,6 +126,27 @@ type CashPlan struct {
 	MonthlyOverrides map[string]money.Amount
 }
 
+// SeparateSpending reports whether the borrower declared funding and spending
+// permission as two different things.
+//
+// Two declaration models reach the engine, and almost every behavioural
+// difference between them turns on this one question:
+//
+//   - Funded budget (Spending is absent). Monthly is a single figure: the
+//     money that arrives each cycle and the most that may go to loans. Cash
+//     and permission are the same thing. A payday is optional -- with none,
+//     the month's money is deemed to arrive on the first instalment date, so
+//     nothing can be paid early.
+//   - Separate spending (Spending is present). Monthly is confirmed recurring
+//     funding, and Spending.Monthly is permission to spend, which creates no
+//     cash: room left in a limit is never money on hand. A payday is required,
+//     because permission is granted per cycle and a cycle needs an anchor.
+//
+// Ask it as the question it is -- "did the borrower declare these
+// separately?". The bare nil check it replaces read as an absence, which is
+// what made this the hardest thing in the engine to follow.
+func (c CashPlan) SeparateSpending() bool { return c.Spending != nil }
+
 // MonthKey renders a date as the MonthlyOverrides key for its month.
 func MonthKey(d date.Date) string {
 	return fmt.Sprintf("%04d-%02d", d.Year(), int(d.Month()))

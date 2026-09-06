@@ -1,8 +1,8 @@
 package app
 
 import (
+	"crypto/sha256"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/andranikasd/marumbot/pkg/core/date"
@@ -212,8 +212,8 @@ func TestSearchFingerprintRejectsUnsupportedKinds(t *testing.T) {
 					t.Error("unsupported kind did not panic")
 				}
 			}()
-			var b strings.Builder
-			fingerprintValue(&b, reflect.ValueOf(v))
+			b := &fingerprintHash{h: sha256.New()}
+			fingerprintValue(b, reflect.ValueOf(v))
 		})
 	}
 }
