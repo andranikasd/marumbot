@@ -10,6 +10,8 @@ package telegram
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/andranikasd/marumbot/internal/app"
 )
 
 // Update is the subset of Telegram's update object Marum reads.
@@ -61,17 +63,23 @@ type Chat struct {
 
 // Command kinds. These are stored, so they are part of the schema: renaming one
 // orphans every row that used it.
+//
+// They are the app layer's constants, not a second copy of them. The app must
+// not import an adapter, so the definition lives there and the adapter refers
+// to it -- the direction this package's dependencies already run. Two copies
+// of a stored string literal is how a parser and its worker drift apart in
+// silence, and nothing fails when they do.
 const (
-	KindStart    = "start"
-	KindHelp     = "help"
-	KindLoans    = "loans"
-	KindAdd      = "add"
-	KindBudget   = "budget"
-	KindLanguage = "language"
-	KindAdvice   = "advice"   // what should I do, given everything on file
-	KindText     = "text"     // free text, meaningful only inside a conversation
-	KindCallback = "callback" // an inline button
-	KindIgnore   = "ignore"   // understood, and deliberately not acted on
+	KindStart    = app.KindStart
+	KindHelp     = app.KindHelp
+	KindLoans    = app.KindLoans
+	KindAdd      = app.KindAdd
+	KindBudget   = app.KindBudget
+	KindLanguage = app.KindLanguage
+	KindAdvice   = app.KindAdvice   // what should I do, given everything on file
+	KindText     = app.KindText     // free text, meaningful only inside a conversation
+	KindCallback = app.KindCallback // an inline button
+	KindIgnore   = app.KindIgnore   // understood, and deliberately not acted on
 )
 
 // Normalised is an update reduced to what the worker needs.

@@ -137,6 +137,36 @@ function app(env: Env) {
   return getContainer(env.MARUM_APP, "singleton");
 }
 
+/** The tick's own deadline, above the 45s budget the Go handler bounds itself
+ *  with, so a tick that overran its stages is still reported by the handler
+ *  rather than cut off here. */
+const TICK_TIMEOUT_MS = 50_000;
+
+/** Dispatch one scheduled tick and observe the outcome.
+ *
+ *  Without a deadline a hung tick is invisible: nothing bounds its duration,
+ *  the next cron fires regardless, and a tick that has been failing for hours
+ *  looks exactly like one that is working. */
+async function runTick(env: Env): Promise<void> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), TICK_TIMEOUT_MS);
+  try {
+    const tick = new Request(new URL("/internal/tick", "http://container"), {
+      method: "POST",
+      signal: abort.signal,
+    });
+    tick.headers.set("X-Marum-Service-Token", env.MARUM_SERVICE_TOKEN);
+    const response = await app(env).fetch(tick);
+    if (!response.ok) {
+      console.error(`scheduled tick returned ${response.status}`);
+    }
+  } catch (err) {
+    console.error("scheduled tick failed", err);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -271,8 +301,6 @@ export default {
   /** The scheduler. Drains due reminders and runs maintenance; idempotent, so
    *  a duplicate tick is harmless and a missed one is caught by the next. */
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    const tick = new Request(new URL("/internal/tick", "http://container"), { method: "POST" });
-    tick.headers.set("X-Marum-Service-Token", env.MARUM_SERVICE_TOKEN);
-    ctx.waitUntil(app(env).fetch(tick));
+    ctx.waitUntil(runTick(env));
   },
 };

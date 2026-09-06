@@ -23,9 +23,13 @@ import (
 	"github.com/andranikasd/marumbot/pkg/core/plan"
 )
 
-// Command kinds, mirrored from the inbound adapter so this package does not
-// import it: the app layer must not depend on an adapter, and a shared string
-// literal repeated in two places is how the two drift apart silently.
+// Command kinds. These are stored, so they are part of the schema: renaming
+// one orphans every row that used it.
+//
+// This is the one definition. The app layer must not depend on an adapter, so
+// it owns them and the inbound adapter refers to them by name rather than
+// repeating the literals -- which is what used to leave the two lists free to
+// disagree with nothing failing.
 const (
 	KindStart    = "start"
 	KindHelp     = "help"
@@ -34,7 +38,6 @@ const (
 	KindBudget   = "budget"
 	KindLanguage = "language"
 	KindAdvice   = "advice"
-	KindWorking  = "working"
 	KindText     = "text"
 	KindCallback = "callback"
 	KindIgnore   = "ignore"

@@ -44,9 +44,26 @@ func New(token string) *Client {
 	return &Client{
 		token: token,
 		base:  "https://api.telegram.org",
-		http:  &http.Client{Timeout: 10 * time.Second},
+		http:  &http.Client{Timeout: 10 * time.Second, Transport: newTransport()},
 		pace:  pacing{clock: sysclock.New(), chats: make(map[int64]time.Time)},
 	}
+}
+
+// newTransport keeps idle connections to the one host this client talks to.
+//
+// Every call goes to api.telegram.org, and the default transport keeps two
+// idle connections per host. Past two concurrent calls the rest opened a
+// connection and discarded it, paying a fresh TLS handshake per message during
+// exactly the bursts where latency is worst -- a reminder run, or a queue
+// draining after a 429 cooldown.
+//
+// Only the idle pool is raised. Concurrency is already bounded upstream by the
+// pacing admission in pacing.go, and a second limit here would queue sends in
+// a place that reports nothing.
+func newTransport() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.MaxIdleConnsPerHost = 32
+	return t
 }
 
 // WithBase points the client at a different host, for tests.

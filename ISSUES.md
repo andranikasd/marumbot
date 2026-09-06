@@ -15,6 +15,55 @@ will do so at a small multiple of current load. **Medium** — measurable cost o
 a structural weakness that will become expensive. **Low** — worth fixing when
 the surrounding code is next touched.
 
+## Status since this audit
+
+This audit was written on 2026-09-03 against `codex/performance-budget-flow`.
+Two rounds of work have landed since, so much of what follows is now history.
+Read this section first; the tables below are kept as the original findings and
+their reasoning, not as a to-do list.
+
+Closed by v2.0.4 (PR #101): **P4**, **P13**, **P14**, **P15**, **P16**, **D2**,
+**D9**, and most of **D6**.
+
+Closed since:
+
+- **P2** — the pool honours `pool_max_conns`/`pool_min_conns` from the DSN and
+  exports `pool.Stat()` as gauges. Eight remains the default.
+- **P3** — outbound pacing exists in `telegramclient/pacing.go`: 25 calls/second
+  globally, one message/second per private chat, honouring retry-after.
+- **P6/P7** — occurrence writes batch per loan; each tick stage has its own
+  budget, span and duration histogram; the account walk is ordered and resumes
+  from a cursor. It was previously an unordered `LIMIT 500`, so past 500
+  accounts some were never walked at all.
+- **P8** — the Telegram client has its own transport with a real idle pool.
+- **P9** — `UserLoan.NextInstalment` answers the question the list paths
+  actually asked, instead of building a schedule to read its first row.
+- **P10** — candidate simulations run on every core, with enumeration split
+  from simulation so the attempted prefix, the cap and the ranking are
+  unchanged. `BenchmarkSearchFive` 1712ms to 304ms on 16 cores, 854ms on one.
+- **P12** — the fingerprint streams into the hash instead of building the
+  encoded tree as a string. The reflection walk is deliberately kept: a typed
+  encoder would silently miss a new field and serve a stale plan.
+- **P18** — profile flags are read once per request.
+- **P19** — two partial indexes (migration 00023) carry the unreconciled
+  predicate; `EXPLAIN` confirms both are used.
+- **P20** — the scheduled tick has a deadline and its result is observed.
+- **D1** — the limiter the comments described now exists (see P3).
+- **D6** — histograms for webhook, Telegram, plan search and each tick stage;
+  gauges for pool saturation and queue depth.
+- **D8** — the command kinds have one definition; the adapter refers to it.
+
+Still open, deliberately:
+
+- **P1/D3/D4/D7** — the singleton topology and the shape of `internal/app`.
+  Shared scheduler coordination and distributed sender pacing come first.
+- **P5** — the startup menu sweep is still a sequential full walk.
+- **P11** — the plan cache is still process-local. A persisted report cache is
+  in tension with the rule that derived projections are never stored, and the
+  cost that motivated it fell by 5.6x.
+- **P17** — partly addressed; the remaining fan-out is per-request reads.
+- **D5** — the inbox/latency trade is still stated as a round number.
+
 ## Performance and scalability
 
 | # | Severity | Area | Location | Description | Impact | Suggested direction |
