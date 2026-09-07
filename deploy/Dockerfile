@@ -1,5 +1,5 @@
 # Build and run Marum. Distroless, static, non-root, no shell in the final image.
-FROM node:22-alpine AS assets
+FROM node:26-alpine AS assets
 WORKDIR /src/deploy/cloudflare
 COPY deploy/cloudflare/package*.json ./
 RUN npm ci
