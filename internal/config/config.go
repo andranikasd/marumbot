@@ -7,32 +7,37 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/andranikasd/marumbot/pkg/core/money"
 )
 
 type Config struct {
-	Env             string // dev | prod
-	Mode            string // polling | webhook
-	Addr            string // public HTTP listener
-	AdminAddr       string // private admin listener
-	DatabaseURL     string
-	BotToken        string
-	WebhookSecret   string
-	ServiceToken    string // proves a request came from the Worker, not the internet
-	IdentityKey     string // base64 32 bytes; seals Telegram identifiers at rest
-	MiniAppURL      string // absolute https URL of the loan form
-	DefaultCurrency string
-	DefaultTimezone string
-	TickInterval    time.Duration
-	AdminUser       string
-	AdminPassHash   string // pbkdf2 encoded hash, produced by -hash-password
-	OTLPEndpoint    string // empty disables telemetry entirely
-	PyroscopeAddr   string
-	Version         string
-	InstanceID      string
+	ErasureJournalDir string
+	Env               string // dev | prod
+	Mode              string // polling | webhook
+	Addr              string // public HTTP listener
+	AdminAddr         string // private admin listener
+	DatabaseURL       string
+	BotToken          string
+	WebhookSecret     string
+	ServiceToken      string // proves a request came from the Worker, not the internet
+	IdentityKey       string // base64 32 bytes; seals Telegram identifiers at rest
+	MiniAppURL        string // absolute https URL of the loan form
+	DefaultCurrency   string
+	DefaultTimezone   string
+	TickInterval      time.Duration
+	AdminUser         string
+	AdminPassHash     string // pbkdf2 encoded hash, produced by -hash-password
+	OTLPEndpoint      string // empty disables telemetry entirely
+	PyroscopeAddr     string
+	Version           string
+	InstanceID        string
 }
 
 var ErrMissing = errors.New("required setting is missing")
@@ -43,34 +48,58 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	c := Config{
-		Env:             str("MARUM_ENV", "dev"),
-		Mode:            str("MARUM_MODE", "polling"),
-		Addr:            str("MARUM_ADDR", ":8080"),
-		AdminAddr:       str("MARUM_ADMIN_ADDR", ":8081"),
-		DatabaseURL:     str("MARUM_DATABASE_URL", ""),
-		BotToken:        str("MARUM_BOT_TOKEN", ""),
-		WebhookSecret:   str("MARUM_WEBHOOK_SECRET", ""),
-		ServiceToken:    str("MARUM_SERVICE_TOKEN", ""),
-		IdentityKey:     str("MARUM_IDENTITY_KEY", ""),
-		MiniAppURL:      str("MARUM_MINIAPP_URL", ""),
-		DefaultCurrency: str("MARUM_DEFAULT_CURRENCY", "AMD"),
-		DefaultTimezone: str("MARUM_DEFAULT_TZ", "Asia/Yerevan"),
-		TickInterval:    tick,
-		AdminUser:       str("MARUM_ADMIN_USER", "admin"),
-		AdminPassHash:   str("MARUM_ADMIN_PASSWORD_HASH", ""),
-		OTLPEndpoint:    str("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
-		PyroscopeAddr:   str("PYROSCOPE_SERVER_ADDRESS", ""),
-		Version:         str("MARUM_VERSION", "dev"),
-		InstanceID:      str("MARUM_INSTANCE_ID", "local-1"),
+		ErasureJournalDir: str("MARUM_ERASURE_JOURNAL_DIR", ""),
+		Env:               str("MARUM_ENV", "dev"),
+		Mode:              str("MARUM_MODE", "polling"),
+		Addr:              str("MARUM_ADDR", ":8080"),
+		AdminAddr:         str("MARUM_ADMIN_ADDR", ":8081"),
+		DatabaseURL:       str("MARUM_DATABASE_URL", ""),
+		BotToken:          str("MARUM_BOT_TOKEN", ""),
+		WebhookSecret:     str("MARUM_WEBHOOK_SECRET", ""),
+		ServiceToken:      str("MARUM_SERVICE_TOKEN", ""),
+		IdentityKey:       str("MARUM_IDENTITY_KEY", ""),
+		MiniAppURL:        str("MARUM_MINIAPP_URL", ""),
+		DefaultCurrency:   str("MARUM_DEFAULT_CURRENCY", "AMD"),
+		DefaultTimezone:   str("MARUM_DEFAULT_TZ", "Asia/Yerevan"),
+		TickInterval:      tick,
+		AdminUser:         str("MARUM_ADMIN_USER", "admin"),
+		AdminPassHash:     str("MARUM_ADMIN_PASSWORD_HASH", ""),
+		OTLPEndpoint:      str("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+		PyroscopeAddr:     str("PYROSCOPE_SERVER_ADDRESS", ""),
+		Version:           str("MARUM_VERSION", "dev"),
+		InstanceID:        str("MARUM_INSTANCE_ID", "local-1"),
 	}
 	return c, c.validate()
 }
 
 func (c Config) validate() error {
+	switch c.Env {
+	case "dev", "prod":
+	default:
+		return errors.New("MARUM_ENV must be dev or prod")
+	}
+	if _, err := money.Lookup(c.DefaultCurrency); err != nil {
+		return errors.New("MARUM_DEFAULT_CURRENCY must be a supported currency code")
+	}
+	if c.MiniAppURL != "" {
+		u, err := url.Parse(c.MiniAppURL)
+		// Menu links append their own query parameters. Credentials, queries,
+		// and fragments therefore cannot be part of this base URL.
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" ||
+			u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.Contains(c.MiniAppURL, "#") {
+			return errors.New("MARUM_MINIAPP_URL must be an absolute HTTP(S) URL without credentials, query, or fragment")
+		}
+	}
 	if c.TickInterval <= 0 {
 		return errors.New("MARUM_TICK_INTERVAL must be positive")
 	}
 	var missing []string
+	if c.Env == "prod" && c.ErasureJournalDir == "" {
+		missing = append(missing, "MARUM_ERASURE_JOURNAL_DIR (required in prod)")
+	}
+	if c.ErasureJournalDir != "" && !filepath.IsAbs(c.ErasureJournalDir) {
+		return errors.New("MARUM_ERASURE_JOURNAL_DIR must be an absolute path")
+	}
 	if c.DatabaseURL == "" {
 		missing = append(missing, "MARUM_DATABASE_URL")
 	}

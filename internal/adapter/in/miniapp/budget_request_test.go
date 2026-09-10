@@ -1,8 +1,8 @@
 package miniapp
 
 import (
+	"encoding/json"
 	"errors"
-	"math"
 	"testing"
 
 	"github.com/andranikasd/marumbot/pkg/core/money"
@@ -11,7 +11,7 @@ import (
 func TestBudgetRequestValidate(t *testing.T) {
 	t.Parallel()
 
-	r := BudgetRequest{MonthlyMajor: 250_000.25, Currency: "AMD", PayDay: 31}
+	r := BudgetRequest{MonthlyMajor: "250000.25", Currency: "AMD", PayDay: 31}
 	code, minor, payDay, err := r.Validate()
 	if err != nil {
 		t.Fatal(err)
@@ -25,14 +25,14 @@ func TestBudgetRequestValidateRejectsInvalidConfiguration(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]BudgetRequest{
-		"unknown currency": {MonthlyMajor: 1, Currency: "XYZ"},
-		"zero monthly":     {MonthlyMajor: 0, Currency: "AMD"},
-		"negative monthly": {MonthlyMajor: -1, Currency: "AMD"},
-		"NaN monthly":      {MonthlyMajor: math.NaN(), Currency: "AMD"},
-		"infinite monthly": {MonthlyMajor: math.Inf(1), Currency: "AMD"},
-		"huge monthly":     {MonthlyMajor: float64(math.MaxInt64), Currency: "AMD"},
-		"negative pay day": {MonthlyMajor: 1, Currency: "AMD", PayDay: -1},
-		"pay day 32":       {MonthlyMajor: 1, Currency: "AMD", PayDay: 32},
+		"unknown currency": {MonthlyMajor: "1", Currency: "XYZ"},
+		"zero monthly":     {MonthlyMajor: "0", Currency: "AMD"},
+		"negative monthly": {MonthlyMajor: "-1", Currency: "AMD"},
+		"NaN monthly":      {MonthlyMajor: "NaN", Currency: "AMD"},
+		"infinite monthly": {MonthlyMajor: "Infinity", Currency: "AMD"},
+		"huge monthly":     {MonthlyMajor: "9223372036854775807", Currency: "AMD"},
+		"negative pay day": {MonthlyMajor: "1", Currency: "AMD", PayDay: -1},
+		"pay day 32":       {MonthlyMajor: "1", Currency: "AMD", PayDay: 32},
 	}
 	for name, r := range cases {
 		r := r
@@ -49,7 +49,7 @@ func TestBudgetRequestValidateOpening(t *testing.T) {
 	t.Parallel()
 
 	amd := money.MustLookup("AMD")
-	for name, major := range map[string]float64{"zero clears": 0, "rounds minor units": 12.345} {
+	for name, major := range map[string]json.Number{"zero clears": "0", "exact minor units": "12.35"} {
 		major := major
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -59,7 +59,7 @@ func TestBudgetRequestValidateOpening(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := int64(0)
-			if name == "rounds minor units" {
+			if name == "exact minor units" {
 				want = 1235
 			}
 			if got != want {
@@ -67,9 +67,9 @@ func TestBudgetRequestValidateOpening(t *testing.T) {
 			}
 		})
 	}
-	for name, major := range map[string]float64{
-		"negative": -1, "NaN": math.NaN(), "infinite": math.Inf(1),
-		"too large": float64(math.MaxInt64),
+	for name, major := range map[string]json.Number{
+		"excess precision": "12.345", "negative": "-1", "NaN": "NaN", "infinite": "Infinity",
+		"too large": "9223372036854775807",
 	} {
 		major := major
 		t.Run(name, func(t *testing.T) {
@@ -86,7 +86,7 @@ func TestBudgetRequestValidateReserve(t *testing.T) {
 	t.Parallel()
 
 	amd := money.MustLookup("AMD")
-	major := 100_000.25
+	major := json.Number("100000.25")
 	r := BudgetRequest{ReserveMajor: &major}
 	got, err := r.ValidateReserve(amd)
 	if err != nil {
@@ -95,7 +95,7 @@ func TestBudgetRequestValidateReserve(t *testing.T) {
 	if got != 10_000_025 {
 		t.Fatalf("ValidateReserve() = %d, want 10000025", got)
 	}
-	negative := -1.0
+	negative := json.Number("-1")
 	r.ReserveMajor = &negative
 	if _, err := r.ValidateReserve(amd); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("negative reserve error = %v, want ErrInvalid", err)
@@ -106,7 +106,7 @@ func TestBudgetRequestValidateOverrides(t *testing.T) {
 	t.Parallel()
 
 	amd := money.MustLookup("AMD")
-	r := BudgetRequest{Overrides: map[string]float64{"2026-09": 0, "2026-10": 100_000.25}}
+	r := BudgetRequest{Overrides: map[string]json.Number{"2026-09": "0", "2026-10": "100000.25"}}
 	got, err := r.ValidateOverrides(amd)
 	if err != nil {
 		t.Fatal(err)
@@ -119,16 +119,16 @@ func TestBudgetRequestValidateOverrides(t *testing.T) {
 func TestBudgetRequestValidateOverridesRejectsInvalidDocument(t *testing.T) {
 	t.Parallel()
 
-	tooMany := make(map[string]float64, maxOverrideMonths+1)
+	tooMany := make(map[string]json.Number, maxOverrideMonths+1)
 	for i := 0; i <= maxOverrideMonths; i++ {
-		tooMany["invalid-"+string(rune('a'+i))] = 1
+		tooMany["invalid-"+string(rune('a'+i))] = "1"
 	}
-	cases := map[string]map[string]float64{
-		"bad month": {"2026-13": 1},
-		"negative":  {"2026-09": -1},
-		"NaN":       {"2026-09": math.NaN()},
-		"infinite":  {"2026-09": math.Inf(1)},
-		"too large": {"2026-09": float64(math.MaxInt64)},
+	cases := map[string]map[string]json.Number{
+		"bad month": {"2026-13": "1"},
+		"negative":  {"2026-09": "-1"},
+		"NaN":       {"2026-09": "NaN"},
+		"infinite":  {"2026-09": "Infinity"},
+		"too large": {"2026-09": "9223372036854775807"},
 		"too many":  tooMany,
 	}
 	amd := money.MustLookup("AMD")

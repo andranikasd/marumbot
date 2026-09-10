@@ -74,16 +74,23 @@ func (w *Worker) TickReminders(ctx context.Context, users UserLister) (int, erro
 	}
 	defer w.reminding.Store(false)
 	now := w.Clock.Now()
-	// Existing deliveries get a turn even when generation repeatedly times out.
-	sent, deliveryErr := w.SendDueReminders(ctx, 50)
+	// Give each stage its own budget within the scheduler's twenty seconds.
+	// A slow delivery must not consume the outbox and generation allowances.
+	deliveryCtx, deliveryCancel := context.WithTimeout(ctx, 7*time.Second)
+	sent, deliveryErr := w.SendDueReminders(deliveryCtx, 50)
+	deliveryCancel()
+	filedCtx, filedCancel := context.WithTimeout(ctx, 5*time.Second)
+	deliveryErr = errors.Join(deliveryErr, w.sendLoanFiled(filedCtx))
+	filedCancel()
 	last := w.lastRemind.Load()
 	if last != 0 && now.Sub(time.Unix(0, last)) < remindEvery {
 		return sent, deliveryErr
 	}
-	generationCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	generationCtx, cancel := context.WithTimeout(ctx, 7*time.Second)
 	defer cancel()
 	generationErr := w.generateReminders(generationCtx, users, now)
-	if generationErr == nil {
+	cursor, _ := w.remindCursor.Load().(string)
+	if generationErr == nil && cursor == "" {
 		w.lastRemind.Store(now.UnixNano())
 	}
 	return sent, errors.Join(deliveryErr, generationErr)
@@ -118,6 +125,9 @@ func (w *Worker) generateReminders(ctx context.Context, users UserLister, now ti
 			// reminders; it is logged and the walk continues.
 			w.Log.WarnContext(ctx, "scheduling reminders failed", "error", err)
 		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		w.remindCursor.Store(id)
 	}
 	if len(ids) < remindPage {
@@ -147,8 +157,7 @@ func (w *Worker) OnLoanFiled(ctx context.Context, userID, loanID string) error {
 	}
 	// The conversation confirms what the form did. Best-effort: the loan
 	// exists whether or not the message lands.
-	w.OnLoanFiledMessage(ctx, userID)
-	return nil
+	return w.OnLoanFiledMessage(ctx, userID)
 }
 
 // ScheduleForUser generates occurrences for one borrower's loans.
@@ -202,6 +211,11 @@ type ReminderDeliveryStore interface {
 	ReminderOccurrence(context.Context, string, string) (ReminderOccurrence, error)
 }
 
+// ReminderRetryStore keeps failed sends from monopolizing the next batch.
+type ReminderRetryStore interface {
+	DeferReminderDelivery(context.Context, string, time.Time) error
+}
+
 // SendDueReminders delivers what is owed and marks each one satisfied.
 //
 // Delivery is at-least-once and cannot be made exactly-once: the gap between
@@ -239,13 +253,21 @@ func (w *Worker) SendDueReminders(ctx context.Context, limit int32) (int, error)
 	// projections of the same loans.
 	books := map[string]*reminderBook{}
 	sent := 0
+	var failures error
 	for _, d := range due {
+		if err := ctx.Err(); err != nil {
+			return sent, errors.Join(failures, err)
+		}
 		book, ok := books[d.UserID]
 		if !ok {
 			book = w.reminderBook(ctx, d.UserID)
 			books[d.UserID] = book
 		}
-		if book == nil || book.preferences.QuietAt(w.Clock.Now()) {
+		if book == nil {
+			failures = errors.Join(failures, w.deferReminder(ctx, d.ID))
+			continue
+		}
+		if book.preferences.QuietAt(w.Clock.Now()) {
 			continue
 		}
 
@@ -271,6 +293,7 @@ func (w *Worker) SendDueReminders(ctx context.Context, limit int32) (int, error)
 			action, fresh, checkErr := w.optionalReminderAction(ctx, extra)
 			if checkErr != nil {
 				w.Log.WarnContext(ctx, "checking optional reminder failed", "error", checkErr)
+				failures = errors.Join(failures, checkErr, w.deferReminder(ctx, d.ID))
 				continue
 			}
 			if !fresh {
@@ -305,9 +328,9 @@ func (w *Worker) SendDueReminders(ctx context.Context, limit int32) (int, error)
 			markup = map[string]any{keyInline: [][]map[string]any{{webAppButton(label, w.miniURL("reminder")+"&id="+url.QueryEscape(d.ID))}}}
 		}
 		if err := w.Send.SendMessage(ctx, book.chat, text, markup); err != nil {
-			// Left scheduled, so the next tick tries again. A reminder that
-			// failed to send is not a reminder that is no longer owed.
+			// Keep it scheduled, with bounded exponential retry delay.
 			w.Log.WarnContext(ctx, "reminder failed to send", "error", err)
+			failures = errors.Join(failures, err, w.deferReminder(ctx, d.ID))
 			continue
 		}
 		if modern {
@@ -323,7 +346,7 @@ func (w *Worker) SendDueReminders(ctx context.Context, limit int32) (int, error)
 		}
 		sent++
 	}
-	return sent, nil
+	return sent, failures
 }
 
 // reminderBook is everything one user's reminders read: locale, chat, and each
@@ -440,4 +463,13 @@ func instalmentOn(book *reminderBook, d DueReminder) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func (w *Worker) deferReminder(ctx context.Context, id string) error {
+	if retry, ok := w.Reminders.(ReminderRetryStore); ok {
+		retryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+		defer cancel()
+		return retry.DeferReminderDelivery(retryCtx, id, w.Clock.Now())
+	}
+	return nil
 }

@@ -4,13 +4,16 @@ import {register} from '../nav.js';
 import {getJSON} from '../api.js';
 import {addStrings,T} from '../i18n.js';
 import {esc,fmtMoney,fmtDate} from '../core.js';
-addStrings({'history.title':'Պլանների պատմություն','history.empty':'Հաստատված պլաններ դեռ չկան','history.active':'Ակտիվ','history.old':'Տվյալները փոխվել են','history.replay':'Դիտել սկզբնական պլանը','history.original':'Սկզբնական հաշվարկ','history.engine':'Այս տարբերակի հաշվարկն այժմ հասանելի չէ','history.back':'Վերադառնալ պատմությանը'}, {'history.title':'Plan history','history.empty':'No approved plans yet','history.active':'Active','history.old':'Inputs have changed','history.replay':'View original plan','history.original':'Original calculation','history.engine':'This calculation version is unavailable','history.back':'Back to history'});
-let busy=false;
-async function load(){
- const data=await getJSON('api/plans');
- document.getElementById('history-list').innerHTML=(data.plans||[]).map(p=>`<article class="card stack"><strong>${esc(p.currency)}</strong><span>${esc(p.created_at.slice(0,10))}</span>${p.active?`<span class="pill">${esc(T('history.active'))}</span>`:''}${p.outdated?`<span class="hint">${esc(T('history.old'))}</span>`:''}<button class="alink" data-replay="${esc(p.id)}">${esc(T('history.replay'))}</button></article>`).join('')||esc(T('history.empty'));
+addStrings({'history.more':'Ցույց տալ ավելին','history.title':'Պլանների պատմություն','history.empty':'Հաստատված պլաններ դեռ չկան','history.active':'Ակտիվ','history.old':'Տվյալները փոխվել են','history.replay':'Դիտել սկզբնական պլանը','history.original':'Սկզբնական հաշվարկ','history.engine':'Այս տարբերակի հաշվարկն այժմ հասանելի չէ','history.back':'Վերադառնալ պատմությանը'}, {'history.more':'Show more','history.title':'Plan history','history.empty':'No approved plans yet','history.active':'Active','history.old':'Inputs have changed','history.replay':'View original plan','history.original':'Original calculation','history.engine':'This calculation version is unavailable','history.back':'Back to history'});
+let busy=false,nextCursor="";
+async function load(append=false){
+ const data=await getJSON('api/plans'+(append&&nextCursor?'?after='+encodeURIComponent(nextCursor):''));
+ const html=(data.plans||[]).map(p=>`<article class="card stack"><strong>${esc(p.currency)}</strong><span>${esc(p.created_at.slice(0,10))}</span>${p.active?`<span class="pill">${esc(T('history.active'))}</span>`:''}${p.outdated?`<span class="hint">${esc(T('history.old'))}</span>`:''}<button class="alink" data-replay="${esc(p.id)}">${esc(T('history.replay'))}</button></article>`).join('')||(!append?esc(T('history.empty')):'');
+ const list=document.getElementById('history-list');if(append)list.insertAdjacentHTML('beforeend',html);else list.innerHTML=html;
+ nextCursor=data.next_cursor||'';document.getElementById('history-more').hidden=!nextCursor;
 }
-register({id:'plan-history',parent:'plan',titleKey:'history.title',html:'<p id="history-error" class="error" role="alert"></p><div id="history-list" class="stack"></div><section id="history-detail" class="stack" hidden></section>',onMount(el){
+register({id:'plan-history',parent:'plan',titleKey:'history.title',html:'<p id="history-error" class="error" role="alert"></p><div id="history-list" class="stack"></div><button class="alink" id="history-more" hidden></button><section id="history-detail" class="stack" hidden></section>',onMount(el){
+ const more=el.querySelector('#history-more');more.textContent=T('history.more');more.onclick=async()=>{more.disabled=true;try{await load(true);}catch{document.getElementById('history-error').textContent=T('err.load');}finally{more.disabled=false;}};
  el.addEventListener('click',async e=>{
   const b=e.target.closest('[data-replay]');if(!b||busy)return;busy=true;b.disabled=true;
   try{

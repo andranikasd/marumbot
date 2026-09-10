@@ -38,3 +38,10 @@ FROM plan_versions p JOIN (
  FROM plan_activation_events a JOIN plan_versions v ON v.id=a.plan_id
  WHERE a.user_id=$1 ORDER BY v.currency,a.revision DESC
 ) active ON active.plan_id=p.id WHERE p.user_id=$1;
+
+-- name: PlanHistoryPage
+SELECT p.id::text,p.currency,jsonb_build_object('sources',p.manifest->'sources')::text,p.created_at::text,
+ p.id=(SELECT a.plan_id FROM plan_activation_events a JOIN plan_versions v ON v.id=a.plan_id WHERE a.user_id=$1 AND v.currency=p.currency ORDER BY a.revision DESC LIMIT 1)
+FROM plan_versions p WHERE p.user_id=$1
+AND ($2='' OR (p.created_at,p.id)<(SELECT created_at,id FROM plan_versions WHERE user_id=$1 AND id=NULLIF($2,'')::uuid))
+ORDER BY p.created_at DESC,p.id DESC LIMIT 51;

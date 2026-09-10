@@ -78,11 +78,8 @@ DELETE FROM telegram_commands
 --
 -- $1 user hmac, $2 new user uuid, $3 locale, $4 timezone, $5 trial ends at,
 -- $6 user ciphertext, $7 chat hmac, $8 chat ciphertext, $9 key version.
--- Two first-contact updates can race past the SELECT and both insert; the
--- ON CONFLICT DO NOTHING plus the final re-select turns the loser into a
--- reader instead of a unique-violation 500 (Telegram would retry it, but a
--- retry loop over ordinary traffic is noise). The loser's users row is
--- unreferenced and harmless.
+-- A conflicting identity aborts the whole statement, including the new user.
+-- The adapter then resolves the winner using a fresh statement snapshot.
 WITH found AS (
     SELECT user_id FROM identities WHERE telegram_user_hmac = $1
 ), created AS (
@@ -95,19 +92,11 @@ WITH found AS (
         user_id, telegram_user_enc, telegram_user_hmac,
         telegram_chat_enc, telegram_chat_hmac, key_version)
     SELECT id, $6, $1, $8, $7, $9 FROM created
-    -- No arbiter: the same racing row collides on user hmac and chat hmac
-    -- alike, and naming one constraint would still error on the other.
-    ON CONFLICT DO NOTHING
     RETURNING user_id
 )
 SELECT user_id, false AS created FROM found
 UNION ALL
-SELECT user_id, true  AS created FROM linked
-UNION ALL
-SELECT user_id, false AS created FROM identities
- WHERE telegram_user_hmac = $1
-   AND NOT EXISTS (SELECT 1 FROM found)
-   AND NOT EXISTS (SELECT 1 FROM linked);
+SELECT user_id, true AS created FROM linked;
 
 -- name: GetUserLocale
 SELECT locale, timezone FROM users WHERE id = $1 AND deleted_at IS NULL;
@@ -124,7 +113,11 @@ SELECT telegram_chat_enc, key_version FROM identities WHERE user_id = $1;
 -- Finds an existing account only. The Mini App is reachable only from a bot
 -- message, so an account that does not exist means something is wrong rather
 -- than something new.
-SELECT user_id FROM identities WHERE telegram_user_hmac = $1;
+SELECT i.user_id FROM identities i JOIN users u ON u.id=i.user_id
+WHERE i.telegram_user_hmac=$1 AND u.deleted_at IS NULL AND u.access_state<>'paused';
+
+-- name: ResolveTelegramIdentity
+SELECT user_id FROM identities WHERE telegram_user_hmac=$1;
 
 -- name: LeaseCommandByID
 -- Claim one specific command, by the id the webhook just wrote.

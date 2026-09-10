@@ -7,7 +7,7 @@ SELECT
   (SELECT count(*) FROM allocation_policy_versions)                          AS policies,
   (SELECT count(*) FROM telegram_commands WHERE status = 'pending')          AS commands_pending,
   (SELECT count(*) FROM telegram_commands WHERE status = 'dead')             AS commands_dead,
-  (SELECT count(*) FROM notification_deliveries WHERE status = 'pending')    AS deliveries_pending,
+  ((SELECT count(*) FROM reminder_occurrences WHERE status = 'scheduled') + (SELECT count(*) FROM notification_deliveries WHERE delivery_kind='loan_filed' AND status IN ('pending','leased'))) AS deliveries_pending,
   (SELECT count(*) FROM notification_deliveries WHERE status = 'dead')       AS deliveries_dead,
   (SELECT count(*) FROM reminder_occurrences WHERE status = 'scheduled')     AS occurrences_scheduled,
   -- Age of the oldest work that is actually DUE. Something scheduled for
@@ -16,9 +16,9 @@ SELECT
   (SELECT coalesce(greatest(0, extract(epoch FROM now() - min(next_attempt_at))), 0)::bigint
      FROM telegram_commands
     WHERE status = 'pending' AND next_attempt_at <= now())                   AS oldest_command_age_s,
-  (SELECT coalesce(greatest(0, extract(epoch FROM now() - min(next_attempt_at))), 0)::bigint
-     FROM notification_deliveries
-    WHERE status = 'pending' AND next_attempt_at <= now())                   AS oldest_delivery_age_s;
+  (SELECT coalesce(greatest(0, extract(epoch FROM now() - min(target_send_at))), 0)::bigint
+     FROM reminder_occurrences
+    WHERE status = 'scheduled' AND target_send_at <= now())                   AS oldest_delivery_age_s;
 
 -- name: ListUsers
 SELECT u.id, u.locale, u.timezone, u.access_state, u.trial_ends_at, u.created_at, u.deleted_at,
@@ -237,3 +237,15 @@ SELECT id, user_id, delivery_kind, status, priority, scheduled_at, next_attempt_
  ORDER BY scheduled_at DESC LIMIT $2;
 -- name: MigrationVersion
 SELECT max(version_id) FROM goose_db_version WHERE is_applied;
+
+-- name: ReconcileErasure
+-- A verified journal entry is an already-authorized deletion intent. Mark it
+-- first in a separate statement so the requested-erasure guard sees the flag.
+UPDATE users SET deletion_requested_at=coalesce(deletion_requested_at,now())
+WHERE encode(sha256(id::text::bytea),'hex')=ANY($1::text[]);
+
+-- name: ApplyErasure
+WITH tombstone AS (
+ INSERT INTO deletion_tombstones(subject_hmac) SELECT unnest($1::text[]) ON CONFLICT DO NOTHING
+)
+DELETE FROM users WHERE encode(sha256(id::text::bytea),'hex')=ANY($1::text[]) AND deletion_requested_at IS NOT NULL;

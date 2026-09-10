@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"strings"
@@ -47,6 +48,7 @@ const (
 // Universe is every policy simulated once, so several goals can be ranked
 // over the same runs with the same feasibility assumptions.
 type Universe struct {
+	ctx       context.Context
 	Input     Input
 	Results   []Result
 	orders    []order
@@ -85,6 +87,9 @@ func (u *Universe) truncate(reason string) {
 // simulations, which are pure and independent, can run on every core while
 // the results are still merged in candidate order.
 func (u *Universe) explore(r Rollover) error {
+	if err := u.canceled(); err != nil {
+		return err
+	}
 	if u.explored == nil {
 		u.explored = map[Rollover]bool{}
 	}
@@ -147,6 +152,9 @@ func (u *Universe) simulateAll(policies []Policy) ([]Result, error) {
 		// so it keeps the memo rather than the cores.
 		out := make([]Result, 0, len(policies))
 		for _, pol := range policies {
+			if err := u.canceled(); err != nil {
+				return nil, err
+			}
 			res, err := u.simulate(pol)
 			if err != nil {
 				if isInfeasible(err) {
@@ -185,6 +193,9 @@ func (u *Universe) simulateAll(policies []Policy) ([]Result, error) {
 			// over the same loans, so it warms its own within a few of them.
 			c := newCache()
 			for {
+				if u.canceled() != nil {
+					return
+				}
 				i := int(next.Add(1)) - 1
 				if i >= len(policies) {
 					return
@@ -199,6 +210,9 @@ func (u *Universe) simulateAll(policies []Policy) ([]Result, error) {
 		}()
 	}
 	wg.Wait()
+	if err := u.canceled(); err != nil {
+		return nil, err
+	}
 
 	out := make([]Result, 0, len(policies))
 	for i := range slots {
@@ -219,6 +233,9 @@ func (u *Universe) simulateSerially(policies []Policy) ([]Result, error) {
 	out := make([]Result, 0, len(policies))
 	c := newCache()
 	for _, pol := range policies {
+		if err := u.canceled(); err != nil {
+			return nil, err
+		}
 		res, err := run(u.Input, pol, c)
 		if err != nil {
 			if isInfeasible(err) {
@@ -232,16 +249,23 @@ func (u *Universe) simulateSerially(policies []Policy) ([]Result, error) {
 }
 
 // Explore simulates the bounded candidate set for an input with RollFreed.
-func Explore(in Input) (*Universe, error) {
+func Explore(in Input) (*Universe, error) { return ExploreContext(context.Background(), in) }
+
+// ExploreContext permits cancellation between bounded candidate simulations.
+// Cancellation returns no partial recommendation.
+func ExploreContext(ctx context.Context, in Input) (*Universe, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	norm, assumed, err := Normalize(in)
 	if err != nil {
 		return nil, err
 	}
-	return exploreNormalized(norm, assumed, false)
+	return exploreNormalizedContext(ctx, norm, assumed, false)
 }
 
-func exploreNormalized(norm Input, assumed map[string]int, memoize bool) (*Universe, error) {
-	u := &Universe{Input: norm, assumed: assumed, cache: newCache()}
+func exploreNormalizedContext(ctx context.Context, norm Input, assumed map[string]int, memoize bool) (*Universe, error) {
+	u := &Universe{ctx: ctx, Input: norm, assumed: assumed, cache: newCache()}
 	if memoize {
 		u.runs = map[string]cachedPolicyRun{}
 	}
@@ -331,9 +355,21 @@ func isInfeasible(err error) bool {
 
 // Search explores and ranks in one call.
 func Search(in Input, goal Goal) (Report, error) {
-	u, err := Explore(in)
+	return SearchContext(context.Background(), in, goal)
+}
+
+// SearchContext returns the same deterministic report as Search, or cancellation.
+func SearchContext(ctx context.Context, in Input, goal Goal) (Report, error) {
+	u, err := ExploreContext(ctx, in)
 	if err != nil {
 		return Report{}, err
 	}
 	return u.Rank(goal)
+}
+
+func (u *Universe) canceled() error {
+	if u.ctx == nil {
+		return nil
+	}
+	return u.ctx.Err()
 }

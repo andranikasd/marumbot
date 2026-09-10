@@ -44,7 +44,7 @@ type ShadowStore interface {
 // shadowWalkLimit caps how many accounts one walk touches.
 const shadowWalkLimit = 500
 
-// shadowEvery is how often the walk actually computes. The store dedups per
+// shadowEvery is the pause after a complete account walk. The store dedups per
 // day, so more often only helps accounts created since the last walk; every
 // six hours catches those without paying for a plan search per tick.
 const shadowEvery = 6 * time.Hour
@@ -57,15 +57,15 @@ func (w *Worker) TickShadow(ctx context.Context, users UserLister) (int, error) 
 	if w.Shadow == nil || users == nil {
 		return 0, nil
 	}
+	if !w.shadowing.CompareAndSwap(false, true) {
+		return 0, nil // another tick won the walk
+	}
+	defer w.shadowing.Store(false)
 	now := w.Clock.Now()
 	last := w.lastShadow.Load()
 	if last != 0 && now.Sub(time.Unix(0, last)) < shadowEvery {
 		return 0, nil
 	}
-	if !w.shadowing.CompareAndSwap(false, true) {
-		return 0, nil // another tick won the walk
-	}
-	defer w.shadowing.Store(false)
 	after, _ := w.shadowCursor.Load().(string)
 	ids, err := users.ActiveLoanUsers(ctx, after, shadowWalkLimit)
 	if err != nil {
@@ -73,15 +73,11 @@ func (w *Worker) TickShadow(ctx context.Context, users UserLister) (int, error) 
 	}
 	today := date.From(w.Clock.Now(), time.UTC).String()
 	recorded := 0
-	if len(ids) < shadowWalkLimit {
-		// The end of the account list: the next walk starts over.
-		defer w.shadowCursor.Store("")
-	}
 	for _, id := range ids {
 		if err := ctx.Err(); err != nil {
 			// Out of budget. The cursor holds the last account finished, so
 			// the next walk continues from here rather than from the top.
-			break
+			return recorded, err
 		}
 		// The cursor advances once the account has had its turn, whether that
 		// produced evidence or not: an account that cannot be shadowed today
@@ -89,13 +85,21 @@ func (w *Worker) TickShadow(ctx context.Context, users UserLister) (int, error) 
 		if w.shadowAccount(ctx, id, today) {
 			recorded++
 		}
+		if err := ctx.Err(); err != nil {
+			// Retry an interrupted account; the store deduplicates completed writes.
+			return recorded, err
+		}
 		w.shadowCursor.Store(id)
 	}
 	if recorded > 0 {
 		// Counts only; never amounts or identifiers (I5).
 		w.Log.InfoContext(ctx, "shadow recommendations recorded", "accounts", recorded)
 	}
-	w.lastShadow.Store(now.UnixNano())
+	if len(ids) < shadowWalkLimit {
+		// Only a completed final page starts the pause between full walks.
+		w.shadowCursor.Store("")
+		w.lastShadow.Store(w.Clock.Now().UnixNano())
+	}
 	return recorded, nil
 }
 

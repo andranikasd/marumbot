@@ -285,3 +285,125 @@ func TestReminderWalkResumesFromTheLastAccount(t *testing.T) {
 		}
 	}
 }
+
+type canceledReminderDelivery struct {
+	reminderDeliveryFake
+	cancel       context.CancelFunc
+	retried      bool
+	retryLive    bool
+	retryBounded bool
+	retryErr     error
+}
+
+func (f *canceledReminderDelivery) SendMessage(ctx context.Context, _ int64, _ string, _ any) error {
+	f.cancel()
+	return ctx.Err()
+}
+
+func (f *canceledReminderDelivery) DeferReminderDelivery(ctx context.Context, _ string, _ time.Time) error {
+	f.retried = true
+	f.retryLive = ctx.Err() == nil
+	_, f.retryBounded = ctx.Deadline()
+	return f.retryErr
+}
+
+func TestReminderCanceledSendPersistsRetryWithLiveContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	retryFailure := errors.New("retry write failed")
+	f := &canceledReminderDelivery{cancel: cancel, retryErr: retryFailure}
+	f.due = []DueReminder{{ID: "occurrence", UserID: "owner", LoanID: "loan-a", DueDate: "2026-09-15", Currency: "AMD"}}
+	f.loan = paidLoan(t)
+	w := reviseWorker(t, &f.reviseFakes)
+	w.Reminders, w.Send = f, f
+	w.Chats = menuChatsFake{}
+	w.Users = reminderUsersFake{prefs: UserPreferences{Timezone: "UTC"}}
+	n, err := w.SendDueReminders(ctx, 50)
+	if n != 0 || f.marked != 0 {
+		t.Fatal("failed send marked delivered")
+	}
+	if !errors.Is(err, context.Canceled) || !errors.Is(err, retryFailure) {
+		t.Fatalf("failures not propagated: %v", err)
+	}
+	if !f.retried || !f.retryLive || !f.retryBounded {
+		t.Fatalf("retry context: called=%v live=%v bounded=%v", f.retried, f.retryLive, f.retryBounded)
+	}
+}
+
+type isolatedReminderStages struct {
+	reminderDeliveryFake
+	stageErrors        []error
+	retried            bool
+	generationTimesOut bool
+}
+
+func (f *isolatedReminderStages) SendMessage(ctx context.Context, _ int64, _ string, _ any) error {
+	f.stageErrors = append(f.stageErrors, ctx.Err())
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (f *isolatedReminderStages) DeferReminderDelivery(ctx context.Context, _ string, _ time.Time) error {
+	f.retried = ctx.Err() == nil
+	return ctx.Err()
+}
+
+func (f *isolatedReminderStages) LeaseLoanFiled(ctx context.Context, _ time.Time, _ int32) ([]LoanFiledNotification, error) {
+	f.stageErrors = append(f.stageErrors, ctx.Err())
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (*isolatedReminderStages) CompleteLoanFiled(context.Context, LoanFiledNotification, time.Time) error {
+	return nil
+}
+
+func (*isolatedReminderStages) RetryLoanFiled(context.Context, LoanFiledNotification, time.Time) error {
+	return nil
+}
+
+func (f *isolatedReminderStages) ActiveLoanUsers(ctx context.Context, _ string, _ int32) ([]string, error) {
+	f.stageErrors = append(f.stageErrors, ctx.Err())
+	if f.generationTimesOut {
+		<-ctx.Done()
+	}
+	return nil, ctx.Err()
+}
+
+func TestReminderStagesRetainIndependentBudgets(t *testing.T) {
+	for _, timeout := range []bool{false, true} {
+		t.Run(fmt.Sprintf("generation_timeout_%v", timeout), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				f := &isolatedReminderStages{generationTimesOut: timeout}
+				f.due = []DueReminder{{ID: "occurrence", UserID: "owner", LoanID: "loan-a", DueDate: "2026-09-15", Currency: "AMD"}}
+				f.loan = paidLoan(t)
+				w := reviseWorker(t, &f.reviseFakes)
+				w.Reminders, w.Send = f, f
+				w.Chats = menuChatsFake{}
+				w.Users = reminderUsersFake{prefs: UserPreferences{Timezone: "UTC"}}
+				ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+				defer cancel()
+				if _, err := w.TickReminders(ctx, f); !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("stage errors not propagated: %v", err)
+				}
+				if ctx.Err() != nil {
+					t.Fatal("stages consumed entire parent allowance")
+				}
+				if !f.retried {
+					t.Fatal("failed delivery did not persist retry")
+				}
+				if len(f.stageErrors) != 3 {
+					t.Fatalf("started %d stages", len(f.stageErrors))
+				}
+				for i, err := range f.stageErrors {
+					if err != nil {
+						t.Fatalf("stage %d inherited canceled context: %v", i, err)
+					}
+				}
+				if completed := w.lastRemind.Load() != 0; completed == timeout {
+					t.Fatalf("completed generation=%v; timeout=%v", completed, timeout)
+				}
+			})
+		})
+	}
+}

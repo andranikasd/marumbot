@@ -153,3 +153,54 @@ func TestStartupSharesMenuPublicationGate(t *testing.T) {
 		t.Fatal("first command repeated startup publication")
 	}
 }
+
+type retryMenuSender struct {
+	menuSenderFake
+	visited      []int64
+	failFirst    bool
+	cancelSecond context.CancelFunc
+}
+
+func (f *retryMenuSender) SetChatMenuButtonFor(_ context.Context, chat int64, _, _ string) error {
+	f.visited = append(f.visited, chat)
+	if chat == 1 && f.failFirst {
+		f.failFirst = false
+		return errors.New("temporary send failure")
+	}
+	if chat == 2 && f.cancelSecond != nil {
+		f.cancelSecond()
+		f.cancelSecond = nil
+		return context.Canceled
+	}
+	return nil
+}
+
+func TestMenuRefreshRetriesFailuresAcrossCanceledPass(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	sender := &retryMenuSender{failFirst: true, cancelSecond: cancel}
+	w := &Worker{Chats: menuChatsFake{}, Send: sender, MiniApp: "https://example.test/app/"}
+	users := menuUsersFake{users: []MenuUser{{ID: "a", Locale: "en"}, {ID: "bb", Locale: "en"}, {ID: "ccc", Locale: "en"}}}
+	if _, err := w.RefreshMenuButtons(ctx, users); !errors.Is(err, context.Canceled) {
+		t.Fatalf("interrupted pass: %v", err)
+	}
+	// Finish the interrupted page. Its earlier failed account must not be forgotten.
+	if n, err := w.RefreshMenuButtons(t.Context(), users); err == nil || n != 2 {
+		t.Fatalf("resume should request a retry: n=%d err=%v", n, err)
+	}
+	if n, err := w.RefreshMenuButtons(t.Context(), users); err != nil || n != 3 {
+		t.Fatalf("retry sweep: n=%d err=%v", n, err)
+	}
+	if n, err := w.RefreshMenuButtons(t.Context(), users); err != nil || n != 0 {
+		t.Fatalf("completed sweep repeated: n=%d err=%v", n, err)
+	}
+	want := []int64{1, 2, 2, 3, 1, 2, 3}
+	if len(sender.visited) != len(want) {
+		t.Fatalf("visits=%v", sender.visited)
+	}
+	for i, chat := range want {
+		if sender.visited[i] != chat {
+			t.Fatalf("visits=%v; want %v", sender.visited, want)
+		}
+	}
+}

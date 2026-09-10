@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -18,10 +20,20 @@ type shadowFakes struct {
 	budget  Budget
 	stored  []ShadowRecommendation
 	users   []string
+	listed  []string
+	visited []string
+	onLoan  func(string)
 	written map[string]bool // user|day|goal already stored
 }
 
-func (f *shadowFakes) LoansForUser(context.Context, string, int32) ([]UserLoan, error) {
+func (f *shadowFakes) LoansForUser(ctx context.Context, id string, _ int32) ([]UserLoan, error) {
+	f.visited = append(f.visited, id)
+	if f.onLoan != nil {
+		f.onLoan(id)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return f.loans, nil
 }
 
@@ -30,8 +42,15 @@ func (f *shadowFakes) SetBudget(context.Context, string, string, int64, int) err
 	return nil
 }
 
-func (f *shadowFakes) ActiveLoanUsers(context.Context, string, int32) ([]string, error) {
-	return f.users, nil
+func (f *shadowFakes) ActiveLoanUsers(_ context.Context, after string, limit int32) ([]string, error) {
+	f.listed = append(f.listed, after)
+	var ids []string
+	for _, id := range f.users {
+		if id > after && len(ids) < int(limit) {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }
 
 func (f *shadowFakes) RecordShadow(_ context.Context, r ShadowRecommendation) (bool, error) {
@@ -140,5 +159,63 @@ func TestTickShadowWithoutAStoreIsOff(t *testing.T) {
 	n, err := w.TickShadow(context.Background(), f)
 	if err != nil || n != 0 {
 		t.Fatalf("shadow without a store: n=%d err=%v", n, err)
+	}
+}
+
+func TestTickShadowResumesInterruptedFinalPage(t *testing.T) {
+	f := &shadowFakes{users: []string{"user-1", "user-2", "user-3"}}
+	w := shadowWorker(t, f)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f.onLoan = func(id string) {
+		if id == "user-2" {
+			cancel()
+		}
+	}
+	if _, err := w.TickShadow(ctx, f); !errors.Is(err, context.Canceled) {
+		t.Fatalf("interrupted tick: %v", err)
+	}
+	f.onLoan = nil
+	if _, err := w.TickShadow(context.Background(), f); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.listed) != 2 || f.listed[1] != "user-1" {
+		t.Fatalf("resume cursors = %v; want interrupted account retried after user-1", f.listed)
+	}
+	want := []string{"user-1", "user-2", "user-2", "user-3"}
+	if fmt.Sprint(f.visited) != fmt.Sprint(want) {
+		t.Fatalf("visits = %v; want %v", f.visited, want)
+	}
+	if _, err := w.TickShadow(context.Background(), f); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.listed) != 2 {
+		t.Fatal("completed walk did not observe six-hour pause")
+	}
+	w.Clock.(*fixedClock).at = w.Clock.Now().Add(shadowEvery)
+	if _, err := w.TickShadow(context.Background(), f); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.listed) != 3 || f.listed[2] != "" {
+		t.Fatalf("new walk cursors = %v", f.listed)
+	}
+}
+
+func TestTickShadowContinuesFullPageWithoutPause(t *testing.T) {
+	f := &shadowFakes{}
+	for i := 0; i < shadowWalkLimit+1; i++ {
+		f.users = append(f.users, fmt.Sprintf("user-%04d", i))
+	}
+	w := shadowWorker(t, f)
+	for i := 0; i < 3; i++ {
+		if _, err := w.TickShadow(context.Background(), f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(f.visited) != shadowWalkLimit+1 {
+		t.Fatalf("visited %d accounts", len(f.visited))
+	}
+	if len(f.listed) != 2 || f.listed[1] != f.users[shadowWalkLimit-1] {
+		t.Fatalf("page cursors = %v", f.listed)
 	}
 }

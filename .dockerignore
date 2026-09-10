@@ -10,6 +10,7 @@ deploy/cloudflare/node_modules
 deploy/cloudflare/dist
 deploy/observability
 deploy/terraform
+deploy/vps/backups
 docs
 testdata/golden/**/*.pdf
 *.md

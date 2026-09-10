@@ -94,6 +94,13 @@ func (s LoanCommands) Create(ctx context.Context, key string, d LoanDraft) (Loan
 		if err != nil {
 			return LoanCommandReceipt{}, err
 		}
+		if outbox, ok := tx.(interface {
+			EnqueueLoanFiled(context.Context, string) error
+		}); ok {
+			if err := outbox.EnqueueLoanFiled(ctx, id); err != nil {
+				return LoanCommandReceipt{}, err
+			}
+		}
 		version, err := tx.Version(ctx, id, d.UserID)
 		return LoanCommandReceipt{ID: id, Version: version}, err
 	})

@@ -29,12 +29,44 @@ func (s *Server) planHistory() http.Handler {
 			http.Error(w, "unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		rows, revision, err := history.PlanHistory(ctx, user)
+		after := r.URL.Query().Get("after")
+		if after != "" {
+			if _, err := uuid.Parse(after); err != nil {
+				http.Error(w, "invalid cursor", 400)
+				return
+			}
+		}
+		var rows []app.PlanVersion
+		var revision int64
+		var err error
+		if paged, ok := s.Planner.(interface {
+			PlanHistoryPage(context.Context, string, string) ([]app.PlanVersion, int64, error)
+		}); ok {
+			rows, revision, err = paged.PlanHistoryPage(ctx, user, after)
+		} else {
+			rows, revision, err = history.PlanHistory(ctx, user)
+		}
 		if err != nil {
 			paymentHTTPError(w, err)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"plans": rows, "revision": revision})
+		next := ""
+		if len(rows) > 50 {
+			rows = rows[:50]
+			next = rows[len(rows)-1].ID
+		}
+		type metadata struct {
+			ID        string `json:"id"`
+			Currency  string `json:"currency"`
+			CreatedAt string `json:"created_at"`
+			Active    bool   `json:"active"`
+			Outdated  bool   `json:"outdated"`
+		}
+		out := make([]metadata, 0, len(rows))
+		for _, row := range rows {
+			out = append(out, metadata{row.ID, row.Currency, row.CreatedAt, row.Active, row.Outdated})
+		}
+		writeJSON(w, 200, map[string]any{"plans": out, "revision": revision, "next_cursor": next})
 	})
 }
 

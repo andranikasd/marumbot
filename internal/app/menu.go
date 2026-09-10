@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync/atomic"
@@ -178,8 +179,13 @@ func (w *Worker) RefreshMenuButtons(ctx context.Context, users MenuUserLister) (
 	if users == nil || w.Chats == nil || w.Send == nil || w.MiniApp == "" {
 		return 0, nil
 	}
+	if w.menuRefreshed.Load() || !w.menuRefreshing.CompareAndSwap(false, true) {
+		return 0, nil
+	}
+	defer w.menuRefreshing.Store(false)
 	const pageSize int32 = 100
-	after, refreshed, failed := "", 0, 0
+	after, _ := w.menuCursor.Load().(string)
+	refreshed, failed := 0, 0
 	for {
 		page, err := users.MenuUsers(ctx, after, pageSize)
 		if err != nil {
@@ -194,13 +200,23 @@ func (w *Worker) RefreshMenuButtons(ctx context.Context, users MenuUserLister) (
 				locale := i18n.Locale(user.Locale)
 				err = w.Send.SetChatMenuButtonFor(ctx, chatID, i18n.DashboardButton(locale), w.miniURL(""))
 			}
+			if ctx.Err() != nil {
+				return refreshed, ctx.Err()
+			}
+			w.menuCursor.Store(user.ID)
 			if err != nil {
+				w.menuFailed.Store(true)
 				failed++
 				continue
 			}
 			refreshed++
 		}
 		if len(page) < int(pageSize) {
+			if w.menuFailed.Swap(false) {
+				w.menuCursor.Store("")
+				return refreshed, errors.New("menu refresh requires retry")
+			}
+			w.menuRefreshed.Store(true)
 			break
 		}
 		after = page[len(page)-1].ID

@@ -87,8 +87,16 @@ func (s *Store) ActivePlanVersions(ctx context.Context, user string) ([]app.Plan
 	return s.readPlanVersions(ctx, user, "ActivePlanVersions")
 }
 
+func (s *Store) PlanHistoryPage(ctx context.Context, user, after string) ([]app.PlanVersion, int64, error) {
+	return s.readPlanVersionArgs(ctx, user, "PlanHistoryPage", user, after)
+}
+
 func (s *Store) readPlanVersions(ctx context.Context, user, name string) ([]app.PlanVersion, int64, error) {
-	rows, err := s.pool.Query(ctx, q(name), user)
+	return s.readPlanVersionArgs(ctx, user, name, user)
+}
+
+func (s *Store) readPlanVersionArgs(ctx context.Context, user, name string, args ...any) ([]app.PlanVersion, int64, error) {
+	rows, err := s.pool.Query(ctx, q(name), args...)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -26,6 +26,7 @@ import (
 	"github.com/andranikasd/marumbot/internal/adapter/in/admin"
 	"github.com/andranikasd/marumbot/internal/adapter/in/miniapp"
 	"github.com/andranikasd/marumbot/internal/adapter/in/telegram"
+	"github.com/andranikasd/marumbot/internal/adapter/out/erasurejournal"
 	"github.com/andranikasd/marumbot/internal/adapter/out/postgres"
 	"github.com/andranikasd/marumbot/internal/adapter/out/sysclock"
 	"github.com/andranikasd/marumbot/internal/adapter/out/telegramclient"
@@ -46,11 +47,29 @@ func notHealthCheck(r *http.Request) bool { return r.URL.Path != "/healthz" }
 var version = "dev"
 
 func main() {
+	verifyRestore := flag.Bool("verify-restore", false, "verify restored identities and current-engine plans without opening listeners")
+	healthcheck := flag.Bool("healthcheck", false, "check the local HTTP listener and exit")
 	hashPassword := flag.Bool("hash-password", false,
 		"read a password from stdin and print the value for MARUM_ADMIN_PASSWORD_HASH")
 	flag.Parse()
+	if *healthcheck {
+		client := &http.Client{Timeout: 3 * time.Second}
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1:8080/healthz", nil)
+		if err != nil {
+			os.Exit(1)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			os.Exit(1)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			os.Exit(1)
+		}
+		return
+	}
 
-	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	log := obs.NewLogger()
 	slog.SetDefault(log)
 
 	if *hashPassword {
@@ -61,13 +80,13 @@ func main() {
 		return
 	}
 
-	if err := run(log); err != nil {
+	if err := run(log, *verifyRestore); err != nil {
 		log.Error("marum stopped", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not complex
+func run(log *slog.Logger, verifyRestore bool) error { //nolint:gocyclo // wiring is linear, not complex
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -112,9 +131,36 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		return fmt.Errorf("database: %w", err)
 	}
 	defer store.Close()
+	if h := (&app.Operations{Store: store}).Health(ctx); !h.DatabaseOK {
+		return errors.New("database schema is not ready for this release")
+	}
 
+	secrets, err := identity.NewSecretCipher(cfg.IdentityKey)
+	if err != nil {
+		return err
+	}
+	store.WithAdminSecrets(secrets)
+	protectCtx, protectCancel := context.WithTimeout(ctx, 30*time.Second)
+	err = app.ProtectAdminSecrets(protectCtx, store)
+	protectCancel()
+	if err != nil {
+		return fmt.Errorf("protecting admin credentials: %w", err)
+	}
 	clock := sysclock.New()
 	adminSvc := app.NewAdmin(store).WithModeration(store).WithEngine(store).WithSecurity(store, clock.Now).WithHistory(store)
+	if cfg.ErasureJournalDir != "" {
+		journal, journalErr := erasurejournal.New(cfg.ErasureJournalDir)
+		if journalErr != nil {
+			return fmt.Errorf("erasure journal: %w", journalErr)
+		}
+		reconcileCtx, reconcileCancel := context.WithTimeout(ctx, 30*time.Second)
+		journalErr = app.ReconcileErasures(reconcileCtx, journal, store)
+		reconcileCancel()
+		if journalErr != nil {
+			return fmt.Errorf("erasure reconciliation: %w", journalErr)
+		}
+		adminSvc.WithErasureJournal(journal)
+	}
 
 	// Identifiers are sealed before they reach the database, so the key is built
 	// here and the store never sees it. A bad key is fatal: running without one
@@ -124,6 +170,15 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		return fmt.Errorf("identity key: %w", err)
 	}
 
+	if verifyRestore {
+		verifyCtx, verifyCancel := context.WithTimeout(ctx, 5*time.Minute)
+		defer verifyCancel()
+		if err := app.VerifyRestoredData(verifyCtx, store, postgres.ChatLookup{Store: store, Cipher: cipher}, store, store); err != nil {
+			return err
+		}
+		log.Info("restored borrower and admin credentials and plan replay verified")
+		return nil
+	}
 	bot := telegramclient.New(cfg.BotToken).WithObserver(func(ctx context.Context, call telegramclient.CallObservation) {
 		obs.RecordTelegram(ctx, call.Method, call.Outcome, call.Duration, call.RateLimited)
 	})
@@ -156,7 +211,16 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		Version: cfg.Version,
 		Cipher:  cipher, Clock: clock, Log: log,
 	}
+	wakeInbox := make(chan struct{}, 1)
+	wake := func() {
+		select {
+		case wakeInbox <- struct{}{}:
+		default:
+		}
+	}
+	mini.Wake = wake
 	hook := &telegram.Webhook{
+		Wake:  wake,
 		Inbox: store, Users: store, Cipher: cipher,
 		ServiceToken: cfg.ServiceToken, WebhookSecret: cfg.WebhookSecret,
 		Timezone: cfg.DefaultTimezone,
@@ -169,6 +233,9 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 			publicRoutes(&app.Operations{Store: store}, hook, worker, mini, store, cfg.ServiceToken, cfg.Version, log),
 			"marum", otelhttp.WithFilter(notHealthCheck)),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	servers := []*http.Server{public}
 
@@ -195,6 +262,9 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 			// graph an inbound edge to the admin node.
 			Handler:           srv.Handler(),
 			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       15 * time.Second,
+			WriteTimeout:      60 * time.Second,
+			IdleTimeout:       60 * time.Second,
 		})
 	} else {
 		log.Warn("admin interface disabled: MARUM_ADMIN_PASSWORD_HASH is not set")
@@ -235,6 +305,22 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 		if err := app.PublishProfile(menuCtx, bot); err != nil {
 			log.Warn("publishing the bot profile failed", "err", err)
 		}
+		// Resume a deadline-limited account sweep in owned background passes.
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for err != nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+			passCtx, passCancel := context.WithTimeout(ctx, 30*time.Second)
+			_, err = worker.RefreshMenuButtons(passCtx, store)
+			passCancel()
+			if err != nil {
+				log.Warn("menu refresh continuation failed", "error", err)
+			}
+		}
 	}()
 
 	if cfg.Mode == "polling" {
@@ -249,15 +335,25 @@ func run(log *slog.Logger) error { //nolint:gocyclo // wiring is linear, not com
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					tickCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
-					if _, err := worker.Drain(tickCtx, 25); err != nil {
-						log.WarnContext(tickCtx, "local inbox drain failed", "error", err)
+				case <-wakeInbox:
+				}
+				{
+					drainCtx, cancelDrain := context.WithTimeout(ctx, drainBudget)
+					if drained, err := worker.Drain(drainCtx, 25); err != nil {
+						log.WarnContext(drainCtx, "local inbox drain failed", "error", err)
+					} else if drained == 25 {
+						wake()
 					}
-					if _, err := worker.TickReminders(tickCtx, store); err != nil {
-						log.WarnContext(tickCtx, "local reminder tick failed", "error", err)
+					cancelDrain()
+					reminderCtx, cancelReminders := context.WithTimeout(ctx, remindersBudget)
+					if _, err := worker.TickReminders(reminderCtx, store); err != nil {
+						log.WarnContext(reminderCtx, "local reminder tick failed", "error", err)
 					}
-					observeQueues(tickCtx, store)
-					cancel()
+					cancelReminders()
+					runShadowStage(ctx, worker, store, log)
+					metricsCtx, cancelMetrics := context.WithTimeout(ctx, 3*time.Second)
+					observeQueues(metricsCtx, store)
+					cancelMetrics()
 				}
 			}
 		}()
@@ -327,15 +423,24 @@ func publicRoutes(a *app.Operations, hook *telegram.Webhook, w *app.Worker,
 	// process-local state that dies with the process.
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
 		h := a.Health(r.Context())
-		body := map[string]any{"database": h.DatabaseOK, "migration_version": h.MigrationVersion, "version": version}
+		code := http.StatusOK
+		body := map[string]any{"status": "ok", "queues": "available", "database": h.DatabaseOK, "migration_version": h.MigrationVersion, "version": version}
+		if !h.DatabaseOK {
+			code = http.StatusServiceUnavailable
+			body["status"] = "degraded"
+		}
 		if o, err := a.Status(r.Context()); err == nil {
 			obs.RecordQueues(r.Context(), o.CommandsPending, o.DeliveriesPending, o.OldestCommandAgeS, o.OldestDeliveryAgeS)
 			body["oldest_pending_command_s"] = o.OldestCommandAgeS
 			body["oldest_pending_delivery_s"] = o.OldestDeliveryAgeS
 			body["commands_pending"] = o.CommandsPending
 			body["deliveries_pending"] = o.DeliveriesPending
+		} else {
+			code = http.StatusServiceUnavailable
+			body["status"] = "degraded"
+			body["queues"] = "unavailable"
 		}
-		writeJSON(w, http.StatusOK, body)
+		writeJSON(w, code, body)
 	})
 	return mux
 }
@@ -417,17 +522,22 @@ func tickHandler(w *app.Worker, users app.UserLister, serviceToken string, log *
 		// Shadow mode rides the tick too, on its own gate. Silent by design:
 		// it stores what the engine would recommend, and tells no one. It is
 		// last and smallest for the same reason: nobody is waiting for it.
-		if err := tickStage(ctx, w.Clock, "shadow", shadowBudget, func(ctx context.Context) error {
-			_, err := w.TickShadow(ctx, users)
-			return err
-		}); err != nil {
-			span.RecordError(err)
-			log.ErrorContext(ctx, "shadow tick failed", "error", err)
-		}
+		runShadowStage(ctx, w, users, log)
 		observeQueues(ctx, w.Inbox)
 		log.InfoContext(ctx, "tick", "handled", n)
 		writeJSON(rw, http.StatusOK, map[string]any{"handled": n})
 	})
+}
+
+// runShadowStage is shared by polling and webhook scheduling so either ingress
+// mode gathers the same evidence under an independent deadline.
+func runShadowStage(ctx context.Context, w *app.Worker, users app.UserLister, log *slog.Logger) {
+	if err := tickStage(ctx, w.Clock, "shadow", shadowBudget, func(ctx context.Context) error {
+		_, err := w.TickShadow(ctx, users)
+		return err
+	}); err != nil {
+		log.ErrorContext(ctx, "shadow tick failed", "error", err)
+	}
 }
 
 func observeQueues(ctx context.Context, store any) {

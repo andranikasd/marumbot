@@ -5,19 +5,25 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/andranikasd/marumbot/internal/app"
 )
 
 // UpsertByTelegram finds the account behind a Telegram identity, creating one on
-// first contact. The whole thing is one statement so two updates arriving at
-// once cannot both decide they are the first.
+// first contact. A conflicting insert rolls back its entire statement; a fresh
+// lookup then sees the winner without retaining an orphan account.
 func (s *Store) UpsertByTelegram(ctx context.Context, in app.UpsertUser) (app.Account, error) {
 	var a app.Account
 	err := s.pool.QueryRow(ctx, q("UpsertUserByTelegram"),
 		in.UserTag, in.NewID, in.Locale, in.Timezone, in.TrialEnds,
 		in.UserSealed, in.ChatTag, in.ChatSealed, in.KeyVersion,
 	).Scan(&a.ID, &a.Created)
+	var conflict *pgconn.PgError
+	if errors.As(err, &conflict) && conflict.Code == "23505" {
+		err = s.pool.QueryRow(ctx, q("ResolveTelegramIdentity"), in.UserTag).Scan(&a.ID)
+		a.Created = false
+	}
 	if err != nil {
 		return app.Account{}, err
 	}

@@ -115,20 +115,22 @@ func (w *Worker) withTip(ctx context.Context, userID string, l i18n.Locale, text
 // The form closes and the conversation would otherwise go silent at the one
 // moment the user has done something — so the bot confirms it, names the
 // loan, and points at the next step.
-func (w *Worker) OnLoanFiledMessage(ctx context.Context, userID string) {
+func (w *Worker) OnLoanFiledMessage(ctx context.Context, userID string) error {
 	locale, _, err := w.Users.Locale(ctx, userID)
 	if err != nil {
 		w.Log.WarnContext(ctx, "filed message: locale", "error", err)
-		return
+		return err
 	}
 	l := i18n.Locale(locale)
 	chat, err := w.Chats.ChatID(ctx, userID)
 	if err != nil {
 		w.Log.WarnContext(ctx, "filed message: chat", "error", err)
-		return
+		return err
 	}
 	text := w.withTip(ctx, userID, l, i18n.T(l, "add.saved_chat"))
 	if err := w.Send.SendMessage(ctx, chat, text, w.mainMenu(l)); err != nil {
 		w.Log.WarnContext(ctx, "filed message: send", "error", err)
+		return err
 	}
+	return nil
 }

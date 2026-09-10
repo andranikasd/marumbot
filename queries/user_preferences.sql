@@ -28,10 +28,10 @@ AND r.loan_id=o.loan_id AND r.offset_days=o.offset_days;
 SELECT o.id,o.loan_id,o.due_date::text,o.target_send_at,o.status,o.preference_version,(o.approved_plan_id IS NULL)
 FROM reminder_occurrences o JOIN loans l ON l.id=o.loan_id
 JOIN users u ON u.id=o.user_id
-WHERE o.user_id=$1 AND o.id=$2 AND l.archived_at IS NULL AND u.deleted_at IS NULL;
+WHERE o.user_id=$1 AND o.id=$2 AND l.archived_at IS NULL AND u.deleted_at IS NULL AND u.access_state<>'paused';
 
 -- name: SnoozePreferenceOccurrence
-UPDATE reminder_occurrences o SET target_send_at=$3,status='scheduled',snoozed=true,preference_version=preference_version+1
+UPDATE reminder_occurrences o SET target_send_at=$3,status='scheduled',retry_at='-infinity',delivery_attempts=0,snoozed=true,preference_version=preference_version+1
 WHERE o.user_id=$1 AND o.id=$2 AND o.preference_version=$4 AND o.status IN ('scheduled','satisfied')
 AND EXISTS(SELECT 1 FROM loans l WHERE l.id=o.loan_id AND l.user_id=$1 AND l.archived_at IS NULL)
 RETURNING o.id,o.loan_id,o.due_date::text,o.target_send_at,o.status,o.preference_version,(o.approved_plan_id IS NULL);
@@ -41,7 +41,7 @@ SELECT o.id,o.user_id,o.loan_id,o.due_date::text,o.offset_days,l.name,l.currency
 FROM reminder_occurrences o JOIN loans l ON l.id=o.loan_id JOIN users u ON u.id=o.user_id
 CROSS JOIN LATERAL (SELECT extract(hour FROM ($1::timestamptz AT TIME ZONE u.timezone))*60+
  extract(minute FROM ($1::timestamptz AT TIME ZONE u.timezone)) AS minute) local_time
-WHERE o.approved_plan_id IS NULL AND o.status='scheduled' AND o.target_send_at<=$1 AND l.archived_at IS NULL AND u.deleted_at IS NULL
+WHERE o.approved_plan_id IS NULL AND o.status='scheduled' AND o.target_send_at<=$1 AND o.retry_at<=$1 AND l.archived_at IS NULL AND u.deleted_at IS NULL AND u.access_state<>'paused'
 AND (NOT u.quiet_enabled OR NOT CASE WHEN u.quiet_start<u.quiet_end
  THEN local_time.minute>=u.quiet_start AND local_time.minute<u.quiet_end
  ELSE local_time.minute>=u.quiet_start OR local_time.minute<u.quiet_end END)
@@ -49,4 +49,10 @@ ORDER BY o.target_send_at,o.id LIMIT $2;
 
 -- name: MarkPreferenceReminderDelivered
 UPDATE reminder_occurrences SET status='satisfied'
+WHERE id=$1 AND status='scheduled' AND target_send_at<=$2;
+
+-- name: DeferReminderDelivery
+-- Do not overwrite a snooze which arrived during the failed send.
+UPDATE reminder_occurrences SET delivery_attempts=least(delivery_attempts+1,20),
+ retry_at=$2::timestamptz+make_interval(secs=>least(21600,60*(1<<least(delivery_attempts,9))))
 WHERE id=$1 AND status='scheduled' AND target_send_at<=$2;

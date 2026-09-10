@@ -1,5 +1,8 @@
 # Deploying to Cloudflare
 
+For a single Linux server deployment, use the separate [VPS guide](vps.md) and
+`deploy/vps/compose.yml`. The root Compose file is for development.
+
 Dev is live at `https://dev.marum.loan`; no production exists. Current verified
 release evidence is in [releases.md](releases.md). Configuration and secret names
 are listed in [environments.md](environments.md).

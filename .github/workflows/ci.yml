@@ -181,11 +181,11 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: marum
+          POSTGRES_USER: marum_owner
           POSTGRES_PASSWORD: marum
           POSTGRES_DB: marum
         options: >-
-          --health-cmd "pg_isready -U marum" --health-interval 5s
+          --health-cmd "pg_isready -U marum_owner" --health-interval 5s
           --health-timeout 3s --health-retries 10
         ports: ["5432:5432"]
     steps:
@@ -194,17 +194,25 @@ jobs:
         with: { go-version: "${{ env.GO_VERSION }}", cache: true }
       - name: Install goose
         run: go install github.com/pressly/goose/v3/cmd/goose@v3.24.1
+      - name: Provision restricted application role
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: docker exec -i -e MARUM_DB_PASSWORD=marum-test-app "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -U marum_owner -d marum < queries/provisioning/vps-role.sql
       - name: Migrate
         env:
           GOOSE_DRIVER: postgres
-          GOOSE_DBSTRING: postgres://marum:marum@localhost:5432/marum?sslmode=disable
+          GOOSE_DBSTRING: postgres://marum_owner:marum@localhost:5432/marum?sslmode=disable
         run: goose -dir migrations up
+      - name: Ledger mutation guards
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: docker exec -i "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -U marum_owner -d marum < queries/tests/ledger_guards.sql
       # The store maps SQL columns to struct fields by position; only a query
       # run against the real schema can prove the two agree. The unit suite
       # cannot see a scan drift, and the worst audit finding was exactly one.
       - name: Store integration tests
         env:
-          TEST_DATABASE_URL: postgres://marum:marum@localhost:5432/marum?sslmode=disable
+          TEST_DATABASE_URL: postgres://marum_app:marum-test-app@localhost:5432/marum?sslmode=disable
         run: go test -race -count=1 ./internal/adapter/out/postgres/
 
   edge:
@@ -229,6 +237,35 @@ jobs:
       - name: Both environments resolve
         run: |
           npx wrangler deploy --env dev        --dry-run --containers-rollout=none --outdir /tmp/dev
+
+  vps:
+    name: VPS deployment configuration
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: ci-owner
+      MARUM_DB_PASSWORD: ci-app
+      MARUM_BOT_TOKEN: ci-invalid
+      MARUM_IDENTITY_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      MARUM_SERVICE_TOKEN: ci-invalid
+      MARUM_DOMAIN: example.invalid
+      ACME_EMAIL: ops@example.invalid
+      MARUM_VERSION: ci
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate Compose without printing secrets
+        run: docker compose -f deploy/vps/compose.yml config --quiet
+      - name: Backup configuration regressions
+        run: python3 deploy/vps/backup_test.py
+      - name: Check backup and recovery scripts
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src koalaman/shellcheck:stable \
+            deploy/vps/init-db.sh deploy/vps/backup.sh \
+            deploy/vps/backup-offsite.sh deploy/vps/restore-check.sh
+      - name: Validate HTTPS routing
+        run: |
+          docker run --rm -v "$PWD/deploy/vps/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -e MARUM_DOMAIN -e ACME_EMAIL caddy:2-alpine \
+            caddy validate --config /etc/caddy/Caddyfile
 
   image:
     name: Image builds

@@ -14,7 +14,21 @@ release snapshot; future changes must update it alongside the affected guides.
 | Operator endpoint | https://admin-dev.marum.loan |
 | Bot | `marum_dev_bot` |
 
+## Requested production target — 2026-09-10
+
+The intended production stack is a VM running the Go application, PostgreSQL
+and Caddy through Docker Compose. Embedded Mini App assets, Telegram polling
+and the local scheduler keep application traffic independent of Cloudflare.
+See [VPS deployment](operations/vps.md) and [verification evidence](operations/vps-readiness.md).
+The [Cloudflare/D1 assessment](operations/cloudflare-target.md) is a deferred
+alternative. VM access, production configuration and live cutover remain unverified.
+
 ## Implemented scope
+
+Repository preparation after this release snapshot adds a separate
+[VPS deployment](operations/vps.md), queue-only operational probes, bounded
+probe/listener waits and preserved pool timing overrides. These changes are not
+evidence of a production rollout; the verified release above remains historical.
 
 - Five Mini App tabs with compact cards and child screens, explicit loan icons
   (bank by default), loan/budget editing, selectable charts with series legends,

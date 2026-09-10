@@ -1,4 +1,7 @@
 .env
+.env.*
+!.env.example
+deploy/vps/backups/
 docs/design/marum-final.render.html
 
 # Terraform: provider binaries, local state, and any real variable values.

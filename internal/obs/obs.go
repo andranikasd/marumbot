@@ -107,7 +107,7 @@ func Init(ctx context.Context, cfg Config) (*Providers, error) {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithResource(res),
 		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.AlwaysSample())),
-		sdktrace.WithBatcher(texp),
+		sdktrace.WithBatcher(redactTraceExporter(texp)),
 	)
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.TraceContext{}) // W3C only, no B3
@@ -130,7 +130,7 @@ func Init(ctx context.Context, cfg Config) (*Providers, error) {
 		ctp := sdktrace.NewTracerProvider(
 			sdktrace.WithResource(cres),
 			sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.AlwaysSample())),
-			sdktrace.WithBatcher(texp),
+			sdktrace.WithBatcher(redactTraceExporter(texp)),
 		)
 		tracers[c] = ctp.Tracer("marum/" + string(c))
 		p.shutdown = append(p.shutdown, ctp.Shutdown)
@@ -226,3 +226,6 @@ func stdoutLogger() *slog.Logger {
 	return slog.New(newTraceEnricher(newRedactor(
 		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))))
 }
+
+// NewLogger provides redaction before telemetry initialization and after shutdown.
+func NewLogger() *slog.Logger { return stdoutLogger() }

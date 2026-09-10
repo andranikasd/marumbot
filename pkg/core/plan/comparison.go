@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"reflect"
@@ -77,6 +78,9 @@ func canonicalPolicy(in Input, p Policy) Policy {
 }
 func policyKey(p Policy) string { p.Name = ""; return p.ID() }
 func (u *Universe) simulate(p Policy) (Result, error) {
+	if err := u.canceled(); err != nil {
+		return Result{}, err
+	}
 	if u.runs == nil {
 		return run(u.Input, p, u.cache)
 	}
@@ -97,6 +101,14 @@ func (u *Universe) simulate(p Policy) (Result, error) {
 // Strategy refusals are per-row; invalid inputs/goals and arithmetic faults fail
 // the whole operation. This API performs no persistence and no budget ladder.
 func Compare(req ComparisonRequest) (ComparisonReport, error) {
+	return CompareContext(context.Background(), req)
+}
+
+// CompareContext returns no partial comparison after cancellation.
+func CompareContext(ctx context.Context, req ComparisonRequest) (ComparisonReport, error) {
+	if err := ctx.Err(); err != nil {
+		return ComparisonReport{}, err
+	}
 	var out ComparisonReport
 	for _, g := range req.OptimizedGoals {
 		if g.Kind > FirstWin {
@@ -125,9 +137,9 @@ func Compare(req ComparisonRequest) (ComparisonReport, error) {
 	}
 	out.SharedInputHash = inputHash(norm)
 	out.AssumedPayments = assumed
-	u := &Universe{Input: norm, assumed: assumed, cache: newCache(), runs: map[string]cachedPolicyRun{}}
+	u := &Universe{ctx: ctx, Input: norm, assumed: assumed, cache: newCache(), runs: map[string]cachedPolicyRun{}}
 	if len(req.OptimizedGoals) > 0 {
-		u, err = exploreNormalized(norm, assumed, true)
+		u, err = exploreNormalizedContext(ctx, norm, assumed, true)
 		if err != nil {
 			return out, err
 		}

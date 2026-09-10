@@ -1,0 +1,28 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$MARUM_DOMAIN} {
+	encode zstd gzip
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		Strict-Transport-Security "max-age=31536000"
+	}
+	# Only the Mini App is public. Polling owns Telegram ingress and scheduling.
+	# No access log: URLs can contain private navigation context.
+	handle /app/* {
+		request_body {
+			max_size 1MB
+		}
+		reverse_proxy marum:8080 {
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 60s
+			}
+		}
+	}
+	redir / /app/ 302
+	redir /app /app/ 302
+	respond 404
+}

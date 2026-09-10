@@ -9,6 +9,14 @@ import (
 	"github.com/andranikasd/marumbot/internal/app"
 )
 
+// QueueStatus avoids scanning financial history for routine scheduler metrics.
+func (s *Store) QueueStatus(ctx context.Context) (app.OperationStatus, error) {
+	var o app.OperationStatus
+	err := s.pool.QueryRow(ctx, q("QueueStatus")).Scan(
+		&o.CommandsPending, &o.DeliveriesPending, &o.OldestCommandAgeS, &o.OldestDeliveryAgeS)
+	return o, err
+}
+
 // Overview is the dashboard's snapshot of the whole system.
 
 // Overview returns the dashboard counters in one round trip.
@@ -310,4 +318,12 @@ func (s *Store) DeliveryCounts(ctx context.Context) ([]app.StatusCount, error) {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[app.StatusCount])
+}
+
+func (s *Store) ReconcileErasure(ctx context.Context, subject []string) error {
+	if _, err := s.pool.Exec(ctx, q("ReconcileErasure"), subject); err != nil {
+		return err
+	}
+	_, err := s.pool.Exec(ctx, q("ApplyErasure"), subject)
+	return err
 }

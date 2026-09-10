@@ -50,7 +50,7 @@ func (h *Webhook) pollOnce(ctx context.Context, source UpdatePoller, offset int6
 		if update.UpdateID < offset {
 			continue
 		}
-		if err := h.accept(ctx, update); err != nil {
+		if err := h.acceptMode(ctx, update, false); err != nil {
 			return offset, err
 		}
 		offset = update.UpdateID + 1

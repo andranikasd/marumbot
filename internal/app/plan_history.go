@@ -43,8 +43,9 @@ type PlanActivationTransaction interface {
 	Rollback(context.Context) error
 }
 type planProposals struct {
-	mu   sync.Mutex
-	rows map[string]PlanManifest
+	mu    sync.Mutex
+	rows  map[string]PlanManifest
+	order []string
 }
 
 func (p *planProposals) put(user string, m PlanManifest) (string, error) {
@@ -59,13 +60,15 @@ func (p *planProposals) put(user string, m PlanManifest) (string, error) {
 	if p.rows == nil {
 		p.rows = make(map[string]PlanManifest)
 	}
-	if len(p.rows) >= 256 {
-		for k := range p.rows {
-			delete(p.rows, k)
-			break
+	fullKey := user + ":" + key
+	if _, exists := p.rows[fullKey]; !exists {
+		if len(p.order) >= 256 {
+			delete(p.rows, p.order[0])
+			p.order = p.order[1:]
 		}
+		p.order = append(p.order, fullKey)
 	}
-	p.rows[user+":"+key] = m
+	p.rows[fullKey] = m
 	return key, nil
 }
 
@@ -87,6 +90,13 @@ func (w *Worker) ActivateProposal(ctx context.Context, user string, c PlanActiva
 	if err != nil {
 		return PlanActivation{}, err
 	}
+	// Validate the immutable proposal before taking account/source locks. Receipt
+	// checks still win on retries even when the in-memory proposal has expired.
+	manifest, available := w.proposals.get(user, c.Proposal)
+	var replayErr error
+	if available {
+		_, replayErr = ReplayManifest(manifest)
+	}
 	tx, err := w.History.BeginPlanActivation(ctx)
 	if err != nil {
 		return PlanActivation{}, err
@@ -106,15 +116,14 @@ func (w *Worker) ActivateProposal(ctx context.Context, user string, c PlanActiva
 	if !errors.Is(err, ErrNotFound) {
 		return PlanActivation{}, err
 	}
-	manifest, ok := w.proposals.get(user, c.Proposal)
-	if !ok {
+	if !available {
 		return PlanActivation{}, ErrConflict
 	}
 	if sources != manifest.Sources || today != manifest.Input.ValuationDate {
 		return PlanActivation{}, ErrConflict
 	}
-	if _, err = ReplayManifest(manifest); err != nil {
-		return PlanActivation{}, err
+	if replayErr != nil {
+		return PlanActivation{}, replayErr
 	}
 	out, err := tx.Activate(ctx, user, c, manifest)
 	if err != nil {
@@ -193,7 +202,7 @@ func (w *Worker) HistoricalPlan(ctx context.Context, user, id string) (Sheet, er
 	if err != nil {
 		return Sheet{}, err
 	}
-	report, err := w.plans.search(m.Input, m.Goal, w.Clock.Now())
+	report, err := w.plans.searchContext(ctx, m.Input, m.Goal, w.Clock.Now())
 	if err != nil {
 		return Sheet{}, err
 	}
@@ -269,4 +278,18 @@ func withSelectedPolicy(report plan.Report, result plan.Result) plan.Report {
 // requires today's valuation and previews still require an exact input hash.
 func approvedPlanOutdated(version PlanVersion, sources string) bool {
 	return !version.Active || version.Manifest.Sources != sources
+}
+
+// PlanHistoryPage reads metadata for at most one page, preserving full manifests
+// for internal replay paths and explicit history detail requests.
+func (w *Worker) PlanHistoryPage(ctx context.Context, user, after string) ([]PlanVersion, int64, error) {
+	reader, ok := w.History.(interface {
+		PlanHistoryPage(context.Context, string, string) ([]PlanVersion, int64, error)
+	})
+	if !ok {
+		return w.PlanHistory(ctx, user)
+	}
+	return w.planHistoryRows(ctx, user, func(ctx context.Context, user string) ([]PlanVersion, int64, error) {
+		return reader.PlanHistoryPage(ctx, user, after)
+	})
 }

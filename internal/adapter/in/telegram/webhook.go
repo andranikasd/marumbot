@@ -49,6 +49,8 @@ type Webhook struct {
 	// answers. See accept for why this is synchronous, and why it is the one
 	// command rather than whatever is oldest.
 	Handle HandleFunc
+	// Wake signals an owned polling worker after durable ingestion.
+	Wake func()
 	// Callbacks is optional for deployments without inline buttons.
 	Callbacks CallbackAcknowledger
 	Log       *slog.Logger
@@ -115,7 +117,9 @@ func (h *Webhook) Handler() http.Handler {
 
 // accept records the command durably, then attempts its reply within a bounded
 // window. A failed inline attempt stays in the inbox for the next drain.
-func (h *Webhook) accept(ctx context.Context, u Update) error {
+func (h *Webhook) accept(ctx context.Context, u Update) error { return h.acceptMode(ctx, u, true) }
+
+func (h *Webhook) acceptMode(ctx context.Context, u Update, inline bool) error {
 	n, ok := Normalise(u)
 	if !ok {
 		return nil // nothing addressed to us
@@ -167,7 +171,10 @@ func (h *Webhook) accept(ctx context.Context, u Update) error {
 	// tick will retry it; turning a send failure into a 500 would make Telegram
 	// redeliver an update that is safely stored, which is how one slow reply
 	// becomes four.
-	if h.Handle != nil {
+	if !inline && h.Wake != nil {
+		h.Wake()
+	}
+	if inline && h.Handle != nil {
 		handleCtx, cancel := context.WithTimeout(ctx, drainBudget)
 		defer cancel()
 		if err := h.Handle(handleCtx, id); err != nil {

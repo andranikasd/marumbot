@@ -318,7 +318,12 @@ func (a *Admin) planFor(ctx context.Context, userID string, now time.Time) (*Pla
 		Cash:          budget.CashPlan(date.From(now, time.UTC)),
 		Loans:         positions,
 	}
-	rep, err := plan.Search(in, plan.Goal{Kind: plan.LeastInterest})
+	release, err := acquirePlanner(ctx)
+	if err != nil {
+		return nil, "planner canceled"
+	}
+	rep, err := plan.SearchContext(ctx, in, plan.Goal{Kind: plan.LeastInterest})
+	release()
 	if err != nil {
 		return nil, err.Error()
 	}

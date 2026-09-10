@@ -83,7 +83,12 @@ func (w *Worker) PlanComparisons(ctx context.Context, user, proposal string) (Pl
 	if original.Policy.Rollover == plan.KeepFreed {
 		request.OptimizedGoals = []plan.Goal{original.Goal}
 	}
-	compared, err := plan.Compare(request)
+	release, err := acquirePlanner(ctx)
+	if err != nil {
+		return out, err
+	}
+	compared, err := plan.CompareContext(ctx, request)
+	release()
 	if err != nil {
 		return out, err
 	}

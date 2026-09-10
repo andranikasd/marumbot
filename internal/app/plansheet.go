@@ -231,7 +231,7 @@ func (w *Worker) PlanSheet(ctx context.Context, userID string, goal *plan.Goal) 
 	}
 	// The inputs above are read fresh; only the pure search is cached, keyed
 	// by a fingerprint of exactly those inputs.
-	rep, err := w.plans.search(in, g, now)
+	rep, err := w.plans.searchContext(ctx, in, g, now)
 	if err != nil {
 		return Sheet{}, err
 	}

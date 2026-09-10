@@ -15,15 +15,17 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/andranikasd/marumbot/internal/identity"
 	"github.com/andranikasd/marumbot/internal/obs"
 	"github.com/andranikasd/marumbot/queries"
 )
 
 // Store owns the connection pool.
 type Store struct {
-	pool       *pgxpool.Pool
-	unregister func() error
-	closeOnce  sync.Once
+	adminSecrets *identity.SecretCipher
+	pool         *pgxpool.Pool
+	unregister   func() error
+	closeOnce    sync.Once
 }
 
 func poolConfig(dsn string) (*pgxpool.Config, error) {
@@ -43,8 +45,15 @@ func poolConfig(dsn string) (*pgxpool.Config, error) {
 	if cfg.MinConns < 0 || cfg.MinConns > cfg.MaxConns {
 		return nil, errors.New("pool_min_conns must be between zero and pool_max_conns")
 	}
-	cfg.MaxConnLifetime = time.Hour
-	cfg.HealthCheckPeriod = 30 * time.Second
+	if _, set := conn.RuntimeParams["pool_max_conn_lifetime"]; !set {
+		cfg.MaxConnLifetime = time.Hour
+	}
+	if _, set := conn.RuntimeParams["pool_health_check_period"]; !set {
+		cfg.HealthCheckPeriod = 30 * time.Second
+	}
+	if cfg.HealthCheckPeriod <= 0 {
+		return nil, errors.New("pool_health_check_period must be positive")
+	}
 	return cfg, nil
 }
 

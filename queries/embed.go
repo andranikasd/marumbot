@@ -17,9 +17,10 @@ import (
 var files embed.FS
 
 var (
-	once    sync.Once
-	byName  map[string]string
-	loadErr error
+	once        sync.Once
+	byName      map[string]string
+	byStatement map[string]string
+	loadErr     error
 )
 
 // Get returns the named statement, or panics if it does not exist. A missing
@@ -56,8 +57,20 @@ func Names() []string {
 	return out
 }
 
+// Name returns the declared name of an exact embedded statement, or empty for
+// unknown SQL. The reverse index is built once; callers never derive telemetry
+// labels from arbitrary SQL text or its arguments.
+func Name(statement string) string {
+	once.Do(load)
+	if loadErr != nil {
+		return ""
+	}
+	return byStatement[statement]
+}
+
 func load() {
 	byName = map[string]string{}
+	byStatement = map[string]string{}
 	entries, err := files.ReadDir(".")
 	if err != nil {
 		loadErr = err
@@ -77,6 +90,7 @@ func load() {
 		flush := func() {
 			if name != "" && strings.TrimSpace(sb.String()) != "" {
 				byName[name] = strings.TrimSpace(sb.String())
+				byStatement[byName[name]] = name
 			}
 			sb.Reset()
 		}
@@ -84,6 +98,10 @@ func load() {
 			if rest, ok := strings.CutPrefix(strings.TrimSpace(line), "-- name:"); ok {
 				flush()
 				name = strings.TrimSpace(rest)
+				// Preserve the declaration so equal SQL under distinct names
+				// remains distinguishable to the tracer without reparsing.
+				sb.WriteString(line)
+				sb.WriteString("\n")
 				continue
 			}
 			if name != "" {

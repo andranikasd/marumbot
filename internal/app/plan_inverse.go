@@ -47,7 +47,15 @@ func (w *Worker) BudgetByDate(ctx context.Context, user, proposal, target string
 	}
 	cur := m.Input.Cash.Monthly.Currency()
 	out := InverseBudget{Currency: cur.Code, Exponent: cur.Exponent, Target: target, InputHash: searchFingerprint(normalized, plan.Goal{})}
+	release, err := acquirePlanner(ctx)
+	if err != nil {
+		return out, err
+	}
 	minimum, err := plan.BudgetFor(m.Input, m.Policy, by)
+	release()
+	if err == nil {
+		err = ctx.Err()
+	}
 	var unsupported *plan.NonMonotoneError
 	if errors.As(err, &unsupported) {
 		out.Reason = "unproven_domain"

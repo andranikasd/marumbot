@@ -32,6 +32,9 @@ explain why the code is shaped the way it is.
 | [Environments](operations/environments.md) | Live development, inactive production configuration and required settings |
 | [Releasing](operations/releases.md) | Versioning, tags, the release pipeline |
 | [Deployment](operations/deployment.md) | Cloudflare setup, secrets, the deploy order |
+| [Cloudflare alternative](operations/cloudflare-target.md) | Deferred Workers/D1/R2 assessment and migration gates |
+| [VPS deployment](operations/vps.md) | Single-server Compose, private database/admin, backups and rollback |
+| [VPS readiness evidence](operations/vps-readiness.md) | Verified fixes, local checks and remaining launch requirements |
 | [Infrastructure](../deploy/terraform/README.md) | Terraform: where the database lives, Hyperdrive, who owns which resource |
 | [Grafana Cloud](operations/grafana-cloud.md) | The five signals, the two credentials, and the switch that is off by default |
 | [Runbooks](operations/runbooks.md) | What to do when something is wrong |
@@ -68,3 +71,5 @@ actual automated enforcement. Financial facts are append-only, money is integer
 minor units, core calculations are deterministic, and unknown lender behavior
 must not be guessed. Original plan inputs and activation records are persisted
 for history; derived reports are recomputed from them.
+
+- [Production hardening audit resolutions](operations/production-fixes.md)

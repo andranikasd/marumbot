@@ -76,7 +76,15 @@ func (w *Worker) PlanStress(ctx context.Context, user, proposal string, increase
 	if err != nil {
 		return out, err
 	}
+	release, err := acquirePlanner(ctx)
+	if err != nil {
+		return out, err
+	}
 	report, err := plan.StressCases(normalized, original.Policy, plan.StressOptions{RequiredIncreaseBP: increaseBP})
+	release()
+	if err == nil {
+		err = ctx.Err()
+	}
 	if err != nil {
 		return out, err
 	}

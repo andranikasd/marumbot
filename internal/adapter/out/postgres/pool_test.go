@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,6 +17,26 @@ import (
 
 	"github.com/andranikasd/marumbot/internal/obs"
 )
+
+func TestPoolConfigHonorsLifetimeAndHealthPeriod(t *testing.T) {
+	t.Setenv("PGSERVICE", "")
+	cfg, err := poolConfig("host=localhost pool_max_conn_lifetime=15m pool_health_check_period=10s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.MaxConnLifetime != 15*time.Minute || cfg.HealthCheckPeriod != 10*time.Second {
+		t.Fatal("explicit pool timing settings were overridden")
+	}
+}
+
+func TestPoolConfigRejectsNonpositiveHealthPeriod(t *testing.T) {
+	t.Setenv("PGSERVICE", "")
+	for _, period := range []string{"0s", "-1s"} {
+		if _, err := poolConfig("host=localhost pool_health_check_period=" + period); err == nil {
+			t.Fatal("accepted a health period that would panic the pool ticker")
+		}
+	}
+}
 
 func TestPoolConfigHonorsDSNLimits(t *testing.T) {
 	t.Setenv("PGSERVICE", "")

@@ -29,7 +29,7 @@ SELECT o.id,o.user_id,o.loan_id,o.due_date::text,o.offset_days,l.name,l.currency
 FROM reminder_occurrences o JOIN loans l ON l.id=o.loan_id JOIN users u ON u.id=o.user_id
 CROSS JOIN LATERAL (SELECT extract(hour FROM ($1::timestamptz AT TIME ZONE u.timezone))*60+
  extract(minute FROM ($1::timestamptz AT TIME ZONE u.timezone)) AS minute) local_time
-WHERE o.approved_plan_id IS NOT NULL AND o.status='scheduled' AND o.target_send_at<=$1
+WHERE o.approved_plan_id IS NOT NULL AND o.status='scheduled' AND o.target_send_at<=$1 AND o.retry_at<=$1
 AND l.archived_at IS NULL AND u.deleted_at IS NULL AND u.access_state<>'paused'
 AND (NOT u.quiet_enabled OR NOT CASE WHEN u.quiet_start<u.quiet_end
  THEN local_time.minute>=u.quiet_start AND local_time.minute<u.quiet_end

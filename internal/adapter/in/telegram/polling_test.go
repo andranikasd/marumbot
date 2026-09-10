@@ -52,10 +52,12 @@ func TestPollingAcknowledgesOnlyDurableUpdates(t *testing.T) {
 	}
 	inbox.fail = false
 	handled := 0
+	woke := 0
+	h.Wake = func() { woke++ }
 	h.Handle = func(context.Context, string) error { handled++; return errors.New("send failed") }
 	next, err = h.pollOnce(context.Background(), source, next)
-	if err != nil || next != 43 || handled != 1 {
-		t.Fatal("durable update advances even if reply needs retry", next, err, handled)
+	if err != nil || next != 43 || handled != 0 || woke != 1 {
+		t.Fatal("durable update advances without waiting for reply", next, err, handled)
 	}
 	next, err = h.pollOnce(context.Background(), source, next)
 	if err != nil || next != 43 || inbox.calls != 2 {

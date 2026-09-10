@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -75,8 +76,15 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 		Cash:          budget.CashPlan(asOf),
 		Loans:         positions,
 	}
-	u, err := plan.Explore(in)
+	release, err := acquirePlanner(ctx)
 	if err != nil {
+		return err
+	}
+	release = sync.OnceFunc(release)
+	defer release()
+	u, err := plan.ExploreContext(ctx, in)
+	if err != nil {
+		release()
 		return w.refuse(ctx, chat, l, err)
 	}
 
@@ -91,10 +99,11 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 
 	if compare {
 		b.WriteString(i18n.T(l, "advice.header", bare(owed), bare(budget.Monthly), cur.Code) + "\n")
-		return w.compareGoals(ctx, chat, l, &b, u, required)
+		return w.compareGoals(ctx, chat, l, &b, u, required, release)
 	}
 
 	rep, err := u.Rank(goal)
+	release()
 	if err != nil {
 		return w.refuse(ctx, chat, l, err)
 	}
@@ -153,11 +162,19 @@ func (w *Worker) explainPlan(ctx context.Context, userID string, chat int64, l i
 		Cash:          budget.CashPlan(asOf),
 		Loans:         positions,
 	}
-	u, err := plan.Explore(in)
+	release, err := acquirePlanner(ctx)
 	if err != nil {
+		return err
+	}
+	release = sync.OnceFunc(release)
+	defer release()
+	u, err := plan.ExploreContext(ctx, in)
+	if err != nil {
+		release()
 		return w.refuse(ctx, chat, l, err)
 	}
 	rep, err := u.Rank(goal)
+	release()
 	if err != nil {
 		return w.refuse(ctx, chat, l, err)
 	}
@@ -246,7 +263,7 @@ func assumedTotal(u *plan.Universe) int {
 
 // compareGoals answers every goal at once over the same simulated policies,
 // with the minimum as the floor.
-func (w *Worker) compareGoals(ctx context.Context, chat int64, l i18n.Locale, b *strings.Builder, u *plan.Universe, required money.Amount) error {
+func (w *Worker) compareGoals(ctx context.Context, chat int64, l i18n.Locale, b *strings.Builder, u *plan.Universe, required money.Amount, release func()) error {
 	goals := []plan.Goal{{Kind: plan.LeastInterest}, {Kind: plan.Fastest}, {Kind: plan.FirstWin}}
 	// Relief needs a target; for the comparison, use "get under half of
 	// today's required total", which is the question most people mean.
@@ -256,6 +273,7 @@ func (w *Worker) compareGoals(ctx context.Context, chat int64, l i18n.Locale, b 
 	for _, g := range goals {
 		rep, err := u.Rank(g)
 		if err != nil {
+			release()
 			return w.refuse(ctx, chat, l, err)
 		}
 		if first == nil {
@@ -277,6 +295,7 @@ func (w *Worker) compareGoals(ctx context.Context, chat int64, l i18n.Locale, b 
 		}
 	}
 	b.WriteString("\n<i>" + i18n.T(l, "advice.compare_pick") + "</i>")
+	release()
 	return w.Send.SendMessage(ctx, chat, b.String(), compareMenu(l))
 }
 

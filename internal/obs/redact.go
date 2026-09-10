@@ -60,7 +60,7 @@ func scrub(a slog.Attr) slog.Attr {
 		return slog.String(a.Key, "[redacted amount]")
 	}
 	// Error text can include contextual identifiers or amounts. The request
-	// span retains diagnostic detail; logs retain only the concrete error type.
+	// trace exporter also sanitizes diagnostics; logs retain only the concrete error type.
 	if err, ok := a.Value.Any().(error); ok {
 		return slog.String(a.Key, fmt.Sprintf("[%T]", err))
 	}

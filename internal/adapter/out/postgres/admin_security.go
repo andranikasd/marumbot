@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
+
+	"github.com/andranikasd/marumbot/internal/identity"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -11,18 +14,21 @@ import (
 	"github.com/andranikasd/marumbot/internal/app"
 )
 
-type adminTransaction struct{ tx pgx.Tx }
+type adminTransaction struct {
+	tx      pgx.Tx
+	secrets *identity.SecretCipher
+}
 
 func (s *Store) BeginAdmin(ctx context.Context) (app.AdminSecurityTransaction, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &adminTransaction{tx: tx}, nil
+	return &adminTransaction{tx: tx, secrets: s.adminSecrets}, nil
 }
 
 func (s *Store) AdminIdentityByUsername(ctx context.Context, username string) (app.AdminIdentity, error) {
-	return scanAdminIdentity(s.pool.QueryRow(ctx, q("AdminIdentityByUsername"), username))
+	return scanAdminIdentity(s.pool.QueryRow(ctx, q("AdminIdentityByUsername"), username), s.adminSecrets)
 }
 
 func (s *Store) BootstrapAdmin(ctx context.Context, id app.AdminIdentity) error {
@@ -30,18 +36,24 @@ func (s *Store) BootstrapAdmin(ctx context.Context, id app.AdminIdentity) error 
 	return s.pool.QueryRow(ctx, q("BootstrapAdminIdentity"), id.ID, id.Username, id.PasswordHash).Scan(&count)
 }
 
-func scanAdminIdentity(row pgx.Row) (app.AdminIdentity, error) {
+func scanAdminIdentity(row pgx.Row, secrets *identity.SecretCipher) (app.AdminIdentity, error) {
 	var id app.AdminIdentity
 	var roles []string
 	err := row.Scan(&id.ID, &id.Username, &id.PasswordHash, &id.TOTPSecret, &roles, &id.Version, &id.Enabled)
 	for _, role := range roles {
 		id.Roles = append(id.Roles, app.AdminRole(role))
 	}
+	if err == nil && strings.HasPrefix(id.TOTPSecret, "v1:") {
+		if secrets == nil {
+			return app.AdminIdentity{}, app.ErrAdminSecurityUnavailable
+		}
+		id.TOTPSecret, err = secrets.Open(id.ID, id.TOTPSecret)
+	}
 	return id, adminStoreError(err)
 }
 
 func (t *adminTransaction) Identity(ctx context.Context, id string) (app.AdminIdentity, error) {
-	return scanAdminIdentity(t.tx.QueryRow(ctx, q("AdminIdentity"), id))
+	return scanAdminIdentity(t.tx.QueryRow(ctx, q("AdminIdentity"), id), t.secrets)
 }
 
 func (t *adminTransaction) SaveIdentity(ctx context.Context, id app.AdminIdentity, expected int64) error {
@@ -49,7 +61,15 @@ func (t *adminTransaction) SaveIdentity(ctx context.Context, id app.AdminIdentit
 	for i, r := range id.Roles {
 		roles[i] = string(r)
 	}
-	args := []any{id.ID, id.Username, id.PasswordHash, id.TOTPSecret, roles, id.Version, id.Enabled}
+	secret := id.TOTPSecret
+	if t.secrets != nil {
+		var err error
+		secret, err = t.secrets.Seal(id.ID, secret)
+		if err != nil {
+			return err
+		}
+	}
+	args := []any{id.ID, id.Username, id.PasswordHash, secret, roles, id.Version, id.Enabled}
 	name := "CreateAdminIdentity"
 	if expected > 0 {
 		name = "UpdateAdminIdentity"
@@ -249,4 +269,62 @@ func (t *adminTransaction) CaseEvidenceOptions(ctx context.Context, user, loan s
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[app.AdminEvidenceOption])
+}
+
+// WithAdminSecrets must be called before serving requests.
+func (s *Store) WithAdminSecrets(c *identity.SecretCipher) { s.adminSecrets = c }
+
+func (s *Store) LegacyAdminSecrets(ctx context.Context) ([]app.LegacyAdminSecret, error) {
+	rows, err := s.pool.Query(ctx, q("LegacyAdminSecrets"))
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[app.LegacyAdminSecret])
+}
+
+func (s *Store) ProtectAdminSecret(ctx context.Context, row app.LegacyAdminSecret) error {
+	if s.adminSecrets == nil {
+		return app.ErrAdminSecurityUnavailable
+	}
+	sealed, err := s.adminSecrets.Seal(row.ID, row.Secret)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, q("ProtectAdminSecret"), row.ID, row.Secret, sealed)
+	return err
+}
+
+// VerifyAdminSecrets decrypts all enrolled credentials in bounded pages. Disabled
+// identities still need recoverable credentials if an operator enables them later.
+func (s *Store) VerifyAdminSecrets(ctx context.Context) error {
+	return verifyAdminSecrets(ctx, s.pool.Query, s.adminSecrets)
+}
+
+func verifyAdminSecrets(ctx context.Context, query func(context.Context, string, ...any) (pgx.Rows, error), secrets *identity.SecretCipher) error {
+	if secrets == nil {
+		return app.ErrAdminSecurityUnavailable
+	}
+	after := ""
+	for {
+		rows, err := query(ctx, q("AdminSecretPage"), after, 100)
+		if err != nil {
+			return err
+		}
+		var id, secret string
+		count := 0
+		_, err = pgx.ForEachRow(rows, []any{&id, &secret}, func() error {
+			if _, err := secrets.Open(id, secret); err != nil {
+				return err
+			}
+			after = id
+			count++
+			return ctx.Err()
+		})
+		if err != nil {
+			return err
+		}
+		if count < 100 {
+			return nil
+		}
+	}
 }

@@ -26,6 +26,7 @@ var assets embed.FS
 
 // Server serves the Mini App and the one endpoint it calls.
 type Server struct {
+	Wake     func()
 	BotToken string
 	Loans    app.LoanWriter
 	Editor   app.LoanEditor
@@ -129,7 +130,7 @@ func (s *Server) Handler() http.Handler {
 	publicAssets := compressedAssets(sub, withTokens(sub, http.FileServerFS(sub)))
 	mux.Handle("GET /a/", s.immutable(http.StripPrefix("/a/", stripVersion(publicAssets))))
 	mux.Handle("/", s.static(publicAssets))
-	return mux
+	return requestBudget(mux)
 }
 
 // static serves the form with headers that matter for a page inside a webview.
@@ -203,7 +204,6 @@ func (s *Server) createLoan() http.Handler {
 			return
 		}
 		receipt, err := commands.Create(ctx, key, draft)
-		id := receipt.ID
 		if err != nil {
 			span.RecordError(err)
 			if loanCommandError(w, err) {
@@ -217,12 +217,8 @@ func (s *Server) createLoan() http.Handler {
 			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 			return
 		}
-		if s.Filed != nil {
-			if err := s.Filed.OnLoanFiled(ctx, userID, id); err != nil {
-				// The loan exists; reminders will be rebuilt by the next
-				// tick. Worth a log line, not a failed create.
-				s.Log.WarnContext(ctx, "setting up reminders failed", "error", err)
-			}
+		if s.Wake != nil {
+			s.Wake()
 		}
 		writeJSON(w, http.StatusCreated, receipt)
 	})
@@ -300,7 +296,7 @@ func (s *Server) getBudget() http.Handler {
 			}
 			if len(b.Overrides) > 0 {
 				cur := b.Monthly.Currency()
-				over := make(map[string]float64, len(b.Overrides))
+				over := make(map[string]json.Number, len(b.Overrides))
 				for k, v := range b.Overrides {
 					over[k] = major(money.FromMinor(v, cur))
 				}
@@ -323,7 +319,7 @@ func (s *Server) getBudget() http.Handler {
 
 // ratePercent renders the stored parts-per-billion fraction as the percent
 // figure the form shows. Display only, like major.
-func ratePercent(r money.Rate) float64 { return float64(r) / 1e7 }
+func ratePercent(r money.Rate) json.Number { return decimalNumber(int64(r), 7) }
 
 func methodName(t model.RepaymentType) string {
 	if t == model.DecliningPrincipal {
@@ -341,16 +337,8 @@ func prepayEffectName(e model.PrepaymentEffect) string {
 	return e.String()
 }
 
-// major renders an amount as a decimal number of major units for the form.
-// The form takes major units back and the server converts once, so this is
-// the one place a money figure becomes a float, and it is display only.
-func major(a money.Amount) float64 {
-	scale := 1.0
-	for i := uint8(0); i < a.Currency().Exponent; i++ {
-		scale *= 10
-	}
-	return float64(a.Minor()) / scale
-}
+// major renders exact decimal digits as a JSON number for compatible clients.
+func major(a money.Amount) json.Number { return decimalNumber(a.Minor(), a.Currency().Exponent) }
 
 // setBudget records how much a borrower can put towards loans each month.
 //
@@ -677,17 +665,17 @@ func writeJSON(w http.ResponseWriter, code int, body any) {
 
 // LoanRequest is what the form posts.
 type LoanRequest struct {
-	Icon             string  `json:"icon"`
-	OptionalExcluded bool    `json:"optional_excluded"`
-	Title            string  `json:"title"`
-	Description      string  `json:"description"`
-	PrincipalMajor   float64 `json:"principal_major"`
+	Icon             string      `json:"icon"`
+	OptionalExcluded bool        `json:"optional_excluded"`
+	Title            string      `json:"title"`
+	Description      string      `json:"description"`
+	PrincipalMajor   json.Number `json:"principal_major"`
 	// BalanceMajor is what is owed TODAY, for a loan that has been running.
 	// Zero means "same as principal": a loan filed on its drawdown date.
-	BalanceMajor float64 `json:"balance_major"`
-	Currency     string  `json:"currency"`
-	RatePercent  float64 `json:"rate_percent"`
-	Method       string  `json:"method"`
+	BalanceMajor json.Number `json:"balance_major"`
+	Currency     string      `json:"currency"`
+	RatePercent  json.Number `json:"rate_percent"`
+	Method       string      `json:"method"`
 	// PrepayEffect is what an early payment does: shorten_term,
 	// reduce_instalment, or empty when the borrower has not said.
 	PrepayEffect string `json:"prepay_effect"`

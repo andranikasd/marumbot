@@ -68,3 +68,8 @@ func (s *Store) ActiveLoanUsers(ctx context.Context, after string, limit int32) 
 	}
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
+
+func (s *Store) DeferReminderDelivery(ctx context.Context, id string, now time.Time) error {
+	_, err := s.pool.Exec(ctx, q("DeferReminderDelivery"), id, now)
+	return err
+}

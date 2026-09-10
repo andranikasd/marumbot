@@ -1,8 +1,11 @@
 package app
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"hash"
 	"reflect"
 	"sort"
@@ -29,9 +32,12 @@ import (
 // are read fresh from the database on every call, so the cache can never
 // serve a plan for loans the user no longer has.
 
-// searchCacheMax bounds memory. A report is a few kilobytes; 256 of them is
-// nothing, and one container serves far fewer concurrent users than that.
-const searchCacheMax = 256
+// Search reports vary with the candidate count. Bound both entry count and
+// serialized report bytes; the byte budget is an estimate, not a heap limit.
+const (
+	searchCacheMax   = 256
+	searchCacheBytes = 64 << 20
+)
 
 // searchCacheTTL is a backstop only: fingerprints already roll with the
 // valuation date, so entries stop being reachable after midnight. The TTL
@@ -44,11 +50,16 @@ type searchCache struct {
 	mu      sync.Mutex
 	entries map[string]searchEntry
 	metrics *obs.PlanSearchMetrics // optional override, set before use
+	flights map[string]*searchFlight
+	slot    chan struct{}
+	bytes   int
+	compute func(context.Context, plan.Input, plan.Goal) (plan.Report, error) // optional override, set before use
 }
 
 type searchEntry struct {
 	rep     plan.Report
 	addedAt time.Time
+	bytes   int
 }
 
 // searchFingerprint encodes raw values, never display strings or addresses.
@@ -166,60 +177,132 @@ func fingerprintValue(b *fingerprintHash, v reflect.Value) {
 	}
 }
 
-// search returns the cached report for this exact input, computing and
-// remembering it on a miss.
+type searchFlight struct {
+	done chan struct{}
+	rep  plan.Report
+	err  error
+}
+
 func (c *searchCache) search(in plan.Input, g plan.Goal, now time.Time) (plan.Report, error) {
+	return c.searchContext(context.Background(), in, g, now)
+}
+
+// searchContext coalesces identical misses and permits one active core search.
+// The caller owns computation; canceled waiters never leave background work.
+func (c *searchCache) searchContext(ctx context.Context, in plan.Input, g plan.Goal, now time.Time) (plan.Report, error) {
 	metrics := c.metrics
 	if metrics == nil {
 		metrics = planSearchMetrics
 	}
 	key := searchFingerprint(in, g)
-
-	c.mu.Lock()
-	if e, ok := c.entries[key]; ok && now.Sub(e.addedAt) < searchCacheTTL {
+	for {
+		if err := ctx.Err(); err != nil {
+			return plan.Report{}, err
+		}
+		c.mu.Lock()
+		if e, ok := c.entries[key]; ok && now.Sub(e.addedAt) < searchCacheTTL {
+			c.mu.Unlock()
+			metrics.CacheLookup(true)
+			return e.rep, nil
+		}
+		if f, ok := c.flights[key]; ok {
+			c.mu.Unlock()
+			select {
+			case <-ctx.Done():
+				return plan.Report{}, ctx.Err()
+			case <-f.done:
+				if errors.Is(f.err, context.Canceled) || errors.Is(f.err, context.DeadlineExceeded) {
+					continue
+				}
+				return f.rep, f.err
+			}
+		}
+		if c.flights == nil {
+			c.flights = make(map[string]*searchFlight)
+		}
+		if c.slot == nil {
+			c.slot = make(chan struct{}, 1)
+		}
+		f := &searchFlight{done: make(chan struct{})}
+		c.flights[key] = f
 		c.mu.Unlock()
-		metrics.CacheLookup(true)
-		return e.rep, nil
+		metrics.CacheLookup(false)
+		rep, err := c.computeMiss(ctx, in, g, metrics)
+		size := 0
+		if err == nil {
+			if raw, marshalErr := json.Marshal(rep); marshalErr == nil {
+				size = len(raw)
+			}
+		}
+		if err == nil {
+			err = ctx.Err()
+			if err != nil {
+				rep = plan.Report{}
+			}
+		}
+		c.mu.Lock()
+		if err == nil && size > 0 && size <= searchCacheBytes {
+			if c.entries == nil {
+				c.entries = make(map[string]searchEntry)
+			}
+			if old, ok := c.entries[key]; ok {
+				c.bytes -= old.bytes
+				delete(c.entries, key)
+			}
+			for len(c.entries) >= searchCacheMax || c.bytes+size > searchCacheBytes {
+				c.evictLocked(now)
+			}
+			c.entries[key] = searchEntry{rep: rep, addedAt: now, bytes: size}
+			c.bytes += size
+		}
+		f.rep, f.err = rep, err
+		delete(c.flights, key)
+		close(f.done)
+		c.mu.Unlock()
+		return rep, err
 	}
-	c.mu.Unlock()
-	metrics.CacheLookup(false)
+}
 
-	// Compute outside the lock: a search can take seconds, and holding the
-	// lock across it would serialise every user behind the slowest plan.
+func (c *searchCache) computeMiss(ctx context.Context, in plan.Input, g plan.Goal, metrics *obs.PlanSearchMetrics) (plan.Report, error) {
+	select {
+	case <-ctx.Done():
+		return plan.Report{}, ctx.Err()
+	case c.slot <- struct{}{}:
+	}
+	defer func() { <-c.slot }()
+	if err := ctx.Err(); err != nil {
+		return plan.Report{}, err
+	}
+	release, err := acquirePlanner(ctx)
+	if err != nil {
+		return plan.Report{}, err
+	}
+	defer release()
+	compute := c.compute
+	if compute == nil {
+		compute = plan.SearchContext
+	}
 	finish := metrics.StartSearch()
-	rep, err := plan.Search(in, g)
+	rep, err := compute(ctx, in, g)
+	if err == nil {
+		err = ctx.Err()
+	}
 	finish(err == nil)
 	if err != nil {
 		return plan.Report{}, err
 	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.entries == nil {
-		c.entries = make(map[string]searchEntry)
-	}
-	if len(c.entries) >= searchCacheMax {
-		c.evictLocked(now)
-	}
-	c.entries[key] = searchEntry{rep: rep, addedAt: now}
 	return rep, nil
 }
 
-// evictLocked drops expired entries, and if none were, the oldest one. Called
-// with the lock held.
-//
-// It scans the whole map, which is a full pass per insert once the cache is
-// full. That is deliberate: the map holds at most searchCacheMax entries, so
-// the pass is a few hundred iterations against a search that takes hundreds
-// of milliseconds. An eviction order kept alongside the map would save
-// nothing measurable and would add a second structure that can drift out of
-// step with the first.
+// evictLocked drops expired entries or the oldest remaining entry. The map
+// contains at most searchCacheMax entries, so a scan stays bounded.
 func (c *searchCache) evictLocked(now time.Time) {
 	oldestKey := ""
 	var oldestAt time.Time
 	dropped := false
 	for k, e := range c.entries {
 		if now.Sub(e.addedAt) >= searchCacheTTL {
+			c.bytes -= e.bytes
 			delete(c.entries, k)
 			dropped = true
 			continue
@@ -229,6 +312,7 @@ func (c *searchCache) evictLocked(now time.Time) {
 		}
 	}
 	if !dropped && oldestKey != "" {
+		c.bytes -= c.entries[oldestKey].bytes
 		delete(c.entries, oldestKey)
 	}
 }

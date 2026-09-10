@@ -1,6 +1,7 @@
 package miniapp
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -11,8 +12,8 @@ import (
 
 func good() LoanRequest {
 	return LoanRequest{
-		Title: "Car loan", Description: "monthly, 15th", PrincipalMajor: 5_000_000, Currency: "AMD",
-		RatePercent: 14.5, Method: "annuity",
+		Title: "Car loan", Description: "monthly, 15th", PrincipalMajor: "5000000", Currency: "AMD",
+		RatePercent: "14.5", Method: "annuity",
 		StartDate: "2026-01-15", MaturityDate: "2029-01-15", PaymentDay: 15,
 	}
 }
@@ -52,12 +53,12 @@ func TestValidateAcceptsDeclining(t *testing.T) {
 func TestValidateRejects(t *testing.T) {
 	cases := map[string]func(*LoanRequest){
 		"no title":           func(r *LoanRequest) { r.Title = "   " },
-		"zero principal":     func(r *LoanRequest) { r.PrincipalMajor = 0 },
-		"negative principal": func(r *LoanRequest) { r.PrincipalMajor = -1 },
-		"absurd principal":   func(r *LoanRequest) { r.PrincipalMajor = 1e18 },
+		"zero principal":     func(r *LoanRequest) { r.PrincipalMajor = "0" },
+		"negative principal": func(r *LoanRequest) { r.PrincipalMajor = "-1" },
+		"absurd principal":   func(r *LoanRequest) { r.PrincipalMajor = "1e18" },
 		"unknown currency":   func(r *LoanRequest) { r.Currency = "XYZ" },
-		"negative rate":      func(r *LoanRequest) { r.RatePercent = -1 },
-		"impossible rate":    func(r *LoanRequest) { r.RatePercent = 500 },
+		"negative rate":      func(r *LoanRequest) { r.RatePercent = "-1" },
+		"impossible rate":    func(r *LoanRequest) { r.RatePercent = "500" },
 		"maturity before":    func(r *LoanRequest) { r.MaturityDate = "2025-01-01" },
 		"maturity equals":    func(r *LoanRequest) { r.MaturityDate = r.StartDate },
 		"term too long":      func(r *LoanRequest) { r.MaturityDate = "2099-01-15" },
@@ -75,32 +76,26 @@ func TestValidateRejects(t *testing.T) {
 	}
 }
 
-// NaN and infinity survive JSON decoding as float64 in some encoders and would
-// otherwise propagate into money arithmetic as a nonsense int64.
 func TestValidateRejectsNonFiniteNumbers(t *testing.T) {
-	inf := 1.0
-	for i := 0; i < 400; i++ {
-		inf *= 10
-	}
-	for name, v := range map[string]float64{"inf": inf, "-inf": -inf, "nan": inf - inf} {
+	for _, v := range []json.Number{"NaN", "Infinity", "-Infinity", "1e9999999", "1/2"} {
 		r := good()
 		r.PrincipalMajor = v
 		if _, err := r.Validate(date.MustNew(2026, 8, 27)); !errors.Is(err, ErrInvalid) {
-			t.Errorf("principal %s: accepted", name)
+			t.Fatal("accepted invalid principal")
 		}
 		r = good()
 		r.RatePercent = v
 		if _, err := r.Validate(date.MustNew(2026, 8, 27)); !errors.Is(err, ErrInvalid) {
-			t.Errorf("rate %s: accepted", name)
+			t.Fatal("accepted invalid rate")
 		}
 	}
 }
 
 func TestLoanEditRejectsOversizedBalance(t *testing.T) {
 	r := LoanEditRequest{
-		Name: "Car", RatePercent: 10, Method: "annuity",
+		Name: "Car", RatePercent: "10", Method: "annuity",
 		StartDate: "2026-01-01", MaturityDate: "2028-01-01", PaymentDay: 1,
-		BalanceMajor: 1e18,
+		BalanceMajor: "1e18",
 	}
 	if _, err := r.Validate(money.MustLookup("AMD")); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("oversized balance: got %v, want ErrInvalid", err)
@@ -134,5 +129,35 @@ func TestDefaultsMatchArmenianPractice(t *testing.T) {
 	}
 	if d.Contract.DayCount != money.Actual365 {
 		t.Errorf("day count = %s, want ACT/365", d.Contract.DayCount)
+	}
+}
+
+func TestLoanDecimalBoundary(t *testing.T) {
+	for _, raw := range []string{`{"principal_major":0.29}`, `{"principal_major":"0.29"}`} {
+		r := good()
+		if err := json.Unmarshal([]byte(raw), &r); err != nil {
+			t.Fatal(err)
+		}
+		d, err := r.Validate(date.MustNew(2026, 8, 27))
+		if err != nil || d.Principal.Minor() != 29 {
+			t.Fatalf("exact decimal: %v", err)
+		}
+	}
+	for _, raw := range []json.Number{"0.001", "90071992547409.92", "-1"} {
+		r := good()
+		r.PrincipalMajor = raw
+		if _, err := r.Validate(date.MustNew(2026, 8, 27)); !errors.Is(err, ErrInvalid) {
+			t.Fatal("accepted invalid precision/range")
+		}
+	}
+	r := good()
+	r.BalanceMajor = "-1"
+	if _, err := r.Validate(date.MustNew(2026, 8, 27)); !errors.Is(err, ErrInvalid) {
+		t.Fatal("negative balance accepted")
+	}
+	r.BalanceMajor = "0"
+	d, err := r.Validate(date.MustNew(2026, 8, 27))
+	if err != nil || d.Balance.Minor() != d.Principal.Minor() {
+		t.Fatal("legacy zero sentinel changed")
 	}
 }

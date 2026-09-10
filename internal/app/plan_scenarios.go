@@ -148,6 +148,10 @@ func scenarioBudget(s PlanScenario) (Budget, error) {
 }
 
 func scenarioCalculation(s PlanScenario, selectPolicy bool) (PlanManifest, Sheet, error) {
+	return scenarioCalculationContext(context.Background(), s, selectPolicy)
+}
+
+func scenarioCalculationContext(ctx context.Context, s PlanScenario, selectPolicy bool) (PlanManifest, Sheet, error) {
 	if _, err := ReplayManifest(s.Original); err != nil {
 		return PlanManifest{}, Sheet{}, err
 	}
@@ -177,7 +181,12 @@ func scenarioCalculation(s PlanScenario, selectPolicy bool) (PlanManifest, Sheet
 	if err != nil {
 		return m, Sheet{}, err
 	}
-	report, err := plan.Search(m.Input, m.Goal)
+	release, err := acquirePlanner(ctx)
+	if err != nil {
+		return PlanManifest{}, Sheet{}, err
+	}
+	report, err := plan.SearchContext(ctx, m.Input, m.Goal)
+	release()
 	if err != nil {
 		return m, Sheet{}, err
 	}
@@ -253,7 +262,7 @@ func (w *Worker) prepareScenario(ctx context.Context, user string, c ScenarioCom
 		return s, v, current
 	}
 	s.Budget = s.Budget.WithReleaseFacts(s.Original.Input.Cash.Spending)
-	m, sheet, err := scenarioCalculation(s, true)
+	m, sheet, err := scenarioCalculationContext(ctx, s, true)
 	if err != nil {
 		return s, v, err
 	}
@@ -325,7 +334,7 @@ func (w *Worker) Scenario(ctx context.Context, user, id string) (ScenarioView, e
 	if err != nil {
 		return ScenarioView{}, err
 	}
-	_, sheet, err := scenarioCalculation(s, false)
+	_, sheet, err := scenarioCalculationContext(ctx, s, false)
 	if err != nil {
 		return ScenarioView{}, err
 	}
@@ -363,7 +372,7 @@ func (w *Worker) ActivateScenario(ctx context.Context, user string, c ScenarioAc
 	}
 	// Precompute without a transaction or active writes. Receipt lookup below
 	// precedes freshness validation so a lost response remains retryable.
-	m, _, err := scenarioCalculation(s, false)
+	m, _, err := scenarioCalculationContext(ctx, s, false)
 	if err != nil {
 		return out, err
 	}

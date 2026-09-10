@@ -140,3 +140,14 @@ JOIN admin_policy_drafts p ON p.payload->>'Key'=av.policy_key
 WHERE l.user_id::text=$1 AND l.id::text=$2 AND p.payload->>'State'='published'
 AND p.payload->>'Reviewer'<>p.payload->>'Author'
 AND (p.payload->>'Version')::integer>=av.version LIMIT 200;
+
+-- name: LegacyAdminSecrets
+SELECT id,totp_secret FROM admin_identities WHERE totp_secret<>'' AND totp_secret NOT LIKE 'v1:%' ORDER BY id LIMIT 100;
+
+-- name: ProtectAdminSecret
+UPDATE admin_identities SET totp_secret=$3 WHERE id=$1 AND totp_secret=$2;
+
+-- name: AdminSecretPage
+SELECT id::text,totp_secret FROM admin_identities
+WHERE id > $1
+ORDER BY id LIMIT $2;

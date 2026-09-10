@@ -1,0 +1,154 @@
+name: marum-production
+
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: ${MARUM_POSTGRES_IMAGE:-postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73}
+    environment:
+      POSTGRES_USER: marum_owner
+      POSTGRES_DB: marum
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set the database owner password}
+      MARUM_DB_PASSWORD: ${MARUM_DB_PASSWORD:?set a separate application password}
+    command:
+      - postgres
+      - -c
+      - max_connections=${MARUM_PG_MAX_CONNECTIONS:-60}
+      - -c
+      - shared_buffers=${MARUM_PG_SHARED_BUFFERS:-2GB}
+      - -c
+      - work_mem=${MARUM_PG_WORK_MEM:-8MB}
+      - -c
+      - maintenance_work_mem=${MARUM_PG_MAINTENANCE_WORK_MEM:-512MB}
+      - -c
+      - effective_cache_size=${MARUM_PG_EFFECTIVE_CACHE_SIZE:-6GB}
+      - -c
+      - idle_in_transaction_session_timeout=60s
+      - -c
+      - log_statement=none
+      - -c
+      - log_min_error_statement=panic
+      - -c
+      - log_parameter_max_length_on_error=0
+    networks: [database]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/10-marum.sh:ro
+      - ../../queries/provisioning/vps-role.sql:/bootstrap/role.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U marum_owner -d marum"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    stop_grace_period: 60s
+    mem_limit: ${MARUM_PG_MEMORY:-8g}
+    cpus: ${MARUM_PG_CPUS:-2}
+    shm_size: ${MARUM_PG_SHM_SIZE:-1g}
+    logging: *logging
+
+  migrate:
+    image: ${MARUM_MIGRATE_IMAGE:-marum-migrate:${MARUM_VERSION:?required}}
+    build:
+      context: ../..
+      dockerfile: deploy/goose.Dockerfile
+    environment:
+      GOOSE_DRIVER: postgres
+      GOOSE_DBSTRING: "host=postgres user=marum_owner password=${POSTGRES_PASSWORD:?required} dbname=marum sslmode=disable"
+    networks: [database]
+    volumes: ["../../migrations:/migrations:ro"]
+    command: [up]
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+    mem_limit: 256m
+    logging: *logging
+
+  marum:
+    image: ${MARUM_IMAGE:-marum-vps:${MARUM_VERSION:?set a release version}}
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile
+      args:
+        VERSION: ${MARUM_VERSION:?required}
+    environment:
+      MARUM_ENV: prod
+      MARUM_ERASURE_JOURNAL_DIR: /var/lib/marum/erasures
+      MARUM_MODE: polling
+      MARUM_ADDR: :8080
+      MARUM_ADMIN_ADDR: :8081
+      MARUM_DATABASE_URL: "host=postgres user=marum_app password=${MARUM_DB_PASSWORD:?required} dbname=marum sslmode=disable connect_timeout=5 pool_max_conns=${MARUM_POOL_MAX_CONNS:-16} pool_min_conns=${MARUM_POOL_MIN_CONNS:-2} pool_max_conn_lifetime=1h pool_max_conn_lifetime_jitter=5m statement_timeout=15000 lock_timeout=5000 idle_in_transaction_session_timeout=15000"
+      MARUM_BOT_TOKEN: ${MARUM_BOT_TOKEN:?set a production bot token}
+      MARUM_IDENTITY_KEY: ${MARUM_IDENTITY_KEY:?set and back up the identity key}
+      MARUM_SERVICE_TOKEN: ${MARUM_SERVICE_TOKEN:?set a random service token}
+      MARUM_MINIAPP_URL: https://${MARUM_DOMAIN:?set the public domain}/app/
+      MARUM_TICK_INTERVAL: 60s
+      MARUM_INSTANCE_ID: vps-1
+      MARUM_ADMIN_PASSWORD_HASH: ${MARUM_ADMIN_PASSWORD_HASH:-}
+      MARUM_ADMIN_USER: ${MARUM_ADMIN_USER:-admin}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      PYROSCOPE_SERVER_ADDRESS: ${PYROSCOPE_SERVER_ADDRESS:-}
+      PYROSCOPE_BASIC_AUTH_USER: ${PYROSCOPE_BASIC_AUTH_USER:-}
+      PYROSCOPE_BASIC_AUTH_PASSWORD: ${PYROSCOPE_BASIC_AUTH_PASSWORD:-}
+      GOMEMLIMIT: ${MARUM_GOMEMLIMIT:-4GiB}
+      GOMAXPROCS: ${MARUM_GOMAXPROCS:-4}
+    networks: [database, public]
+    volumes:
+      - type: bind
+        source: ${MARUM_ERASURE_JOURNAL_DIR:-/var/lib/marum/erasures}
+        target: /var/lib/marum/erasures
+        bind:
+          create_host_path: false
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8081:8081"
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, /marum, -healthcheck]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    stop_grace_period: 60s
+    mem_limit: ${MARUM_APP_MEMORY:-6g}
+    cpus: ${MARUM_APP_CPUS:-4}
+    pids_limit: 256
+    logging: *logging
+
+  caddy:
+    image: ${MARUM_CADDY_IMAGE:-caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648}
+    environment:
+      MARUM_DOMAIN: ${MARUM_DOMAIN:?required}
+      ACME_EMAIL: ${ACME_EMAIL:?set the TLS certificate contact}
+    networks: [public]
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      marum: {condition: service_healthy}
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *logging
+
+# Only the application bridges the proxy/egress network and the database.
+networks:
+  database:
+    internal: true
+  public:
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

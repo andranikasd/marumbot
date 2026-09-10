@@ -95,7 +95,11 @@ type Worker struct {
 	// remindCursor is the last account the generation walk finished, so a walk
 	// cut short by its deadline resumes rather than restarts. It holds a
 	// string; the zero Value means the beginning of the list.
-	remindCursor atomic.Value
+	remindCursor   atomic.Value
+	menuCursor     atomic.Value
+	menuRefreshing atomic.Bool
+	menuRefreshed  atomic.Bool
+	menuFailed     atomic.Bool
 	// lastShadow is the same gate for the shadow walk; see shadow.go.
 	lastShadow   atomic.Int64
 	shadowing    atomic.Bool

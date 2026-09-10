@@ -59,6 +59,7 @@ type EngineReader interface {
 
 // Admin is the read-mostly service behind the private web interface.
 type Admin struct {
+	erasure    ErasureJournal
 	corpus     AdminCorpusStore
 	history    AdminHistoryStore
 	signPolicy func(string) (string, error)
@@ -119,6 +120,12 @@ func (a *Admin) EraseUser(ctx context.Context, userID string) error {
 	}
 	if !u.DeletionRequested {
 		return ErrAdminAccessDenied
+	}
+	if a.erasure == nil {
+		return ErrErasureJournalUnavailable
+	}
+	if err := a.erasure.Record(ctx, erasureSubject(u.ID)); err != nil {
+		return err
 	}
 	return a.mod.DeleteUser(ctx, userID)
 }

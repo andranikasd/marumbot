@@ -201,7 +201,7 @@ func TestOptionalRemindersSuppressStaleBeforeSendPreserveRequired(t *testing.T) 
 				}
 			}
 			n, err := w.SendDueReminders(t.Context(), 50)
-			if err != nil || n != 1 || len(f.messages) != 1 || !strings.Contains(f.messages[0], "Required payment") {
+			if (err != nil && reason != "engine") || n != 1 || len(f.messages) != 1 || !strings.Contains(f.messages[0], "Required payment") {
 				t.Fatalf("required suppressed or stale optional delivered: %d %v %+v", n, err, f.messages)
 			}
 		})
@@ -212,7 +212,7 @@ func TestOptionalReminderDeliveryFailureAndSnoozeRemainRetryable(t *testing.T) {
 	w, f, _, _ := optionalWorker(t)
 	f.failSend = true
 	n, err := w.SendDueReminders(t.Context(), 50)
-	if err != nil || n != 0 || f.marked != 0 || len(f.canceled) != 0 {
+	if err == nil || n != 0 || f.marked != 0 || len(f.canceled) != 0 {
 		t.Fatal("failed delivery consumed occurrence")
 	}
 	f.failSend = false
