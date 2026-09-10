@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version: "${{ env.GO_VERSION }}", cache: true }
       # The canonical report hash is committed. amd64 computes it in the test
       # job; this job recomputes it on arm64. A difference means a platform-
