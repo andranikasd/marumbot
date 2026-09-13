@@ -34,6 +34,8 @@ explain why the code is shaped the way it is.
 | [Deployment](operations/deployment.md) | Cloudflare setup, secrets, the deploy order |
 | [Cloudflare alternative](operations/cloudflare-target.md) | Deferred Workers/D1/R2 assessment and migration gates |
 | [VPS deployment](operations/vps.md) | Single-server Compose, private database/admin, backups and rollback |
+| [Manual first production setup](operations/manual-production-setup.md) | Ubuntu/Docker installation, external secrets, manual cutover, offsite restore drill and launch checks |
+| [Nginx + Cloudflare setup](operations/nginx-cloudflare-setup.md) | Bootstrap script, proxied Mini App/admin hostnames and server-side Certbot certificates |
 | [VPS readiness evidence](operations/vps-readiness.md) | Verified fixes, local checks and remaining launch requirements |
 | [Infrastructure](../deploy/terraform/README.md) | Terraform: where the database lives, Hyperdrive, who owns which resource |
 | [Grafana Cloud](operations/grafana-cloud.md) | The five signals, the two credentials, and the switch that is off by default |
