@@ -122,20 +122,23 @@ function renderList(loans) {
   $("manage-empty").hidden = loans.length > 0;
 }
 
+let loadVersion=0;
 async function load() {
+  const version=++loadVersion;
   const list = $("manage-list");
   $("manage-error").hidden = true;
   $("manage-empty").hidden = true;
   $("manage-loading").hidden = list.children.length > 0; // silent refresh when something is on screen
   try {
-    await getJSON("api/loans", (body) => renderList(body.loans || []));
+    await getJSON("api/loans", (body) => {if(version===loadVersion)renderList(body.loans || []);});
   } catch {
+    if(version!==loadVersion)return;
     if (list.children.length === 0) {
       $("manage-summary").hidden = true;
       $("manage-error").hidden = false;
     }
   } finally {
-    $("manage-loading").hidden = true;
+    if(version===loadVersion)$("manage-loading").hidden = true;
   }
 }
 

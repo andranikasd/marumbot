@@ -23,8 +23,8 @@ type UserStore interface {
 	UpsertByTelegram(ctx context.Context, in UpsertUser) (Account, error)
 	Locale(ctx context.Context, userID string) (locale, timezone string, err error)
 	// ByTelegramTag finds an existing account from the hashed identifier. It
-	// never creates one: the Mini App is only reachable from a bot message, so
-	// an account that does not exist means something is wrong rather than new.
+	// never creates one. ErrNotFound means the user needs to start the bot;
+	// other errors mean account lookup is unavailable, not an empty account.
 	ByTelegramTag(ctx context.Context, tag string) (userID string, err error)
 	SetLocale(ctx context.Context, userID, locale string) error
 }

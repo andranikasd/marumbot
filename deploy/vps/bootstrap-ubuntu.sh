@@ -413,14 +413,14 @@ config = r'''server {
 site = Path('/etc/nginx/sites-available/marum')
 rendered = config.replace('DOMAIN_PLACEHOLDER', domain)
 if admin_domain:
-    admin_config = config.replace('DOMAIN_PLACEHOLDER', admin_domain)
+    admin_config = config.replace('DOMAIN_PLACEHOLDER', admin_domain).replace('Referrer-Policy no-referrer', 'Referrer-Policy strict-origin')
     admin_config = admin_config.replace('    location = / { return 302 /app/; }\n', '')
     admin_config = admin_config.replace('    location = /app { return 302 /app/; }\n', '')
     admin_config = admin_config.replace('    location / { return 404; }\n', '')
     admin_config = admin_config.replace('location /app/ {', 'location / {')
     admin_config = admin_config.replace('http://127.0.0.1:8080;', 'http://127.0.0.1:8081;')
     admin_config = admin_config.replace('        # No trailing slash: preserve the /app/ prefix expected by Go.\n', '')
-    admin_config = admin_config.replace('        proxy_cache off;', '        proxy_cache off;\n        proxy_hide_header Cache-Control;\n        add_header Cache-Control "no-store" always;\n        add_header X-Content-Type-Options nosniff always;\n        add_header Referrer-Policy no-referrer always;')
+    admin_config = admin_config.replace('        proxy_cache off;', '        proxy_cache off;\n        proxy_hide_header Cache-Control;\n        add_header Cache-Control "no-store" always;\n        add_header X-Content-Type-Options nosniff always;\n        add_header Referrer-Policy strict-origin always;')
     rendered += '\n' + admin_config
 with site.open('x') as out:
     out.write(rendered)

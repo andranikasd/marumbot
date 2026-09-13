@@ -63,6 +63,7 @@ class DeployTests(unittest.TestCase):
 
             error = None
             with patch.object(deploy, 'REPO', repo), patch.object(deploy, 'ENV', env), \
+                 patch.object(deploy, 'NGINX_SITE', root / 'absent-nginx'), \
                  patch.object(deploy, 'RECORDS', records), patch.object(deploy, 'run', run), \
                  patch.object(deploy.tempfile, 'TemporaryDirectory', return_value=contextlib.nullcontext(str(candidate))), \
                  patch.object(deploy.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps(
@@ -149,6 +150,25 @@ class DeployTests(unittest.TestCase):
                 self.assertIn(f'Password matches stored account: {expected}', output.getvalue())
                 self.assertNotIn(hashed, output.getvalue())
                 self.assertNotIn(entered, output.getvalue())
+
+    def test_nginx_repair_preserves_certificate_and_restores_on_failure(self):
+        for fail in [False, True]:
+            with self.subTest(fail=fail), tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)
+                site=root/'nginx.conf'
+                original='ssl_certificate /etc/letsencrypt/live/example/fullchain.pem;\nadd_header Referrer-Policy no-referrer always;\n'
+                site.write_text(original)
+                calls=[]
+                def run(args, **kwargs):
+                    calls.append(args)
+                    if fail and len(calls)==1:raise RuntimeError('invalid nginx config')
+                with patch.object(deploy,'NGINX_SITE',site), patch.object(deploy,'run',run), contextlib.redirect_stdout(io.StringIO()):
+                    if fail:
+                        with self.assertRaises(RuntimeError):deploy.repair_nginx(root)
+                    else:deploy.repair_nginx(root)
+                self.assertEqual((root/'previous-nginx.conf').read_text(),original)
+                self.assertEqual(site.read_text(),original if fail else original.replace('no-referrer','strict-origin'))
+                self.assertEqual(calls[-1],['systemctl','reload','nginx'])
 
 
 if __name__ == '__main__':

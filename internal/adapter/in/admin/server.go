@@ -196,6 +196,13 @@ func (s *Server) Handler() http.Handler {
 // script, font or image, so the policy can be absolute rather than negotiated.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+		h.Set("X-Content-Type-Options", "nosniff")
+		// no-referrer turns browser form Origin into null, rejecting our own
+		// login and mutation forms. strict-origin retains Origin without paths.
+		h.Set("Referrer-Policy", "strict-origin")
+		h.Set("Cache-Control", "no-store")
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			if origin := r.Header.Get("Origin"); origin != "" {
 				scheme := "https"
@@ -203,22 +210,28 @@ func securityHeaders(next http.Handler) http.Handler {
 					scheme = "http"
 				}
 				if origin != scheme+"://"+r.Host && origin != "https://"+r.Host {
-					http.Error(w, "origin denied", http.StatusForbidden)
+					adminRequestFailure(w, r, http.StatusForbidden, "This form could not be verified. Reopen the admin panel and try again.")
 					return
 				}
 			}
 			if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
-				http.Error(w, "origin denied", http.StatusForbidden)
+				adminRequestFailure(w, r, http.StatusForbidden, "This form could not be verified. Reopen the admin panel and try again.")
 				return
 			}
 		}
-		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
-		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("Referrer-Policy", "no-referrer")
-		h.Set("Cache-Control", "no-store")
 		next.ServeHTTP(w, r)
 	})
+}
+
+// Refusals keep their HTTP status while giving browser users a recovery path.
+func adminRequestFailure(w http.ResponseWriter, r *http.Request, status int, message string) {
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		http.Error(w, message, status)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	_, _ = fmt.Fprintf(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign in · Marum</title><link rel="stylesheet" href="/style.css"></head><body><main class="login"><div class="panel"><h1>Unable to continue</h1><p role="alert">%s</p><a href="/login">Return to sign in</a></div></main></body></html>`, template.HTMLEscapeString(message))
 }
 
 func (s *Server) requireSession(next http.HandlerFunc) http.Handler {
@@ -230,7 +243,7 @@ func (s *Server) requireSession(next http.HandlerFunc) http.Handler {
 		}
 		identity, err := s.admin.LoginIdentity(r.Context(), v.Username)
 		if err != nil || !identity.Enabled || identity.Version != v.Version {
-			http.Error(w, "session revoked", http.StatusUnauthorized)
+			adminRequestFailure(w, r, http.StatusUnauthorized, "Your session is no longer valid. Sign in again to continue.")
 			return
 		}
 		r = sessionContext(r, v)
@@ -749,7 +762,7 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, app.ErrAdminAccessDenied), errors.Is(err, app.ErrAdminActorInvalid), errors.Is(err, app.ErrAdminStepUpRequired), errors.Is(err, app.ErrAdminPurposeRequired):
 		status = http.StatusForbidden
 	case errors.Is(err, app.ErrHistoricalEngine):
-		http.Error(w, app.ErrHistoricalEngine.Error(), http.StatusConflict)
+		adminRequestFailure(w, r, http.StatusConflict, app.ErrHistoricalEngine.Error())
 		return
 	case errors.Is(err, app.ErrAdminSecurityUnavailable):
 		status = http.StatusServiceUnavailable
@@ -761,7 +774,7 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		status = http.StatusUnprocessableEntity
 	}
 	s.log.WarnContext(r.Context(), "admin request refused or failed")
-	http.Error(w, http.StatusText(status), status)
+	adminRequestFailure(w, r, status, http.StatusText(status))
 }
 
 // redirectBack returns the operator to the page they submitted from, carrying

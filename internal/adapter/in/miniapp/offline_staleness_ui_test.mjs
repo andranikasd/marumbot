@@ -5,7 +5,7 @@ const source=(await readFile(new URL('./web/js/api.js',import.meta.url),'utf8'))
 const fields=new Map(),events=new Map();
 const field=id=>{if(!fields.has(id))fields.set(id,{hidden:true,addEventListener:(name,fn)=>events.set(id+':'+name,fn)});return fields.get(id);};
 let fail=false;let version=1;
-const env={AbortController,setTimeout,clearTimeout,Map,Set,Date,Error,TypeError,Event,addStrings(){},tg:null,T:x=>x,
+const env={AbortController,setTimeout,clearTimeout,Map,Set,Date,Error,TypeError,Event,addStrings(){},tg:{initData:"test-signed-data"},T:x=>x,
  document:{getElementById:field,dispatchEvent(){}},window:{addEventListener:(name,fn)=>events.set(name,fn)},
  fetch:async()=>{if(fail)throw new TypeError('offline');return {ok:true,json:async()=>({version})};}};
 vm.createContext(env);vm.runInContext(source,env);env.watchOffline();

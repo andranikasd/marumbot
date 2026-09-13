@@ -76,7 +76,7 @@ func (s *Store) ByTelegramTag(ctx context.Context, tag string) (string, error) {
 	var id string
 	err := s.pool.QueryRow(ctx, q("GetUserByTelegramTag"), tag).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", errors.New("postgres: no account for that identity")
+		return "", app.ErrNotFound
 	}
 	return id, err
 }

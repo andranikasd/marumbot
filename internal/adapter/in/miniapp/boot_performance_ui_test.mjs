@@ -49,7 +49,7 @@ async function boot(search='?screen=payment&id=loan-7',initialLanguage='hy') {
     setTimeout,clearTimeout,localStorage:{getItem(){return null;}},sessionStorage:{getItem(){return null;}},
     location:{search,href:'https://example.test/app/'+search},fetch:async()=>({ok:false}),
     api:()=>new Promise((resolve,reject)=>settings.push({resolve,reject})),
-    prefetch(){},watchOffline(){},beginView(){viewChanges++;},
+    prefetch(){},watchOffline(){},watchAuthentication(){},authenticationRequired(){return false;},refreshAuthentication(){},beginView(){viewChanges++;},
     read(){reads++;},makeElement:tag=>new Element(tag),field};
   vm.createContext(env);
   vm.runInContext(sources[0],env);

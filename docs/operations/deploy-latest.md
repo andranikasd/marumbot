@@ -27,6 +27,8 @@ The script:
 2. Archives the fetched commit to an isolated build directory and builds both
    images while the old application continues serving. Images carry the full
    commit SHA; the app reports `sha-` plus its first twelve characters.
+   Repairs the bootstrap Nginx referrer policy, preserving the certificate and
+   routing configuration; validates and reloads Nginx, restoring on failure.
 3. Stops the app, saves a PostgreSQL custom-format dump, and checks its archive
    directory. Saves the previous environment and commit privately beside it.
 4. Repairs the application database role/default grants, applies migrations,
@@ -37,7 +39,7 @@ The script:
 
 Compose's [`--no-deps` and `--wait`](https://docs.docker.com/reference/cli/docker/compose/up/)
 keep this app update separate from a database/proxy replacement. PostgreSQL,
-its volumes, Nginx, Certbot credentials, identity keys, Telegram tokens and admin
+its volumes, Certbot credentials, identity keys, Telegram tokens and admin
 credentials are preserved. Existing administrator passwords and TOTP enrollment
 are **not reset** on deployment. PostgreSQL/proxy upgrades are separate tasks.
 
@@ -93,8 +95,32 @@ and the browser's exact error text when diagnosing; keep credentials private.
 - Disabled/missing identity or an application error: inspect startup logs and
   diagnose that state before changing accounts or grants.
 
-The prior report of admin login failure has no exact error yet; the Mini App
-initData fix does not establish that admin authentication is resolved.
+The reported `origin denied` failure was traced to `Referrer-Policy: no-referrer`
+in both admin responses and the generated Nginx configuration. For browser form
+submissions this can turn `Origin` into `null`; the origin check then rejects the
+request before password verification. Both now use `strict-origin`; cross-origin
+and null-origin submissions remain rejected with a readable recovery page.
+See [the browser behavior](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Referrer-Policy#effect_on_the_origin_header).
+Reload the login page after deployment so the browser receives the new policy.
+
+### Forgotten admin password
+
+The original password cannot be recovered from its stored hash. To discover the
+bootstrap username and choose a new password, run after pulling these files:
+
+```bash
+cd ~/marumbot
+sudo python3 deploy/vps/recover-admin.py
+```
+
+This root-only command prompts twice without echo, updates the enabled bootstrap
+account in a transaction, increments its session version, and appends an audit
+record. It keeps existing roles, authenticator enrollment and OTP replay state.
+The application must be running. It will not re-enable a disabled account or
+remove a forgotten authenticator. Existing sessions are revoked by the version
+change. The environment hash remains the original bootstrap seed, so after
+recovery the diagnostic may correctly report that the stored hash differs from
+the bootstrap hash. The entered password must match the **stored account**.
 
 ## Failure and recovery
 

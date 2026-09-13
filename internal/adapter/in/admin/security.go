@@ -113,11 +113,11 @@ func (s *Server) securityLogin(w http.ResponseWriter, r *http.Request) {
 	addr := clientAddr(r)
 	if blocked, wait := s.thr.blocked(addr, s.now()); blocked {
 		w.Header().Set("Retry-After", strconv.Itoa(max(1, int(wait.Seconds()))))
-		http.Error(w, "try again later", http.StatusTooManyRequests)
+		adminRequestFailure(w, r, http.StatusTooManyRequests, "Too many sign-in attempts. Wait a minute, then try again.")
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "invalid form", http.StatusBadRequest)
+		adminRequestFailure(w, r, http.StatusBadRequest, "The form could not be read. Reopen sign in and try again.")
 		return
 	}
 	id, err := s.admin.LoginIdentity(r.Context(), r.PostFormValue("user"))
@@ -157,7 +157,7 @@ func (s *Server) securityLogin(w http.ResponseWriter, r *http.Request) {
 func (s *Server) loginDenied(w http.ResponseWriter, r *http.Request) {
 	_ = s.admin.RecordAuthentication(r.Context(), "", "denied")
 	s.thr.fail(clientAddr(r), s.now())
-	http.Error(w, "sign-in refused", http.StatusUnauthorized)
+	adminRequestFailure(w, r, http.StatusUnauthorized, "Sign-in refused. Check your username, password and fresh authenticator code. On first login, leave the code blank to enroll.")
 }
 
 func sessionContext(r *http.Request, v browserSession) *http.Request {
@@ -171,12 +171,12 @@ func sessionContext(r *http.Request, v browserSession) *http.Request {
 func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	v, ok := s.session(r)
 	if !ok || v.Strong || v.EnrollmentSecret == "" {
-		http.Error(w, "enrollment session required", http.StatusUnauthorized)
+		adminRequestFailure(w, r, http.StatusUnauthorized, "Your enrollment session has expired. Sign in again to restart authenticator setup.")
 		return
 	}
 	if r.Method == http.MethodPost {
 		if blocked, _ := s.thr.blocked(clientAddr(r), s.now()); blocked {
-			http.Error(w, "try again later", http.StatusTooManyRequests)
+			adminRequestFailure(w, r, http.StatusTooManyRequests, "Too many attempts. Wait a minute, then try again.")
 			return
 		}
 		counter, ok := verifyTOTP(v.EnrollmentSecret, r.FormValue("otp"), s.now())
@@ -208,11 +208,11 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 func (s *Server) stepUp(w http.ResponseWriter, r *http.Request) {
 	v, ok := s.session(r)
 	if !ok || !v.Strong {
-		http.Error(w, "sign-in required", http.StatusUnauthorized)
+		adminRequestFailure(w, r, http.StatusUnauthorized, "Your session has expired. Sign in again to continue.")
 		return
 	}
 	if blocked, _ := s.thr.blocked(clientAddr(r), s.now()); blocked {
-		http.Error(w, "try again later", http.StatusTooManyRequests)
+		adminRequestFailure(w, r, http.StatusTooManyRequests, "Too many attempts. Wait a minute, then try again.")
 		return
 	}
 	id, err := s.admin.LoginIdentity(r.Context(), v.Username)
@@ -393,7 +393,7 @@ func (s *Server) flagAPI(w http.ResponseWriter, r *http.Request) {
 func (s *Server) purpose(w http.ResponseWriter, r *http.Request) {
 	v, ok := s.session(r)
 	if !ok || !v.Strong {
-		http.Error(w, "sign-in required", http.StatusUnauthorized)
+		adminRequestFailure(w, r, http.StatusUnauthorized, "Your session has expired. Sign in again to continue.")
 		return
 	}
 	value := r.FormValue("purpose")

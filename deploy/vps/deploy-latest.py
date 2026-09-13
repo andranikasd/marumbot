@@ -17,6 +17,7 @@ import urllib.request
 REPO = Path('/opt/marum')
 ENV = Path('/etc/marum/compose.env')
 RECORDS = Path('/var/lib/marum/release-records')
+NGINX_SITE = Path('/etc/nginx/sites-available/marum')
 
 
 def run(args, **kwargs):
@@ -51,6 +52,27 @@ def private_write(path, content):
     with path.open('x') as out:
         os.chmod(path, 0o600)
         out.write(content)
+
+
+def repair_nginx(job):
+    if not NGINX_SITE.exists():
+        return
+    original = NGINX_SITE.read_text()
+    updated = re.sub(r'(add_header\s+Referrer-Policy\s+)"?no-referrer"?(\s+always\s*;)',
+                     r'\1strict-origin\2', original)
+    if updated == original:
+        return
+    private_write(job / 'previous-nginx.conf', original)
+    try:
+        NGINX_SITE.write_text(updated)
+        run(['nginx', '-t'])
+        run(['systemctl', 'reload', 'nginx'])
+    except BaseException:
+        NGINX_SITE.write_text(original)
+        run(['nginx', '-t'])
+        run(['systemctl', 'reload', 'nginx'])
+        raise
+    print('Updated Nginx referrer policy so browser admin forms retain their Origin.')
 
 
 def admin_check():
@@ -125,6 +147,7 @@ def deploy():
         run(dc + ['config', '--quiet'])
         print('Building before interrupting the running application.', flush=True)
         run(dc + ['build', '--pull', 'marum', 'migrate'])
+        repair_nginx(job)
         current = compose()
         # An upgrade never replaces PostgreSQL or its volume.
         run(current + ['exec', '-T', 'postgres', 'pg_isready', '-U', 'marum_owner', '-d', 'marum'])

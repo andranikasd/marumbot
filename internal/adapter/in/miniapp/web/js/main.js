@@ -10,7 +10,7 @@ import "./screens/more.js";
 import "./screens/budget.js";
 import "./screens/budget-edit.js";
 import { buildTabs, go, refreshLanguage, registerLazy } from "./nav.js";
-import { api, prefetch, watchOffline } from "./api.js";
+import { api, prefetch, watchOffline, watchAuthentication, authenticationRequired, refreshAuthentication } from "./api.js";
 
 import {lang,setLanguage,languageRevision} from "./core.js";
 
@@ -25,8 +25,12 @@ registerLazy({id:"budget-policy",parent:"budget",load:()=>import("./screens/budg
 registerLazy({id:"loan",parent:"loans",load:()=>import("./screens/loan.js")});
 
 buildTabs();
-document.getElementById("appbar-language").onclick=()=>go("more");
+document.getElementById("appbar-language").onclick=()=>{
+ if(authenticationRequired()){setLanguage(lang==='hy'?'en':'hy');refreshLanguage();refreshAuthentication();}
+ else go("more");
+};
 watchOffline();
+watchAuthentication();
 
 // The build badge: the one honest answer to "which version am I looking
 // at". It reads the stamp off this module's own URL, so a cached copy
@@ -61,7 +65,7 @@ document.addEventListener("visibilitychange", () => {
 window.Telegram?.WebApp?.onEvent?.("activated", checkBuild);
 
 // Share the initial loan request with Home; calculate plans only when opened.
-prefetch(["api/loans"]);
+if(!authenticationRequired())prefetch(["api/loans"]);
 
 // The bot deep-links by screen name; an unknown name lands on the loans.
 // A loan id beside the name opens that loan.
@@ -88,7 +92,9 @@ function syncLanguage(){
 }
 // Settings are not a prerequisite for useful content. Mount the deep link
 // once; a late locale response only relabels the existing view in place.
-go(requested, query.get("id") ? { id: query.get("id") } : null);
-syncLanguage();
+if(!authenticationRequired()){
+ go(requested, query.get("id") ? { id: query.get("id") } : null);
+ syncLanguage();
+}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')syncLanguage();});
 window.Telegram?.WebApp?.onEvent?.('activated',syncLanguage);

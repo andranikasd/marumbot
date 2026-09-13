@@ -180,7 +180,7 @@ func (s *Server) createLoan() http.Handler {
 			// Filing a loan before ever having messaged the bot is not a state
 			// the flow can reach: the form is only opened from a bot message.
 			s.Log.WarnContext(ctx, "miniapp user not found", "error", err)
-			http.Error(w, `{"error":"unknown account"}`, http.StatusForbidden)
+			accountLookupFailure(w, err)
 			return
 		}
 		today, err := (app.PaymentService{Clock: s.Clock, Users: s.Users}).BusinessDate(ctx, userID)
@@ -239,7 +239,16 @@ func (s *Server) getBudget() http.Handler {
 			return
 		}
 		out := map[string]any{"today": today.String()}
-		if b, err := s.Budgets.Budget(ctx, userID); err == nil && b.Set {
+		if s.Budgets == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{jsonError: errorUnavailable})
+			return
+		}
+		b, err := s.Budgets.Budget(ctx, userID)
+		if err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{jsonError: errorUnavailable})
+			return
+		}
+		if b.Set {
 			out[keyCurrency] = b.Currency
 			var cash plan.CashPlan
 			var permission money.Amount
@@ -401,7 +410,7 @@ func (s *Server) setBudget() http.Handler {
 
 		userID, err := s.Users.ByTelegramTag(ctx, s.Cipher.Tag(v.User.ID))
 		if err != nil {
-			http.Error(w, `{"error":"unknown account"}`, http.StatusForbidden)
+			accountLookupFailure(w, err)
 			return
 		}
 		if s.BudgetConfig == nil {
@@ -476,10 +485,19 @@ func (s *Server) authed(w http.ResponseWriter, r *http.Request) (ctx context.Con
 	}
 	userID, err = s.Users.ByTelegramTag(ctx, s.Cipher.Tag(v.User.ID))
 	if err != nil {
-		http.Error(w, `{"error":"unknown account"}`, http.StatusForbidden)
+		accountLookupFailure(w, err)
 		return ctx, "", false
 	}
 	return ctx, userID, true
+}
+
+func accountLookupFailure(w http.ResponseWriter, err error) {
+	if errors.Is(err, app.ErrNotFound) {
+		w.Header().Set("X-Marum-Auth-State", "account-required")
+		writeJSON(w, http.StatusForbidden, map[string]string{jsonError: "unknown account"})
+		return
+	}
+	writeJSON(w, http.StatusServiceUnavailable, map[string]string{jsonError: errorUnavailable})
 }
 
 // listLoans backs the management screen.

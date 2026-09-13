@@ -4,6 +4,40 @@ import { tg } from "./core.js";
 import { T, addStrings } from "./i18n.js";
 
 addStrings({'offline.stale':'Նախկինում բեռնված որոշ տվյալներ թարմացման կարիք ունեն։'}, {'offline.stale':'Some previously loaded figures need refreshing.'});
+addStrings({
+ 'auth.title':'Բացեք հավելվածը Telegram բոտից',
+ 'auth.missing':'Փակեք այս պատուհանը, բոտին ուղարկեք /start և սեղմեք բոտի պատասխանի կոճակը։',
+ 'auth.expired':'Մուտքն ավարտվել է։ Փակեք և նորից բացեք հավելվածը բոտի կոճակից։',
+ 'auth.account':'Նախ բոտին ուղարկեք /start, ապա նորից բացեք հավելվածը նրա պատասխանի կոճակից։',
+ 'auth.close':'Փակել հավելվածը'
+},{
+ 'auth.title':'Open the app from the Telegram bot',
+ 'auth.missing':'Close this window, send /start to the bot, then tap the button attached to its reply.',
+ 'auth.expired':'Your session has expired or could not be verified. Close and reopen the app from the bot button.',
+ 'auth.account':'Send /start to the bot first, then reopen the app using the button in its reply.',
+ 'auth.close':'Close Mini App'
+});
+let authReason=null;
+export function authenticationRequired(){return authReason!==null;}
+export function refreshAuthentication(){
+ const panel=document.getElementById('auth-required');if(!panel)return;
+ panel.hidden=!authReason;
+ if(!authReason)return;
+ document.getElementById('auth-title').textContent=T('auth.title');
+ document.getElementById('auth-message').textContent=T('auth.'+authReason);
+ const close=document.getElementById('auth-close');close.textContent=T('auth.close');close.hidden=!tg?.close;
+ close.onclick=()=>tg?.close?.();
+ tg?.MainButton?.hide?.();tg?.BackButton?.hide?.();
+ document.body?.classList?.remove('mb-on');
+ for(const id of ['view','tabs','offline']){const el=document.getElementById(id);if(el)el.hidden=true;}
+}
+function rejectAuthentication(reason){
+ authReason=reason;refreshAuthentication();
+ return new Error('Telegram authentication required');
+}
+export function watchAuthentication(){
+ if(!tg?.initData?.trim()){authReason='missing';refreshAuthentication();}
+}
 
 // Bound both connection and response-body waits. Mutations are never retried
 // automatically: their screen retains the original idempotency key.
@@ -23,6 +57,8 @@ async function bounded(operation, controller) {
   } finally { clearTimeout(timer); }
 }
 export async function api(path, init = {}) {
+  if(authReason)throw rejectAuthentication(authReason);
+  if(!tg?.initData?.trim())throw rejectAuthentication('missing');
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (init.signal?.aborted) abort();
@@ -36,6 +72,8 @@ export async function api(path, init = {}) {
         ...(init.headers || {}),
       },
     }), controller);
+    if(response.status===401)throw rejectAuthentication('expired');
+    if(response.status===403&&response.headers?.get('X-Marum-Auth-State')==='account-required')throw rejectAuthentication('account');
     for (const method of ["json", "text", "blob"]) {
       if (typeof response[method] !== "function") continue;
       const read = response[method].bind(response);
@@ -107,7 +145,7 @@ function offline(on) {
   if (on === offlineNow) return;
   offlineNow = on;
   const el = document.getElementById("offline");
-  if (el) el.hidden = !on;
+  if (el) el.hidden = !on || authenticationRequired();
 }
 export function watchOffline() {
   const el = document.getElementById("offline");

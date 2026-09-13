@@ -4,7 +4,7 @@ import vm from 'node:vm';
 const source=(await readFile(new URL('./web/js/api.js',import.meta.url),'utf8')).replace(/^import .*;$/gm,'').replaceAll('export ','');
 let requests=0;
 const replies=[];
-const env={AbortController,setTimeout,clearTimeout,Map,Date,Error,TypeError,Event,document:{getElementById:()=>null},addStrings(){},tg:null,T:x=>x,fetch:()=>{requests++;return new Promise(resolve=>replies.push(resolve));}};
+const env={AbortController,setTimeout,clearTimeout,Map,Date,Error,TypeError,Event,document:{getElementById:()=>null},addStrings(){},tg:{initData:"test-signed-data"},T:x=>x,fetch:()=>{requests++;return new Promise(resolve=>replies.push(resolve));}};
 env.Set=Set;
 vm.createContext(env);vm.runInContext(source,env);
 const a=env.getJSON('api/loans'), b=env.getJSON('api/loans');
