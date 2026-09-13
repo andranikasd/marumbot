@@ -23,6 +23,8 @@ registerLazy({id:"reconcile",parent:"activity",load:()=>import("./screens/reconc
 registerLazy({id:"add",parent:"loans",load:()=>import("./screens/add.js")});
 registerLazy({id:"budget-policy",parent:"budget",load:()=>import("./screens/budget-policy.js")});
 registerLazy({id:"loan",parent:"loans",load:()=>import("./screens/loan.js")});
+registerLazy({id:"paid-months",parent:"loans",load:()=>import("./screens/paid-months.js")});
+registerLazy({id:"plan-start",parent:"plan",load:()=>import("./screens/plan-start.js")});
 
 buildTabs();
 document.getElementById("appbar-language").onclick=()=>{

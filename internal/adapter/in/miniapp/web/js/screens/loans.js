@@ -84,17 +84,23 @@ function loanCard(loan) {
   return el;
 }
 
-function summarise(loans) {
+function summarise(loans, today) {
   const box = $("manage-summary");
   const live = loans.filter((l) => l.balance_major > 0);
   if (live.length === 0) { box.hidden = true; return; }
   const cur = live[0].currency;
   let owed = 0, required = 0, next = null, original = 0, counted = 0;
+  const month = typeof today === "string" && /^\d{4}-\d{2}-\d{2}$/.test(today) ? today.slice(0, 7) : null;
+  let requiredKnown = !!month;
   for (const l of live) {
     if (l.currency !== cur) continue;
     counted++;
     owed += l.balance_major;
-    if (l.next_payment_major != null) required += l.next_payment_major;
+    if (l.needs_reconciliation || !l.next_due || l.next_due.slice(0, 7) < month) requiredKnown = false;
+    else if (l.next_due.slice(0, 7) === month) {
+      if (l.next_payment_major == null) requiredKnown = false;
+      else required += l.next_payment_major;
+    }
     if (l.next_due && (!next || l.next_due < next.next_due)) next = l;
     if (l.original_major) original += l.original_major; else original += l.balance_major;
   }
@@ -103,20 +109,20 @@ function summarise(loans) {
   $("m-owed").textContent = fmtMoney(owed, cur);
   const share = original > 0 ? Math.round((1 - owed / original) * 100) : 0;
   $("m-across").textContent = sub(counted === 1 ? "manage.across.one" : "manage.across", { n: counted, p: share });
-  $("m-required").textContent = required > 0 ? fmtMoney(required, cur) : "—";
+  $("m-required").textContent = requiredKnown ? fmtMoney(required, cur) : "—";
   $("m-next").textContent = next ? fmtDate(next.next_due) + " · " + next.name : "—";
   $("m-track").hidden = share <= 0;
   $("m-track-fill").style.width = Math.max(2, Math.min(98, share)) + "%";
   box.hidden = false;
 }
 
-function renderList(loans) {
+function renderList(loans, today) {
   const list = $("manage-list");
   list.textContent = "";
   const live = loans.filter((l) => l.balance_major > 0);
   mainCurrency = live.length > 0 ? live[0].currency : "";
   for (const l of loans) list.append(loanCard(l));
-  summarise(loans);
+  summarise(loans, today);
   $("manage-sec").hidden = loans.length === 0;
   $("manage-add").hidden = loans.length === 0;
   $("manage-empty").hidden = loans.length > 0;
@@ -130,7 +136,7 @@ async function load() {
   $("manage-empty").hidden = true;
   $("manage-loading").hidden = list.children.length > 0; // silent refresh when something is on screen
   try {
-    await getJSON("api/loans", (body) => {if(version===loadVersion)renderList(body.loans || []);});
+    await getJSON("api/loans", (body) => {if(version===loadVersion)renderList(body.loans || [], body.today);});
   } catch {
     if(version!==loadVersion)return;
     if (list.children.length === 0) {

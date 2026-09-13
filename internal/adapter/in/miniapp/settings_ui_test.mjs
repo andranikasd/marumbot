@@ -17,3 +17,13 @@ assert.equal(select.value,'en');assert.equal(select.disabled,false);assert.equal
 fail=false;select.value='hy';await select.change();
 assert.equal(env.lang,'hy');assert.equal(field('settings-error').textContent,'');
 console.log('Language saves switch the UI; failures retain the saved choice and allow retry.');
+
+let complete;
+env.api=()=>new Promise(resolve=>{complete=resolve;});
+select.value='en';const saving=select.change();
+screen.onShow();assert.equal(select.value,'en','revisiting More must retain the in-flight choice');
+complete({ok:true,json:async()=>({locale:'en'})});await saving;
+assert.equal(env.lang,'en');assert.equal(select.value,'en');assert.equal(select.disabled,false);
+env.api=async()=>({ok:true,json:async()=>({locale:'unsupported'})});
+select.value='hy';await select.change();
+assert.equal(env.lang,'en');assert.equal(select.value,'en');assert.equal(field('settings-error').textContent,'err.save');

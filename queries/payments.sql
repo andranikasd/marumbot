@@ -86,6 +86,13 @@ WITH sequence AS (
 )
 SELECT id::text,observed_event_seq FROM snapshot;
 
+-- name: CancelRemindersBeforeNextDue
+-- A bank-confirmed next obligation means earlier instalments are paid.
+-- NULL next due represents a settled balance. Preserve future occurrences.
+UPDATE reminder_occurrences SET status='canceled'
+WHERE loan_id=$1 AND status='scheduled' AND approved_plan_id IS NULL
+AND ($2::date IS NULL OR due_date<$2::date);
+
 -- name: PeriodReportedSpending
 SELECT coalesce(sum(e.amount_minor),0)::bigint FROM loan_events e JOIN loans l ON l.id=e.loan_id
 WHERE l.user_id=$1 AND l.currency=$2 AND e.kind IN ('payment_reported','prepayment_reported')

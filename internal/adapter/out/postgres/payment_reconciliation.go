@@ -60,6 +60,12 @@ func (p *paymentTx) Reconcile(ctx context.Context, userID string, c app.Reconcil
 		return r, err
 	}
 	err = p.tx.QueryRow(ctx, q("ReconcilePaymentSnapshot"), c.LoanID, uuid.NewString(), c.AsOf, c.PrincipalMinor, nullableText(c.NextDue), c.NextPaymentMinor, "reconcile:"+c.LoanID+":"+c.Key, hash).Scan(&r.ID, &r.Version)
+	if err != nil {
+		return r, paymentError(err)
+	}
+	// The confirmed next obligation supersedes reminders for paid instalments.
+	// Keep later occurrences: their idempotency keys prevent regeneration.
+	_, err = p.tx.Exec(ctx, q("CancelRemindersBeforeNextDue"), c.LoanID, nullableText(c.NextDue))
 	r.Status = "reconciled"
 	return r, paymentError(err)
 }

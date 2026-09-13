@@ -127,7 +127,7 @@ func scenarioHTTPError(w http.ResponseWriter, err error) {
 	var stale *plan.StaleBalanceError
 	switch {
 	case errors.As(err, &unsupported):
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "unsupported", "reason": unsupported.Feature})
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: errorUnsupported, jsonReason: unsupported.Feature})
 	case errors.As(err, &infeasible):
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "infeasible"})
 	case errors.As(err, &stale):

@@ -13,6 +13,7 @@ import { minorText } from "./budget-funding.js";
 import { budgetHelpHTML } from "./budget-help.js";
 addStrings({"budget.moneyMonthly":"Վարկերի ամսական գումար"},{"budget.moneyMonthly":"Money available each month"});
 addStrings({"budget.limitOnly":"Սահմանում մնացող տեղը հասանելի կանխիկ գումար չէ։ Պլանը ստուգում է նաև գումարի մուտքի օրը։"},{"budget.limitOnly":"Room in your limit is not cash available. The plan also checks when money arrives."});
+addStrings({"budget.planningStarts":"Պլանավորումը սկսվում է՝ {month}։ Մինչ այդ հավելյալ վճարումներ չեն առաջարկվի։"},{"budget.planningStarts":"Planning starts in {month}. No extra payments will be suggested before then."});
 const HTML = `
   <div id="budget-view" class="stack" hidden>
     <div class="hero">
@@ -24,6 +25,7 @@ const HTML = `
         <div><span data-i18n="budget.safe_extra">Անվտանգ հավելյալ</span><b class="num gold" id="bo-extra">—</b></div>
       </div>
     </div>
+    <p class="hint" id="bo-planning-start" hidden></p>
     <div class="card kv" id="bo-facts"></div>
     <button class="cta" type="button" data-go="budget-edit" data-i18n="budget.edit"></button>
     <details class="fold"><summary data-i18n="bp.title"></summary><div class="fold-body">
@@ -68,13 +70,17 @@ function render(b) {
   const monthly = b.monthly_major;
   const required = b.required_major;
   $("bo-monthly").textContent = fmtMoney(monthly, cur);
+  const start = b.funding?.planning_start_month;
+  const paused = !!start && !!b.today && start > b.today.slice(0, 7);
+  $("bo-planning-start").hidden = !paused;
+  $("bo-planning-start").textContent = paused ? sub("budget.planningStarts", {month: fmtMonth(start + "-01")}) : "";
   const surplus = required == null ? null : monthly - required;
   const state = $("bo-state");
   if (surplus == null) { state.textContent = ""; state.className = "pill"; $("bo-status").textContent = ""; }
   else if (surplus < 0) { state.textContent = T("budget.short"); state.className = "pill bad"; $("bo-status").textContent = T("budget.not_covered"); }
   else { state.textContent = T("budget.ok.pill"); state.className = "pill"; $("bo-status").textContent = T(surplus === 0 ? "budget.exact" : "budget.covered"); }
   $("bo-required").textContent = required == null ? "—" : fmtMoney(required, cur);
-  $("bo-extra").textContent = surplus == null ? "—" : fmtMoney(Math.max(0, surplus), cur);
+  $("bo-extra").textContent = paused || surplus == null ? "—" : fmtMoney(Math.max(0, surplus), cur);
 
   const facts = $("bo-facts"); facts.textContent = "";
   let monthlyMoney = T("budget.unset");

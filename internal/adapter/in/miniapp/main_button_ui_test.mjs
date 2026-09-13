@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import vm from 'node:vm';
+const source=await readFile(new URL('./web/js/core.js',import.meta.url),'utf8');
+const snippet=source.slice(source.indexOf('let mbHandler'),source.indexOf('// One BackButton')).replace('export const','const');
+let callback,calls=0,progress=false,shown=false;
+const env={tg:{MainButton:{setText(){},show(){shown=true;},hide(){shown=false;},showProgress(){progress=true;},hideProgress(){progress=false;},onClick(fn){callback=fn;}}},document:{body:{classList:{toggle(){}}}}};
+vm.createContext(env);vm.runInContext(snippet+'\nglobalThis.button=mainButton;',env);
+env.button.own(()=>calls++);env.button.show('Save');env.button.busy('Saving');assert.equal(progress,true);callback();assert.equal(calls,1);
+env.button.hide();assert.equal(progress,false);assert.equal(shown,false);callback();assert.equal(calls,1,'navigation clears the previous form submission handler');
+env.button.own(()=>calls+=10);env.button.show('Save other form');assert.equal(progress,false);callback();assert.equal(calls,11);
+console.log('Telegram MainButton navigation resets old submission ownership and loading progress.');

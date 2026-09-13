@@ -94,6 +94,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/budget/policies", s.BudgetPolicies())
 	mux.Handle("POST /api/budget/policies", s.SetBudgetPolicy())
 	mux.Handle("POST /api/budget/funding", s.SetBudgetFunding())
+	mux.Handle("POST /api/budget/planning-start", s.SetPlanningStart())
 	mux.Handle("GET /api/plans/{id}", s.historicalPlan())
 	mux.Handle("POST /api/plans/activate", s.activateProposal())
 	mux.Handle("POST /api/plan/approve", s.approvePlan())
@@ -108,6 +109,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/reminders/{id}", s.ReminderPreferences())
 	mux.Handle("POST /api/reminders/{id}/snooze", s.ReminderPreferences())
 	mux.Handle("GET /api/loans/{id}/payments", s.paymentContext())
+	mux.Handle("GET /api/loans/{id}/paid-months", s.PaidMonths())
+	mux.Handle("POST /api/loans/{id}/paid-months", s.PaidMonths())
 	mux.Handle("POST /api/loans/{id}/payments", s.recordPayment())
 	mux.Handle("POST /api/loans/{id}/reconcile", s.reconcilePayment())
 	mux.Handle("GET /api/loans", s.listLoans())
@@ -313,7 +316,7 @@ func (s *Server) getBudget() http.Handler {
 			}
 		}
 		if s.Required != nil {
-			if req, cur, err := s.Required.RequiredThisMonth(ctx, userID); err == nil && req.Sign() > 0 {
+			if req, cur, err := s.Required.RequiredThisMonth(ctx, userID); err == nil && req.Sign() >= 0 && cur.Code != "" {
 				if out[keyCurrency] == nil {
 					out[keyCurrency] = cur.Code
 				}
@@ -539,13 +542,19 @@ func (s *Server) listLoans() http.Handler {
 			// so the summary card and the chat cannot disagree. Absent when the
 			// schedule cannot be built; the card then shows a dash, not a zero.
 			row["needs_reconciliation"] = l.UnreconciledPayments
+			row["paid_through"] = paidThrough(l)
 			if next, err := l.NextInstalment(); err == nil {
 				row["next_due"] = next.Due.String()
 				row["next_payment_major"] = major(next.Payment)
 			}
 			out = append(out, row)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"loans": out})
+		today, err := (app.PaymentService{Clock: s.Clock, Users: s.Users}).BusinessDate(ctx, userID)
+		if err != nil {
+			paymentHTTPError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"loans": out, "today": today.String()})
 	})
 }
 

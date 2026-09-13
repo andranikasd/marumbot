@@ -83,15 +83,21 @@ export const moneyNum = (s) => {
   let normalized = raw;
   if (dots && commas) {
     const decimal = raw.lastIndexOf(".") > raw.lastIndexOf(",") ? "." : ",";
-    const grouping = decimal === "." ? /,/g : /\./g;
-    normalized = raw.replace(grouping, "").replace(decimal, ".");
+    const grouping = decimal === "." ? "," : ".";
+    const parts = raw.split(decimal);
+    const groups = parts[0].split(grouping);
+    if (parts.length !== 2 || !/^\d{1,2}$/.test(parts[1]) ||
+        !/^[1-9]\d{0,2}$/.test(groups[0]) || !groups.slice(1).every(part => /^\d{3}$/.test(part))) return NaN;
+    normalized = groups.join("") + "." + parts[1];
   } else if (dots + commas === 1) {
     const separator = dots ? "." : ",";
-    const fraction = raw.length - raw.lastIndexOf(separator) - 1;
-    normalized = fraction >= 1 && fraction <= 2 ? raw.replace(separator, ".") : raw.replace(separator, "");
+    const [integer, fraction] = raw.split(separator);
+    if (fraction.length >= 1 && fraction.length <= 2) normalized = integer + "." + fraction;
+    else if (fraction.length === 3 && /^[1-9]\d{0,2}$/.test(integer)) normalized = integer + fraction;
+    else return NaN;
   } else if (dots + commas > 1) {
     const separator = dots ? "." : ",";
-    normalized = raw.split(separator).every((part, i) => i === 0 ? part.length > 0 : part.length === 3)
+    normalized = raw.split(separator).every((part, i) => i === 0 ? /^[1-9]\d{0,2}$/.test(part) : /^\d{3}$/.test(part))
       ? raw.replaceAll(separator, "") : "";
   }
   const value = /^\d+(\.\d+)?$/.test(normalized) ? Number(normalized) : NaN;
@@ -119,7 +125,7 @@ const mbOn = (on) => document.body.classList.toggle("mb-on", on);
 export const mainButton = {
   own(handler) { mbHandler = handler; },
   show(label) { tg?.MainButton.setText(label); tg?.MainButton.show(); mbOn(!!tg); },
-  hide() { tg?.MainButton.hide(); mbOn(false); },
+  hide() { mbHandler = null; tg?.MainButton.hideProgress(); tg?.MainButton.hide(); mbOn(false); },
   busy(label) { tg?.MainButton.showProgress(); tg?.MainButton.setText(label); },
   done(label) { tg?.MainButton.hideProgress(); tg?.MainButton.setText(label); },
 };

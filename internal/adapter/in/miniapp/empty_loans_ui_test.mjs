@@ -16,3 +16,16 @@ assert.equal(field('manage-empty').hidden,false);assert.equal(field('manage-erro
 request=env.load();reads.shift().reject(new Error('server unavailable'));await request;
 assert.equal(field('manage-empty').hidden,true);assert.equal(field('manage-error').hidden,false,'genuine failures must not claim there are no loans');
 console.log('Empty loans show onboarding; failed reads show errors and late failures cannot replace newer results.');
+
+// Summary uses the account's server month, never the device's month. A later
+// confirmed instalment is not due twice; missing or stale facts stay unknown.
+env.fmtMoney=(value,currency)=>`${currency} ${value}`;env.fmtDate=value=>value;env.fmtFull=value=>value;env.sub=value=>value;
+const paid={currency:'USD',balance_major:1200,next_due:'2026-10-15',next_payment_major:100,balance_as_of:'2026-09-20',name:'Paid'};
+const unpaid={...paid,name:'Unpaid',next_due:'2026-09-25'};
+env.summarise([paid],'2026-09-20');assert.equal(field('m-required').textContent,'USD 0');
+env.summarise([paid,unpaid],'2026-09-20');assert.equal(field('m-required').textContent,'USD 100');
+env.summarise([paid],undefined);assert.equal(field('m-required').textContent,'—');
+env.summarise([{...paid,next_due:'2026-08-15'}],'2026-09-20');assert.equal(field('m-required').textContent,'—');
+env.summarise([{...paid,needs_reconciliation:true}],'2026-09-20');assert.equal(field('m-required').textContent,'—');
+env.summarise([paid],'2026-10-01');assert.equal(field('m-required').textContent,'USD 100');
+console.log('Required this month excludes future confirmed payments and marks missing/overdue/reconciliation data unknown.');

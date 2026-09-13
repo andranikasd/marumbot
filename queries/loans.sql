@@ -114,7 +114,7 @@ INSERT INTO budgets (
     user_id, currency, monthly_amount_minor, overrides_schema_version,
     pay_day, opening_cash_minor, opening_as_of, overrides, reserve_floor_minor, funding
 )
-SELECT $1, $2, $3, 1, $4, $5, $6::date, $7::jsonb, $8, $9::jsonb
+SELECT $1, $2, $3, 1, $4, $5, $6::date, $7::jsonb, $8, $9::jsonb - 'planning_start_month'
 WHERE $10::bigint IS NULL OR $10::bigint = 0 OR EXISTS (
     SELECT 1 FROM budgets WHERE user_id = $1 AND currency = $2 AND version = $10::bigint
 )
@@ -125,7 +125,10 @@ ON CONFLICT (user_id, currency) DO UPDATE
        opening_as_of = EXCLUDED.opening_as_of,
        overrides = EXCLUDED.overrides,
        reserve_floor_minor = EXCLUDED.reserve_floor_minor,
-       funding = EXCLUDED.funding,
+       funding = CASE WHEN EXCLUDED.funding IS NULL THEN NULL ELSE EXCLUDED.funding ||
+           CASE WHEN budgets.funding ? 'planning_start_month'
+           THEN jsonb_build_object('planning_start_month', budgets.funding->'planning_start_month')
+           ELSE '{}'::jsonb END END,
        updated_at = now()
 WHERE ($10::bigint IS NULL OR budgets.version = $10::bigint)
  AND budgets.policies = '[]'::jsonb
@@ -278,12 +281,20 @@ WITH owned AS (
 )
 INSERT INTO loan_snapshots (
     id, loan_id, contract_version_id, as_of, trust,
-    principal_minor, source_note, idempotency_key
+    principal_minor, source_note, idempotency_key, next_due_date, next_installment_minor
 )
 SELECT $3::uuid, loan_id, contract_id, $4, 'user_entered', $5,
        'balance stated by the borrower after a payment',
-       'balance:' || loan_id::text || ':' || $3::text
+       'balance:' || loan_id::text || ':' || $3::text,
+       CASE WHEN $5::bigint > 0 THEN statement.next_due_date END,
+       CASE WHEN $5::bigint > 0 THEN statement.next_installment_minor END
   FROM latest
+  LEFT JOIN LATERAL (
+      SELECT sn.next_due_date, sn.next_installment_minor FROM loan_snapshots sn
+      WHERE sn.loan_id=latest.loan_id AND sn.contract_version_id=latest.contract_id
+        AND sn.as_of <= $4::date
+      ORDER BY sn.as_of DESC, sn.captured_at DESC LIMIT 1
+  ) statement ON true
 ON CONFLICT (idempotency_key) DO NOTHING
 RETURNING id;
 
@@ -331,12 +342,21 @@ WITH owned AS (
 ), snapshot AS (
     INSERT INTO loan_snapshots (
         id, loan_id, contract_version_id, as_of, trust, principal_minor,
-        source_note, idempotency_key
+        source_note, idempotency_key, next_due_date, next_installment_minor
     )
     SELECT $19::uuid, c.loan_id, c.id, $23::date, 'user_entered', $20,
            'balance stated by the borrower after a payment',
-           'balance:' || c.loan_id::text || ':' || $19::text
-      FROM current_contract c WHERE $18::boolean
+           'balance:' || c.loan_id::text || ':' || $19::text,
+           CASE WHEN $20::bigint > 0 THEN statement.next_due_date END,
+           CASE WHEN $20::bigint > 0 THEN statement.next_installment_minor END
+      FROM current_contract c
+      LEFT JOIN LATERAL (
+          SELECT sn.next_due_date, sn.next_installment_minor FROM loan_snapshots sn
+          WHERE sn.loan_id=c.loan_id AND sn.contract_version_id=c.id
+            AND sn.as_of <= $23::date
+          ORDER BY sn.as_of DESC, sn.captured_at DESC LIMIT 1
+      ) statement ON true
+      WHERE $18::boolean
     ON CONFLICT (idempotency_key) DO NOTHING
     RETURNING id
 )

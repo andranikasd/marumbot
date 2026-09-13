@@ -39,6 +39,7 @@ addStrings({
   "loan.missing": "This loan was not found.", "loan.day.unit": "of the month",
 });
 
+addStrings({"pm.title":"Վճարված ամիսներ"},{"pm.title":"Paid months"});
 const HTML = `
 <button type="button" id="loan-retry" hidden></button>
   <div id="loan-view" class="stack" hidden>
@@ -51,6 +52,7 @@ const HTML = `
     <div class="card kv" id="ln-facts"></div>
     <details class="card"><summary data-i18n="loan.contract">Պայմանագիր</summary><div class="kv" id="ln-contract"></div></details>
     <button class="cta" type="button" id="ln-record" data-i18n="payment.record">Quick Record</button>
+    <button class="cta ghost" type="button" id="ln-paid-months" data-i18n="pm.title"></button>
     <button class="cta" type="button" id="ln-update" data-i18n="loan.update">Թարմացնել մնացորդը</button>
     <button class="alink red" type="button" id="ln-remove" data-i18n="loan.remove">Հեռացնել վարկը</button>
   </div>
@@ -277,6 +279,7 @@ register({
   html: HTML,
   onMount() {
     group($("ln-newbal"));
+    $("ln-paid-months").addEventListener("click", () => go("paid-months",{id:loan.id}));
     $("ln-record").addEventListener("click", () => go("payment",{id:loan.id}));
     $("ln-update").addEventListener("click", () => { haptic.tap(); $("ln-newbal").value = ""; $("ln-asof").value = new Date().toLocaleDateString("en-CA"); $("e-newbal").textContent = ""; mode("balance"); $("ln-newbal").focus({ preventScroll: true }); });
     $("ln-bal-cancel").addEventListener("click", () => { haptic.tap(); mode("view"); });

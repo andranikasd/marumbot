@@ -227,3 +227,38 @@ export function applyI18n(root) {
     el.setAttribute("aria-label", T(el.dataset.i18nAriaLabel));
   }
 }
+
+// Shared links must be translated before their lazy destination is imported.
+addStrings({
+  "payment.reported": "Ձեր գրառումը",
+  "payment.allocation.unknown": "Բաշխումն անհայտ է",
+  "payment.correct": "Ուղղել",
+  "payment.void": "Չեղարկել գրառումը",
+  "payment.void.confirm": "Չեղարկե՞լ այս գրառումը։ Այն կմնա պատմության մեջ։",
+  "payment.conflict": "Գրառումները փոխվել են։ Վերաբացեք էջը և ստուգեք դրանք։",
+  "bp.title": "Բյուջեի կանոններ",
+  "payment.review": "Համադրման կարիք կա",
+  "loan.update": "Թարմացնել մնացորդը",
+  "payment.reconcile": "Գրառումը դեռ չի համադրվել բանկի մնացորդի և բյուջեի հետ։ Նոր պլանը ժամանակավորապես կասեցված է։",
+  "history.old": "Տվյալները փոխվել են",
+  "sc.title": "Ի՞նչ կլինի, եթե…",
+  "compare.title": "Մեթոդների համեմատություն",
+  "inverse.title": "Բյուջե ըստ վերջնաժամկետի",
+  "history.title": "Պլանների պատմություն"
+}, {
+  "payment.reported": "User reported",
+  "payment.allocation.unknown": "Allocation unknown",
+  "payment.correct": "Correct / update posting",
+  "payment.void": "Void record",
+  "payment.void.confirm": "Void this record? It will remain visible in history.",
+  "payment.conflict": "Records changed. Reopen this page and review them before saving.",
+  "bp.title": "Budget rules",
+  "payment.review": "Payment needs review",
+  "loan.update": "Update balance",
+  "payment.reconcile": "This record has not been reconciled with your bank balance and budget. Further planning is paused.",
+  "history.old": "Inputs have changed",
+  "sc.title": "What-if scenarios",
+  "compare.title": "Compare methods",
+  "inverse.title": "Budget by target date",
+  "history.title": "Plan history"
+});

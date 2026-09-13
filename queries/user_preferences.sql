@@ -34,6 +34,16 @@ WHERE o.user_id=$1 AND o.id=$2 AND l.archived_at IS NULL AND u.deleted_at IS NUL
 UPDATE reminder_occurrences o SET target_send_at=$3,status='scheduled',retry_at='-infinity',delivery_attempts=0,snoozed=true,preference_version=preference_version+1
 WHERE o.user_id=$1 AND o.id=$2 AND o.preference_version=$4 AND o.status IN ('scheduled','satisfied')
 AND EXISTS(SELECT 1 FROM loans l WHERE l.id=o.loan_id AND l.user_id=$1 AND l.archived_at IS NULL)
+-- A delivered reminder may be snoozed, but not resurrected after its
+-- instalment was confirmed paid or its loan was fully settled.
+AND NOT EXISTS (
+ SELECT 1 FROM loans l
+ JOIN LATERAL (SELECT * FROM loan_snapshots sn WHERE sn.loan_id=l.id
+               ORDER BY sn.as_of DESC,sn.captured_at DESC LIMIT 1) sn ON true
+ WHERE l.id=o.loan_id AND (sn.principal_minor=0 OR (
+   sn.contract_version_id=(SELECT id FROM loan_contract_versions c WHERE c.loan_id=l.id ORDER BY c.version DESC LIMIT 1)
+   AND sn.next_due_date>o.due_date))
+)
 RETURNING o.id,o.loan_id,o.due_date::text,o.target_send_at,o.status,o.preference_version,(o.approved_plan_id IS NULL);
 
 -- name: ReadyPreferenceReminders

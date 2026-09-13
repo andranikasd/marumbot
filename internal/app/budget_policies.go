@@ -182,7 +182,8 @@ func (b Budget) CashPlans(valuation date.Date) (plan.CashPlan, plan.CashPlan, er
 		// Nothing approved: growth and no-growth are the same declaration.
 		// Two independently built values, not one shared twice, because the
 		// caller holds both and each owns its own overrides and events.
-		return base, b.declaredCashPlan(valuation), nil
+		fallback := b.declaredCashPlan(valuation)
+		return b.applyPlanningStart(base, valuation), b.applyPlanningStart(fallback, valuation), nil
 	}
 	if b.Funding == nil {
 		return base, base, &plan.UnsupportedError{Feature: "budget policies require explicit funding"}
@@ -206,7 +207,7 @@ func (b Budget) CashPlans(valuation date.Date) (plan.CashPlan, plan.CashPlan, er
 	fallback := b.declaredCashPlan(valuation)
 	restoreCash(&fallback)
 	fallback.Spending, err = b.policySpending(valuation, true, fallback.Spending.Spent)
-	return base, fallback, err
+	return b.applyPlanningStart(base, valuation), b.applyPlanningStart(fallback, valuation), err
 }
 
 func (b Budget) policySpending(valuation date.Date, noGrowth bool, spent money.Amount) (*plan.SpendingPlan, error) {
@@ -375,6 +376,12 @@ func (b Budget) PermissionOn(on date.Date) (money.Amount, error) {
 			return money.FromMinor(n, b.Monthly.Currency()), nil
 		}
 		return b.Monthly, nil
+	}
+	// A planning pause does not rewrite the approved spending limit.
+	if b.Funding != nil {
+		funding := *b.Funding
+		funding.PlanningStartMonth = ""
+		b.Funding = &funding
 	}
 	cp, _, err := b.CashPlans(on)
 	if err != nil {

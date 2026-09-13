@@ -89,7 +89,7 @@ func (s *Server) SetBudgetPolicy() http.HandlerFunc {
 		}
 		var unsupported *plan.UnsupportedError
 		if errors.As(err, &unsupported) {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "unsupported", "reason": unsupported.Feature})
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: errorUnsupported, jsonReason: unsupported.Feature})
 			return
 		}
 		if err != nil {
@@ -97,6 +97,6 @@ func (s *Server) SetBudgetPolicy() http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]int64{"version": version})
+		_ = json.NewEncoder(w).Encode(map[string]int64{keyVersion: version})
 	}
 }

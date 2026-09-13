@@ -11,8 +11,8 @@ register({id:'more',icon:icon('wallet'),labelKey:'tab.more',html:`<div class="st
  mountPreferences();
  const select=document.getElementById('settings-language');select.addEventListener('change',async()=>{
   const want=select.value;select.disabled=true;document.getElementById('settings-error').textContent='';
-  try{const res=await api('api/settings',{method:'POST',body:JSON.stringify({locale:want})});if(!res.ok)throw new Error('save');const saved=await res.json();setLanguage(saved.locale);refreshLanguage();}
+  try{const res=await api('api/settings',{method:'POST',body:JSON.stringify({locale:want})});if(!res.ok)throw new Error('save');const saved=await res.json();if(saved.locale!=='hy'&&saved.locale!=='en')throw new Error('locale');setLanguage(saved.locale);refreshLanguage();}
   catch{select.value=lang;document.getElementById('settings-error').textContent=T('err.save');}
-  finally{select.disabled=false;}
+  finally{select.value=lang;select.disabled=false;}
  });
-},onShow(){showPreferences();document.getElementById('settings-language').value=lang;}});
+},onShow(){showPreferences();const select=document.getElementById('settings-language');if(!select.disabled)select.value=lang;}});

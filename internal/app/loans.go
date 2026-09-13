@@ -91,6 +91,9 @@ type LoanReader interface {
 // BudgetFunding is an explicitly declared source of funds. Amounts are minor
 // units; omission preserves the pre-v2 funded-budget interpretation.
 type BudgetFunding struct {
+	// PlanningStartMonth pauses new spending until this calendar month.
+	PlanningStartMonth string `json:"planning_start_month,omitempty"`
+
 	// SpentPeriodStart identifies an explicitly stated user-cycle spending total.
 	// Empty retains calendar-month semantics for existing reconciliation callers.
 	SpentPeriodStart string `json:"spent_period_start,omitempty"`
@@ -140,7 +143,7 @@ type Budget struct {
 // valuation date. Opening cash counts only within the month it was stated
 // and never from the future: a January figure says nothing about March.
 func (b Budget) CashPlan(valuation date.Date) plan.CashPlan {
-	if len(b.Policies) > 0 {
+	if len(b.Policies) > 0 || (b.Funding != nil && b.Funding.PlanningStartMonth != "") {
 		cp, _, err := b.CashPlans(valuation)
 		if err != nil {
 			cp.Spending = &plan.SpendingPlan{Monthly: b.Monthly, RuleError: "invalid budget policy"}

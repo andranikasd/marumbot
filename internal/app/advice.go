@@ -675,13 +675,43 @@ func shortDate(l i18n.Locale, d, today date.Date) string {
 	return s
 }
 
-// RequiredThisMonth sums the next instalment of every active loan, using the
-// same projection the advice report uses so the two cannot disagree.
+// RequiredThisMonth counts outstanding dues in the borrower's current calendar
+// month. A confirmed next-month due is not a second payment this month; an
+// overdue anchor needs reconciliation rather than an assumption that it was paid.
 func (w *Worker) RequiredThisMonth(ctx context.Context, userID string) (money.Amount, money.Currency, error) {
 	loans, err := w.Loans.LoansForUser(ctx, userID, plan.MaxLoans+1)
 	if err != nil {
 		return money.Amount{}, money.Currency{}, err
 	}
-	_, _, required, cur, err := w.positions(ctx, loans)
-	return required, cur, err
+	_, _, _, cur, err := w.positions(ctx, loans)
+	if err != nil {
+		return money.Amount{}, cur, err
+	}
+	if cur.Code == "" {
+		cur = w.DefaultCurrency
+	}
+	required := money.Zero(cur)
+	today, err := (PaymentService{Clock: w.Clock, Users: w.Users}).BusinessDate(ctx, userID)
+	if err != nil {
+		return required, cur, err
+	}
+	for _, loan := range loans {
+		if loan.Balance.Sign() <= 0 || loan.Contract.Currency.Code != cur.Code {
+			continue
+		}
+		next, err := loan.NextInstalment()
+		if err != nil {
+			return required, cur, err
+		}
+		if next.Due.IsZero() || plan.MonthKey(next.Due) < plan.MonthKey(today) {
+			return required, cur, ErrPaymentReconciliation
+		}
+		if plan.MonthKey(next.Due) == plan.MonthKey(today) {
+			required, err = required.Add(next.Payment)
+			if err != nil {
+				return required, cur, err
+			}
+		}
+	}
+	return required, cur, nil
 }
