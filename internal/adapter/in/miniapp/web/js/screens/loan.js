@@ -40,6 +40,21 @@ addStrings({
 });
 
 addStrings({"pm.title":"Վճարված ամիսներ"},{"pm.title":"Paid months"});
+addStrings({
+ "loan.paymentHelp":"Մի վճարո՞ւմ եք կատարել։ Գրանցեք գումարն ու օրը։",
+ "loan.monthHelp":"Այս ամսվա վճարումներն արդեն կատարե՞լ եք մինչև Marum-ից օգտվելը։ Պարտադիր չէ ամեն վճարումն առանձին գրանցել։",
+ "loan.monthAction":"Այս ամսվա վճարումները կատարել եմ",
+ "loan.otherUpdates":"Այլ փոփոխություններ",
+ "loan.balanceOnly":"Միայն բանկի մնացորդն ուղղելու համար։ Կատարված վճարումը նշելու համար օգտագործեք վերևի քայլերը։",
+ "loan.checkHelp":"Նախ ստուգեք բանկի նոր մնացորդն ու ձեր մնացած գումարը, որպեսզի պլանը թարմացվի։"
+},{
+ "loan.paymentHelp":"Made a payment? Record its amount and date.",
+ "loan.monthHelp":"Already paid this month before using Marum? You do not need to enter each old payment.",
+ "loan.monthAction":"I already paid this month",
+ "loan.otherUpdates":"Other changes",
+ "loan.balanceOnly":"Use this only to correct a bank balance. To tell us about a payment, use the steps above.",
+ "loan.checkHelp":"Check the bank’s new balance and your money left so the plan can update."
+});
 const HTML = `
 <button type="button" id="loan-retry" hidden></button>
   <div id="loan-view" class="stack" hidden>
@@ -51,9 +66,20 @@ const HTML = `
     </div>
     <div class="card kv" id="ln-facts"></div>
     <details class="card"><summary data-i18n="loan.contract">Պայմանագիր</summary><div class="kv" id="ln-contract"></div></details>
-    <button class="cta" type="button" id="ln-record" data-i18n="payment.record">Quick Record</button>
-    <button class="cta ghost" type="button" id="ln-paid-months" data-i18n="pm.title"></button>
-    <button class="cta" type="button" id="ln-update" data-i18n="loan.update">Թարմացնել մնացորդը</button>
+    <section id="ln-check-wrap" class="card stack" hidden>
+      <p class="hint" data-i18n="loan.checkHelp"></p>
+      <button class="cta" type="button" id="ln-check" data-i18n="payment.review"></button>
+    </section>
+    <section class="stack"><p class="hint" data-i18n="loan.paymentHelp"></p>
+      <button class="cta" type="button" id="ln-record" data-i18n="payment.record"></button>
+    </section>
+    <section id="ln-month-wrap" class="stack"><p class="hint" data-i18n="loan.monthHelp"></p>
+      <button class="cta ghost" type="button" id="ln-paid-months" data-i18n="loan.monthAction"></button>
+    </section>
+    <details class="fold"><summary data-i18n="loan.otherUpdates"></summary><div class="fold-body stack">
+      <p class="hint" data-i18n="loan.balanceOnly"></p>
+      <button class="alink" type="button" id="ln-update" data-i18n="loan.update"></button>
+    </div></details>
     <button class="alink red" type="button" id="ln-remove" data-i18n="loan.remove">Հեռացնել վարկը</button>
   </div>
 
@@ -134,6 +160,9 @@ function mode(which) {
 
 function render() {
   const cur = loan.currency;
+  $("ln-check-wrap").hidden = !loan.needs_reconciliation;
+  $("ln-month-wrap").hidden = !!loan.needs_reconciliation || loan.balance_major === 0;
+  $("ln-record").className = loan.needs_reconciliation ? "cta ghost" : "cta";
   $("ln-balance").textContent = fmtMoney(loan.balance_major, cur);
   $("ln-state").textContent = T(loan.needs_reconciliation?"payment.review":loan.balance_major===0?"loan.zero":"loan.active");
   const bits = [];
@@ -279,6 +308,7 @@ register({
   html: HTML,
   onMount() {
     group($("ln-newbal"));
+    $("ln-check").addEventListener("click", () => go("reconcile",{id:loan.id}));
     $("ln-paid-months").addEventListener("click", () => go("paid-months",{id:loan.id}));
     $("ln-record").addEventListener("click", () => go("payment",{id:loan.id}));
     $("ln-update").addEventListener("click", () => { haptic.tap(); $("ln-newbal").value = ""; $("ln-asof").value = new Date().toLocaleDateString("en-CA"); $("e-newbal").textContent = ""; mode("balance"); $("ln-newbal").focus({ preventScroll: true }); });

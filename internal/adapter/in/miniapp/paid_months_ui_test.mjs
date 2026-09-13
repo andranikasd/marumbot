@@ -5,7 +5,7 @@ const read=async name=>(await readFile(new URL('./web/js/'+name,import.meta.url)
 const source=await read('screens/paid-months.js'),mutation=await read('loan-mutations.js'),money=await read('screens/budget-funding.js');
 function setup(){
  const fields=new Map(),calls=[];let screen,key=0;const node=id=>{if(!fields.has(id))fields.set(id,{value:'',textContent:'',checked:false,hidden:false,disabled:false,replaceChildren(...children){this.children=children;},addEventListener(name,fn){this[name]=fn;}});return fields.get(id);};
- const env={document:{getElementById:node,createElement:()=>({})},register:s=>screen=s,addStrings(){},T:k=>k,sub:(k,v)=>k+Object.values(v).join(),fmtFull:String,toast(){},haptic:{bad(){},ok(){}},invalidate(){},go:(id,p)=>calls.push({go:id,params:p}),currentScreen:()=> 'paid-months',crypto:{randomUUID:()=>String(++key)},api:(path,options)=>new Promise((resolve,reject)=>calls.push({path,options,resolve,reject}))};
+ const env={document:{getElementById:node,createElement:()=>({})},register:s=>screen=s,addStrings(){},T:k=>k,sub:(k,v)=>k+Object.values(v).join(),fmtFull:String,fmtMonth:String,toast(){},haptic:{bad(){},ok(){}},invalidate(){},go:(id,p)=>calls.push({go:id,params:p}),currentScreen:()=> 'paid-months',crypto:{randomUUID:()=>String(++key)},api:(path,options)=>new Promise((resolve,reject)=>calls.push({path,options,resolve,reject}))};
  vm.createContext(env);vm.runInContext(money,env);vm.runInContext(mutation,env);vm.runInContext(source,env);screen.onMount();return {node,calls,screen};
 }
 const doc={id:'loan1',name:'Bank',version:2,today:'2026-09-20',currency:'AMD',currency_exponent:2,balance_major:100,payment_major:10,next_dates:{'2026-09':'2026-10-15'},needs_reconciliation:false,paid_through:'2026-08'};

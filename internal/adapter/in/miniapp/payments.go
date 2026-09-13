@@ -109,10 +109,20 @@ func (s *Server) reconcilePayment() http.Handler {
 			http.Error(w, "unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		var c app.ReconciliationCommand
+		// These are complete borrower statements. Missing/null must never
+		// become a zero balance, a closed loan, or an unstated CAS version.
+		var in struct {
+			app.ReconciliationCommand
+			ExpectedVersion  *int64 `json:"expected_version"`
+			BudgetVersion    *int64 `json:"budget_version"`
+			PrincipalMinor   *int64 `json:"principal_minor"`
+			NextPaymentMinor *int64 `json:"next_payment_minor"`
+			CashMinor        *int64 `json:"cash_minor"`
+			SpentMinor       *int64 `json:"spent_minor"`
+		}
 		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequest))
 		dec.DisallowUnknownFields()
-		if err := dec.Decode(&c); err != nil {
+		if err := dec.Decode(&in); err != nil {
 			paymentHTTPError(w, app.ErrPaymentInvalid)
 			return
 		}
@@ -120,6 +130,14 @@ func (s *Server) reconcilePayment() http.Handler {
 			paymentHTTPError(w, app.ErrPaymentInvalid)
 			return
 		}
+		if in.ExpectedVersion == nil || in.BudgetVersion == nil || in.PrincipalMinor == nil || in.NextPaymentMinor == nil || in.CashMinor == nil || in.SpentMinor == nil {
+			paymentHTTPError(w, app.ErrPaymentInvalid)
+			return
+		}
+		c := in.ReconciliationCommand
+		c.ExpectedVersion, c.BudgetVersion = *in.ExpectedVersion, *in.BudgetVersion
+		c.PrincipalMinor, c.NextPaymentMinor = *in.PrincipalMinor, *in.NextPaymentMinor
+		c.CashMinor, c.SpentMinor = *in.CashMinor, *in.SpentMinor
 		c.LoanID = r.PathValue("id")
 		if _, err := uuid.Parse(c.LoanID); err != nil {
 			paymentHTTPError(w, app.ErrNotFound)

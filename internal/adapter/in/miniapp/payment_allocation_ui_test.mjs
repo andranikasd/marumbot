@@ -6,7 +6,7 @@ const fields=new Map();
 const field=id=>{if(!fields.has(id))fields.set(id,{value:'',disabled:false,textContent:'',addEventListener(type,fn){this[type]=fn;},reset(){for(const f of fields.values())f.value='';}});return fields.get(id);};
 let screen,sequence=0,current='payment',response,confirmation=async()=>true;
 const calls=[],destinations=[];
-const env={BigInt,Number,Map,JSON,encodeURIComponent,Error,crypto:{randomUUID:()=>`key-${++sequence}`},document:{getElementById:field,querySelectorAll:()=>[...fields.values()]},register:s=>screen=s,currentScreen:()=>current,go:id=>destinations.push(id),addStrings(){},T:s=>s,toast(){},invalidate(){},confirmDialog:()=>confirmation(),getJSON:async path=>({loan_id:path.split('/')[2],loan:'Fixture',currency:'AMD',currency_exponent:2,version:0,today:'2026-09-24'}),api:(path,init)=>{calls.push({path,body:JSON.parse(init.body)});return response();}};
+const env={BigInt,Number,Map,JSON,encodeURIComponent,Error,crypto:{randomUUID:()=>`key-${++sequence}`},document:{getElementById:field,querySelectorAll:()=>[...fields.values()]},register:s=>screen=s,currentScreen:()=>current,go:id=>destinations.push(id),addStrings(){},T:s=>s,toast(){},invalidate(){},confirmDialog:()=>confirmation(),getJSON:async path=>({loan_id:path.split('/')[2],loan:'Fixture',currency:'AMD',currency_exponent:2,version:0,today:'2026-09-24'}),api:(path,init)=>{if(init.method!=='POST')return Promise.resolve({ok:true,json:()=>env.getJSON(path)});calls.push({path,body:JSON.parse(init.body)});return response();}};
 vm.runInNewContext(source,env);screen.onMount();
 const show=id=>{current='payment';return screen.onShow(null,{id});};
 const submit=()=>field('payment-form').submit({preventDefault(){}});

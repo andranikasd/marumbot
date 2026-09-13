@@ -261,6 +261,9 @@ func (s *Server) getBudget() http.Handler {
 				cash, _, err = b.CashPlans(today)
 				if err == nil {
 					permission = cash.Spending.Changes[0].Limit
+					if b.Funding != nil && b.Funding.PlanningStartMonth != "" {
+						permission, err = b.PermissionOn(today)
+					}
 				}
 			} else {
 				permission, err = b.PermissionOn(today)
@@ -283,6 +286,8 @@ func (s *Server) getBudget() http.Handler {
 					}
 				}
 				funding.SpentMinor = cash.Spending.Spent.Minor()
+				funding.SpentPeriodStart = cash.Spending.PeriodStart(today).String()
+				out["spent_period_start"] = funding.SpentPeriodStart
 				b.Opening = cash.OpeningCash
 				funding.CashThrough = ""
 				if !cash.CashThrough.IsZero() {

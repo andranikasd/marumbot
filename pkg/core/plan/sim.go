@@ -510,6 +510,12 @@ func (s *sim) quote(ls *loanState, on date.Date, available money.Amount) (Quote,
 	if err != nil {
 		return Quote{}, err
 	}
+	// Available cash can exceed principal while still falling short of the
+	// payoff including accrued interest. A partial payment never credits more
+	// than the outstanding principal; interest remains due until settled.
+	if principal.Cmp(ls.balance) > 0 {
+		principal = ls.balance
+	}
 	principal = money.Quantise(principal, money.Policy{Mode: money.Down, Unit: c.Rounding.Unit})
 	if principal.Sign() <= 0 || (c.Prepayment.MinAmount.Sign() > 0 && principal.Cmp(c.Prepayment.MinAmount) < 0) {
 		return Quote{Principal: zero, Interest: zero, Fee: zero, Outflow: zero}, nil

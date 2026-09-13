@@ -4,12 +4,12 @@ import {api,invalidate} from '../api.js';
 import {loanMutation} from '../loan-mutations.js';
 import {majorAmount} from './budget-funding.js';
 import {addStrings,T,sub} from '../i18n.js';
-import {toast,haptic,fmtFull} from '../core.js';
+import {toast,haptic,fmtFull,fmtMonth} from '../core.js';
 addStrings({
  'pm.title':'Վճարված ամիսներ','pm.hint':'Նշեք մինչև որ ամիսն են պարտադիր վճարումները կատարված և հաստատեք բանկի այսօրվա թվերը։ Սա թարմացնում է վարկի մնացորդն ու հաջորդ վճարումը, բայց չի փոխում ձեր հասանելի գումարը։',
  'pm.month':'Պարտադիր վճարումները կատարված են մինչև','pm.balance':'Մայր գումարի մնացորդն այսօր','pm.payment':'Հաջորդ պարտադիր վճարումը','pm.confirm':'Բանկում ստուգել եմ՝ այս ամիսների վճարումները կատարված են, իսկ նշված թվերն արդիական են։',
  'pm.next':'Հաջորդ վճարումը՝ {date}','pm.save':'Հաստատել վճարված ամիսները','pm.invalid':'Ստուգեք ամիսը, գումարները և հաստատման նշումը։ Ամբողջությամբ մարված վարկի համար երկու գումարներն էլ զրո նշեք։',
- 'pm.reload':'Վերբեռնել՝ փոփոխությունները հեռացնելով','pm.review':'Նախ համադրեք նախկինում գրանցված վճարումները։','pm.zero':'Եթե վարկն ամբողջությամբ մարված է, երկու գումարներն էլ զրո նշեք։','pm.currency':'Գումարների արժույթը՝ {currency}',
+ 'pm.reload':'Վերբեռնել՝ փոփոխությունները հեռացնելով','pm.review':'Նախ համադրեք նախկինում գրանցված վճարումները։','pm.zero':'Այս ամսվա համար հաջորդ վճարում չկա։ Ամբողջությամբ մարված վարկի համար երկու գումարներն էլ զրո նշեք։ Հակառակ դեպքում ստուգեք վարկի ամսաթվերը կամ բանկի մնացորդները։','pm.currency':'Գումարների արժույթը՝ {currency}',
  'pm.rejected':'Թվերը չեն համապատասխանում վարկի պայմաններին, կամ ընտրված ամսից հետո վճարման օրը այլևս ապագայում չէ։ Վերբեռնեք և ստուգեք բանկի մնացորդը, հաջորդ վճարումն ու պայմանները։',
  'pm.current':'Արդեն նշված է վճարված մինչև {month}',
  'pm.saved':'Վճարված ամիսները պահպանված են։ Կարող եք փոխել պլանի մեկնարկը։'
@@ -17,7 +17,7 @@ addStrings({
  'pm.title':'Paid months','pm.hint':'Declare through which month required payments are complete and confirm today’s figures from your bank. This updates the loan balance and next payment, but does not update your available cash.',
  'pm.month':'Required payments completed through','pm.balance':'Principal balance today','pm.payment':'Next required payment','pm.confirm':'I checked with my bank: these months are paid and the figures entered here are current.',
  'pm.next':'Next payment: {date}','pm.save':'Confirm paid months','pm.invalid':'Check the month, amounts and confirmation. For a fully repaid loan, enter zero for both amounts.',
- 'pm.reload':'Reload and discard changes','pm.review':'Reconcile previously recorded payments first.','pm.zero':'If the loan is fully repaid, enter zero for both amounts.','pm.currency':'Amounts in {currency}',
+ 'pm.reload':'Reload and discard changes','pm.review':'Check previously recorded payments and update the bank balances first.','pm.zero':'No future payment is available for this month. If the loan is fully repaid, enter zero for both amounts. Otherwise check the loan dates or update its bank balances.','pm.currency':'Amounts in {currency}',
  'pm.rejected':'The figures are inconsistent with the loan terms, or the payment after this month is no longer in the future. Reload and check the bank balance, next payment and loan terms.',
  'pm.current':'Already marked paid through {month}',
  'pm.saved':'Paid months saved. You can now change the plan start.'
@@ -33,11 +33,11 @@ function render(){
  $('pm-status').textContent=s.loading?T('loading'):s.error?T(s.error):'';
  $('pm-name').textContent=s.doc?.name||'';
  $('pm-current').hidden=!s.doc?.paid_through;
- $('pm-current').textContent=s.doc?.paid_through?sub('pm.current',{month:s.doc.paid_through}):'';
+ $('pm-current').textContent=s.doc?.paid_through?sub('pm.current',{month:fmtMonth(s.doc.paid_through+"-01")}):'';
  $('pm-currency').textContent=s.doc?sub('pm.currency',{currency:s.doc.currency}):'';
  if(!s.doc)return;
  const months=[...new Set([...Object.keys(s.doc.next_dates),s.doc.today.slice(0,7)])].sort().reverse();
- $('pm-month').replaceChildren(...months.map(month=>{const option=document.createElement('option');option.value=month;option.textContent=month;return option;}));
+ $('pm-month').replaceChildren(...months.map(month=>{const option=document.createElement('option');option.value=month;option.textContent=fmtMonth(month+"-01");return option;}));
  for(const field of ['month','balance','payment'])$('pm-'+field).value=s.values[field];
  $('pm-confirm').checked=s.values.confirmed;
  const next=s.doc.next_dates[s.values.month];$('pm-next').textContent=next?sub('pm.next',{date:fmtFull(next)}):T('pm.zero');

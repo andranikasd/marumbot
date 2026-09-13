@@ -254,7 +254,10 @@ func (r BudgetRequest) Validate() (string, int64, int, error) {
 	if err != nil {
 		return "", 0, 0, fmt.Errorf("%w: currency %q", ErrInvalid, r.Currency)
 	}
-	minor, err := budgetMinor(r.MonthlyMajor, cur, false)
+	if r.MonthlyMajor == "" {
+		return "", 0, 0, fmt.Errorf("%w: monthly budget is required", ErrInvalid)
+	}
+	minor, err := budgetMinor(r.MonthlyMajor, cur, true)
 	if err != nil {
 		return "", 0, 0, fmt.Errorf("%w: monthly budget", err)
 	}

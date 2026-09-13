@@ -8,7 +8,6 @@ import "./screens/loans.js";
 import "./screens/activity.js";
 import "./screens/more.js";
 import "./screens/budget.js";
-import "./screens/budget-edit.js";
 import { buildTabs, go, refreshLanguage, registerLazy } from "./nav.js";
 import { api, prefetch, watchOffline, watchAuthentication, authenticationRequired, refreshAuthentication } from "./api.js";
 
@@ -21,6 +20,7 @@ registerLazy({id:"plan-scenarios",parent:"plan",load:()=>import("./screens/plan-
 registerLazy({id:"payment",parent:"activity",load:()=>import("./screens/payment.js")});
 registerLazy({id:"reconcile",parent:"activity",load:()=>import("./screens/reconcile.js")});
 registerLazy({id:"add",parent:"loans",load:()=>import("./screens/add.js")});
+registerLazy({id:"budget-edit",parent:"budget",load:()=>import("./screens/budget-edit.js")});
 registerLazy({id:"budget-policy",parent:"budget",load:()=>import("./screens/budget-policy.js")});
 registerLazy({id:"loan",parent:"loans",load:()=>import("./screens/loan.js")});
 registerLazy({id:"paid-months",parent:"loans",load:()=>import("./screens/paid-months.js")});

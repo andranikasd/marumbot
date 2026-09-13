@@ -14,7 +14,7 @@ for(const file of ['budget-funding.js','reconcile.js']){
 }
 screen.onMount();
 async function show(id){current='reconcile';await screen.onShow(null,{id});}
-function fill(){for(const [id,value] of [['principal','600.00'],['payment','300.00'],['due','2026-10-15'],['cash','600.00'],['spent','400.00']])field('rec-'+id).value=value;field('rec-confirm').checked=true;}
+function fill(){for(const [id,value] of [['principal','600.00'],['payment','300.00'],['due','2026-10-15'],['cash','600.00'],['spent','400.00']])field('rec-'+id).value=value;field('rec-next').click();field('rec-review').click();field('rec-confirm').checked=true;}
 const submit=()=>field('reconcile-form').submit({preventDefault(){}});
 response=()=>Promise.reject(new TypeError('lost response'));await show('A');fill();await submit();
 assert.ok(calls.length,field('rec-error').textContent+' '+JSON.stringify(vm.runInContext('context',env)));
@@ -25,3 +25,40 @@ response=()=>Promise.resolve({ok:true,status:200});await submit();assert.deepEqu
 await show('B');response=()=>Promise.resolve({ok:false,status:409});await submit();assert.equal(field('rec-save').disabled,true);
 await show('B');fill();response=()=>Promise.resolve({ok:true,status:200});await submit();assert.notEqual(calls.at(-1).body.idempotency_key,second.idempotency_key);
 console.log('Reconciliation preserves exact cash statements and retry identity across navigation');
+
+// The guided journey validates each question before showing the review.
+await show('guided');
+assert.equal(field('rec-balance-block').hidden,false);
+field('rec-next').click();assert.equal(field('rec-cash-block').hidden,true);
+field('rec-principal').value='0';field('rec-principal').input();
+assert.equal(field('rec-due').disabled,true);assert.equal(field('rec-zero').hidden,false);
+field('rec-next').click();assert.equal(field('rec-cash-block').hidden,false);
+field('rec-review').click();assert.equal(field('rec-review-block').hidden,true);
+field('rec-cash').value='0';field('rec-spent').value='400.00';field('rec-review').click();
+assert.equal(field('rec-review-block').hidden,false);assert.equal(field('rec-review-payment-row').hidden,true);
+assert.equal(field('rec-review-spent').textContent,'400.00 AMD');
+const beforeConfirm=calls.length;await submit();assert.equal(calls.length,beforeConfirm);
+field('rec-confirm').checked=true;response=()=>Promise.resolve({ok:true,status:200});await submit();
+assert.equal(calls.at(-1).body.principal_minor,0);assert.equal(calls.at(-1).body.next_due,'');assert.equal(calls.at(-1).body.next_payment_minor,0);
+// A custom budget cycle uses the server's actual period, not the calendar month.
+const originalRead=env.getJSON;
+env.getJSON=async path=>path==='api/budget'?{currency:'AMD',version:2,spent_period_start:'2026-08-15',funding:{}}:originalRead(path);
+await show('cycle');fill();await submit();assert.equal(calls.at(-1).body.spent_period_start,'2026-08-15');
+// No budget offers setup rather than claiming an outage or allowing a partial save.
+env.getJSON=async path=>path==='api/budget'?{today:'2026-09-03'}:originalRead(path);
+await show('no-budget');assert.equal(field('rec-funding').hidden,false);assert.equal(field('rec-save').disabled,true);assert.equal(field('rec-next').disabled,true);
+env.getJSON=originalRead;
+await show('pending');fill();response=()=>Promise.resolve({ok:false,status:422,json:async()=>({error:'payment_reconciliation_required'})});await submit();
+assert.equal(field('rec-error').textContent,'reconcile.pending');assert.equal(field('rec-history').hidden,false);
+await show('overdue');field('rec-principal').value='600';field('rec-payment').value='300';field('rec-due').value='2026-09-03';field('rec-next').click();
+assert.equal(field('rec-error').textContent,'reconcile.future');assert.equal(field('rec-cash-block').hidden,true);
+console.log('Guided reconciliation covers review, zero balances, cycle periods, missing budgets and actionable failures');
+
+await show('draft-A');fill();field('rec-cash').value='123.45';
+await show('draft-B');field('rec-principal').value='876.00';
+await show('draft-A');assert.equal(field('rec-cash').value,'123.45');assert.equal(field('rec-confirm').checked,true);assert.equal(field('rec-review-block').hidden,false);
+await show('draft-B');assert.equal(field('rec-principal').value,'876.00');assert.equal(field('rec-balance-block').hidden,false);
+const draftReads=env.getJSON;env.getJSON=async()=>{throw new Error('offline');};
+await show('draft-A');assert.equal(field('rec-cash').value,'123.45','draft remains available while offline');
+env.getJSON=draftReads;
+console.log('Reconciliation drafts retain answers, review step and original statement context per loan');

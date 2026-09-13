@@ -26,7 +26,7 @@ func TestBudgetRequestValidateRejectsInvalidConfiguration(t *testing.T) {
 
 	cases := map[string]BudgetRequest{
 		"unknown currency": {MonthlyMajor: "1", Currency: "XYZ"},
-		"zero monthly":     {MonthlyMajor: "0", Currency: "AMD"},
+		"missing monthly":  {Currency: "AMD"},
 		"negative monthly": {MonthlyMajor: "-1", Currency: "AMD"},
 		"NaN monthly":      {MonthlyMajor: "NaN", Currency: "AMD"},
 		"infinite monthly": {MonthlyMajor: "Infinity", Currency: "AMD"},
@@ -141,5 +141,12 @@ func TestBudgetRequestValidateOverridesRejectsInvalidDocument(t *testing.T) {
 				t.Fatalf("ValidateOverrides() error = %v, want ErrInvalid", err)
 			}
 		})
+	}
+}
+
+func TestBudgetRequestAcceptsExplicitZero(t *testing.T) {
+	code, minor, _, err := (BudgetRequest{MonthlyMajor: "0", Currency: "AMD"}).Validate()
+	if err != nil || code != "AMD" || minor != 0 {
+		t.Fatalf("explicit no spending: %s %d %v", code, minor, err)
 	}
 }

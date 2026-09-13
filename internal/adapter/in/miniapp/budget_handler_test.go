@@ -118,7 +118,7 @@ func TestSetBudgetRejectsInvalidRequestBeforePersistence(t *testing.T) {
 	t.Parallel()
 
 	store := &budgetTestConfigurator{}
-	w := postBudget(t, budgetTestServer(store), `{"monthly_major":0,"currency":"AMD"}`)
+	w := postBudget(t, budgetTestServer(store), `{"monthly_major":-1,"currency":"AMD"}`)
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422", w.Code)
 	}

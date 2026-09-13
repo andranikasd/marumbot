@@ -10,9 +10,9 @@ addStrings({
   "be.policyActive": "Բյուջեն ունի հաստատված կանոններ։ Սահմանաչափը փոխեք Բյուջեի կանոններ բաժնում։ Գումարի և ծախսերի նոր քաղվածքը ներկայացրեք համադրման միջոցով։",
   "be.budget": "Ամեն ամիս", "be.funding": "Այսօր", "be.months": "Հավելյալ",
   "be.next": "Հաջորդը՝ այսօրվա գումարը",
-  "be.intro": "Նախ՝ պարտադիր վճարումները։",
+  "be.intro": "Պատասխանեք երկու կարճ բաժնի հարցերին, ապա ստուգեք ու պահպանեք։",
   "be.limitQuestion": "Ամսական ծախսի սահման",
-  "be.todayHint": "Այստեղ նշեք միայն այսօրվա գումարն ու արդեն կատարված վճարումները։",
+  "be.todayHint": "Ստուգեք ձեր հաշիվը հիմա։ Մի ներառեք հաջորդ աշխատավարձը կամ բանկին արդեն վճարած գումարը։",
   "be.permission": "Ամսական ծախսի սահմանաչափ",
   "be.permissionHint": "Ներառեք վարկերի բոլոր պարտադիր վճարումները։",
   "be.retry": "Կրկնել պահպանումը", "be.uncertain": "Պահպանման արդյունքը հայտնի չէ։ Կրկնեք նույն հարցումը՝ նախքան փոփոխելը։",
@@ -25,9 +25,9 @@ addStrings({
   "be.policyActive": "Approved rules govern this budget. Change permission in Budget rules. Update cash and spending statements through reconciliation.",
   "be.budget": "Each month", "be.funding": "Today", "be.months": "Extras",
   "be.next": "Next: today’s money",
-  "be.intro": "Required payments come first.",
+  "be.intro": "Answer two short sections, then check and save. Include payments for all your loans.",
   "be.limitQuestion": "Monthly spending limit",
-  "be.todayHint": "Only money you have today and payments already made belong here.",
+  "be.todayHint": "Check your account now. Do not include your next payday or money you have already paid to the bank.",
   "be.permission": "Monthly spending limit",
   "be.permissionHint": "Include all required loan payments.",
   "be.retry": "Retry save", "be.uncertain": "The save outcome is unknown. Retry the same request before editing.",
@@ -35,6 +35,40 @@ addStrings({
   "be.conflict": "The budget changed elsewhere. Your entries are still here. Reload the latest version before making your changes again.",
   "be.load": "Could not load a safe, current budget. Reload before continuing.",
   "be.rejected": "The values were not accepted. Check amounts, dates and limits.",
+});
+
+addStrings({
+  "be.currency": "Արժույթ", "be.zero": "Ամսական նոր գումար չկա։ Պլանը կարող է ցույց տալ չբավարարող գումարը․ պահպանումը վարկի վճարումը չի հետաձգում։",
+  "be.same": "Այսքան էլ թույլատրել ծախսել վարկերի վրա ամեն ամիս",
+  "be.sameHint": "Սովորաբար սա բավական է։ Անջատեք միայն եթե ցանկանում եք ամսական գումարից տարբեր ծախսի սահման։",
+  "be.review": "Ստուգել նախքան պահպանումը", "be.reviewTitle": "Ամեն ինչ ճի՞շտ է",
+  "be.reviewHint": "Սա միայն պլանավորման տվյալներ է պահպանում։ Գումար չի փոխանցվում, և վարկի մնացորդը չի փոխվում։",
+  "be.editAnswers": "Փոխել պատասխանները", "be.extras": "Լրացուցիչ կարգավորումներ (ոչ պարտադիր)",
+  "be.back": "Նախորդ հարցերը", "be.reserve": "Գումար, որը ցանկանում եք չծախսել (ոչ պարտադիր)",
+  "be.cash": "Այս պահին որքա՞ն գումար ունեք վարկերի համար",
+  "be.cashHint": "Նշեք միայն հիմա առկա գումարը։ Եթե գումար չկա՝ գրեք 0։",
+  "be.paidHint": "Այս ժամանակահատվածում բոլոր վարկերին արդեն վճարած ընդհանուր գումարը։ Եթե չեք վճարել՝ գրեք 0։",
+  "be.period": "Վճարումները՝ {from}-ից մինչև {to}",
+  "be.reviewPayday": "Գումարի մուտքի օրը՝ ամեն ամսվա {day}-ը (կարճ ամսում՝ վերջին օրը)",
+  "be.extraSummary": "Լրացուցիչ մուտքեր՝ {events}, հատուկ ամսական սահմաններ՝ {months}",
+  "be.reviewToday": "Գումարի տվյալները՝ {date}-ի դրությամբ",
+  "be.periodUnknown": "Ձեր ընթացիկ բյուջետային ժամանակահատվածում արդեն վճարված գումարը։",
+}, {
+  "be.currency": "Currency", "be.zero": "No new monthly money is available. Your plan may show a shortfall; saving this does not postpone a loan payment.",
+  "be.same": "Allow this same amount for loan payments each month",
+  "be.sameHint": "This suits most people. Untick only if you want a spending limit different from the money you set aside.",
+  "be.review": "Check before saving", "be.reviewTitle": "Does this look right?",
+  "be.reviewHint": "This saves planning information only. It does not transfer money or change a loan’s balance.",
+  "be.editAnswers": "Change answers", "be.extras": "More options (optional)",
+  "be.back": "Previous questions", "be.reserve": "Money to keep untouched (optional)",
+  "be.cash": "How much loan money do you have right now?",
+  "be.cashHint": "Only money available now. Enter 0 if none is available.",
+  "be.paidHint": "Total paid to all your loans in this period. Enter 0 if you have not paid anything.",
+  "be.period": "Payments from {from} to {to}",
+  "be.reviewPayday": "Money arrives on day {day} each month (the last day in shorter months)",
+  "be.extraSummary": "Extra money entries: {events}. Special monthly limits: {months}.",
+  "be.reviewToday": "Money statement as of {date}",
+  "be.periodUnknown": "Payments already made in your current budget period.",
 });
 
 import { budgetHelpHTML } from "./budget-help.js";
@@ -53,11 +87,14 @@ const HTML = `
     </div>
     <div id="budget-panel-budget" role="tabpanel" aria-labelledby="budget-tab-budget" class="stack">
     <div class="card stack">
-      <div class="field">
+      <div id="budget-monthly-money"></div>
+      <label class="row" id="budget-same-row" for="budget-same"><input type="checkbox" id="budget-same" style="width:24px;flex-shrink:0" checked><span data-i18n="be.same"></span></label>
+      <p class="hint" id="budget-same-hint" data-i18n="be.sameHint"></p>
+      <div class="field" id="budget-limit-field" hidden>
         <label for="monthly" data-i18n="be.limitQuestion">Սովորական ամսվա գումար</label>
         <div class="row budget-amount-row">
           <input id="monthly" name="monthly" inputmode="decimal" placeholder="0" required>
-          <select id="budget-currency" name="budget-currency" class="narrow">
+          <select id="budget-currency" name="budget-currency" class="narrow" data-i18n-aria-label="be.currency">
             <option value="AMD" selected>AMD</option>
             <option value="USD">USD</option>
             <option value="EUR">EUR</option>
@@ -68,7 +105,6 @@ const HTML = `
         <p class="error" id="e-monthly"></p>
         <p class="hint" id="b-note" hidden></p>
       </div>
-      <div id="budget-monthly-money"></div>
       <div class="field">
         <label for="payday" data-i18n="budget.payday">Երբ է գումարը հասանելի</label>
         <div class="in unit-w"><input id="payday" name="payday" inputmode="numeric" placeholder="1–31" required><span class="unit" data-i18n="unit.day">ամսի օր</span></div>
@@ -82,18 +118,18 @@ const HTML = `
     <p class="hint" data-i18n="be.todayHint"></p>
     <div class="card stack">
       <div class="field">
-        <label for="opening" data-i18n="budget.opening">Վարկերի համար հասանելի գումար հիմա</label>
+        <label for="opening" data-i18n="be.cash">Վարկերի համար հասանելի գումար հիմա</label>
         <div class="in unit-w"><input id="opening" name="opening" inputmode="decimal" placeholder="0"><span class="unit" id="u-opening">AMD</span></div>
-        <p class="hint" data-i18n="budget.opening.hint"></p>
+        <p class="hint" data-i18n="be.cashHint"></p>
         <p class="error" id="e-opening"></p>
       </div>
-      <div class="field">
+      <details class="fold" id="budget-reserve-options"><summary data-i18n="be.reserve"></summary><div class="fold-body field">
         <label for="reserve" data-i18n="budget.reserve">Պահպանել անձեռնմխելի</label>
         <div class="in unit-w"><input id="reserve" name="reserve" inputmode="decimal" placeholder="0"><span class="unit" id="u-reserve">AMD</span></div>
         <p class="hint" data-i18n="budget.reserve.hint"></p>
         <p class="error" id="e-reserve"></p>
-      </div>
-      <div id="budget-paid"></div>
+      </div></details>
+      <p class="hint" id="budget-paid-period"></p><div id="budget-paid"></div>
       <div class="kv" id="b-usable-row" hidden><div><span data-i18n="budget.usable.label">Օգտագործելի միանգամյա գումար</span><b class="num ok" id="b-usable"></b></div></div>
     </div>
 
@@ -114,6 +150,17 @@ const HTML = `
     ${budgetHelpHTML}
 
     </div>
+    <div id="budget-panel-review" class="stack" hidden>
+      <h2 id="budget-review-title" tabindex="-1" data-i18n="be.reviewTitle"></h2>
+      <p class="hint" id="budget-review-date"></p>
+      <dl id="budget-review-values" class="card stack"></dl>
+      <p class="hint" id="budget-review-extras"></p><p class="hint" id="budget-review-zero" data-i18n="be.zero" hidden></p>
+      <p class="hint" data-i18n="be.reviewHint"></p>
+      <button type="button" class="alink" id="budget-edit-answers" data-i18n="be.editAnswers"></button>
+    </div>
+    <button class="alink" type="button" id="budget-previous" hidden data-i18n="be.back"></button>
+    <button class="alink" type="button" id="budget-extras" hidden data-i18n="be.extras"></button>
+    <button class="cta" type="button" id="budget-review" hidden data-i18n="be.review"></button>
     <button class="cta" type="button" id="budget-next" data-i18n="be.next"></button>
     <button class="cta" type="submit" id="budget-save" hidden data-i18n="budget.save">Պահպանել բյուջեն</button>
     </fieldset>
@@ -126,12 +173,18 @@ let busy = false, loading = false, loaded = false, dirty = false, conflict = fal
 let pending = null;
 let version = null, revision = 0, requestID = 0, rowID = 0;
 let loadedCurrency = "AMD", loadedExponent = 2, loadedAsOf = null;
+let section = "budget", reviewedBody = null, spentPeriodStart = null;
 const currencies = new Set(["AMD", "USD", "EUR", "RUB"]);
 const exponent = () => $("budget-currency").value === loadedCurrency ? loadedExponent : 2;
 
-function showSection(section, focus = false) {
+function showSection(next, focus = false) {
+  section = next;
+  $("budget-panel-review").hidden = section !== "review";
   $("budget-next").hidden = section !== "budget";
-  $("budget-save").hidden = section === "budget";
+  $("budget-review").hidden = section === "budget" || section === "review";
+  $("budget-save").hidden = section !== "review";
+  $("budget-previous").hidden = section === "budget" || section === "review";
+  $("budget-extras").hidden = section !== "funding";
   for (const button of $("budget-form").querySelectorAll("[data-section]")) {
     const active = button.dataset.section === section;
     button.setAttribute("aria-selected", String(active));
@@ -149,7 +202,12 @@ function controls() {
   $("budget-save-retry").disabled = busy || loading;
   $("budget-form").setAttribute("aria-busy", String(busy || loading));
 }
-function changed() { if(pending||busy)return; dirty = true; revision++; validate(); }
+function syncLimit() {
+  const same = $("budget-same").checked;
+  $("budget-limit-field").hidden = same;
+  if (same && !policyMode) $("monthly").value = $("funding-monthly").value;
+}
+function changed() { if(pending||busy)return; dirty = true; reviewedBody = null; revision++; syncLimit(); validate(); }
 function errorAt(id, message) {
   $("e-" + id).textContent = message;
   $(id).setAttribute("aria-invalid", String(!!message));
@@ -158,12 +216,13 @@ function overrideRow(month = "", amount = "") {
   const row = document.createElement("div"); row.className = "row override";
   const m = document.createElement("input"); m.type = "month"; m.className = "o-month"; m.value = month;
   const a = document.createElement("input"); a.inputMode = "decimal"; a.className = "o-amount"; a.placeholder = "0"; a.value = String(amount);
-  m.setAttribute("aria-label", T("be.months")); a.setAttribute("aria-label", T("be.permission"));
+  m.setAttribute("aria-label", T("budget.months")); m.setAttribute("data-i18n-aria-label", "budget.months");
+  a.setAttribute("aria-label", T("be.permission")); a.setAttribute("data-i18n-aria-label", "be.permission");
   const error = document.createElement("p"); error.className = "error"; error.id = "override-error-" + rowID++;
   m.setAttribute("aria-describedby", error.id); a.setAttribute("aria-describedby", error.id);
   const del = document.createElement("button"); del.type = "button"; del.className = "alink quiet";
   del.style.width = "44px"; del.style.flexShrink = "0"; del.textContent = "✕";
-  del.setAttribute("aria-label", T("budget.months.remove"));
+  del.setAttribute("aria-label", T("budget.months.remove")); del.setAttribute("data-i18n-aria-label", "budget.months.remove");
   const wrapper = document.createElement("div"); wrapper.append(row, error);
   del.onclick = () => { haptic.tap(); wrapper.remove(); changed(); };
   row.append(m, a, del); return wrapper;
@@ -257,15 +316,27 @@ async function load(discard = false) {
     $("budget-currency").value = meta.currency;
     $("monthly").value = b.monthly_major == null ? "" : String(b.base_monthly_major ?? b.monthly_major);
     $("payday").value = b.pay_day > 0 ? String(b.pay_day) : "";
-    $("opening").value = String(b.opening_major ?? 0); $("reserve").value = String(b.reserve_major ?? 0);
+    $("opening").value = b.monthly_major == null ? "" : String(b.opening_major ?? 0); $("reserve").value = String(b.reserve_major ?? 0);
     $("override-list").replaceChildren(...Object.entries(b.overrides || {}).sort().map(([month, amount]) => overrideRow(month, amount)));
     funding.load(b.funding, { today, loans: targets.filter(l => l.currency === meta.currency && !l.optional_excluded && l.balance_major > 0), locked: policyMode });
+    $("budget-same").checked = !b.funding || b.monthly_major == null || majorAmount($("monthly").value, exponent()) === Number(minorText(b.funding.monthly_minor, exponent()));
+    // Older budgets without explicit cash need a fresh statement, but retain their monthly amount.
+    if (!b.funding && b.monthly_major != null) $("funding-monthly").value = $("monthly").value;
+    $("budget-same").disabled = policyMode;
+    $("budget-same-row").hidden = policyMode;
+    $("budget-same-hint").hidden = policyMode;
+    if (policyMode) $("budget-same").checked = false;
+    spentPeriodStart = b.funding?.spent_period_start || null;
+    renderPeriod();
+    $("budget-reserve-options").open = (b.reserve_major || 0) > 0;
+    reviewedBody = null; syncLimit();
     for (const id of ["monthly", "opening", "reserve"]) $(id).readOnly = policyMode;
     $("budget-currency").disabled = policyMode;
     $("override-list").querySelectorAll("input,button").forEach(el => { el.disabled = policyMode; });
     required = b.required_major != null ? { major: b.required_major, currency: b.currency } : null;
     version = meta.version; loaded = true; dirty = false; conflict = false;
     $("budget-status").textContent = policyMode ? T("be.policyActive") : ""; $("budget-reload").hidden = true;
+    showSection("budget");
     validate();
   } catch {
     if (id === requestID) {
@@ -279,9 +350,9 @@ async function load(discard = false) {
 function validate() {
   if (!loaded) return { ok: false };
   const values = {}; let ok = true;
-  for (const [id, positive] of [["monthly", true], ["opening", false], ["reserve", false]]) {
+  for (const [id, positive] of [["monthly", false], ["opening", false], ["reserve", false]]) {
     let message = "";
-    try { values[id] = majorAmount($(id).value, exponent(), { positive, blankZero: !positive }); }
+    try { values[id] = majorAmount($(id).value, exponent(), { positive, blankZero: id === "reserve" }); }
     catch (e) { message = e.message; ok = false; }
     errorAt(id, message);
   }
@@ -303,12 +374,60 @@ function validate() {
     note.style.color = diff < 0 ? "var(--danger)" : "";
   }
   const overrides = readOverrides(), f = funding.read();
+  if ($("budget-same").checked && $("e-monthly").textContent) {
+    const message = $("e-monthly").textContent;
+    $("e-funding-monthly").textContent = message;
+    $("funding-monthly").setAttribute("aria-invalid", "true");
+    // The visible primary question owns validation when the optional limit is hidden.
+    $("monthly").setAttribute("aria-invalid", "false");
+  }
   $("override-add").disabled = policyMode || $("override-list").children.length >= 36;
   return { ok: ok && overrides.ok && f.ok, body: {
     monthly_major: values.monthly, currency: cur, pay_day: pd,
     opening_major: values.opening, reserve_major: values.reserve,
     overrides: overrides.value, funding: f.value, expected_version: version, as_of: loadedAsOf,
   } };
+}
+function invalidField() {
+  return [...$("budget-form").querySelectorAll('[aria-invalid="true"]')].find(el => !el.closest("#funding-separate")?.hidden);
+}
+function revealInvalid(invalid) {
+  if (!invalid) return;
+  const panel = invalid.closest('[role="tabpanel"]');
+  if (panel) showSection(panel.id.replace("budget-panel-", ""));
+  for (let parent = invalid.parentElement; parent; parent = parent.parentElement) if (parent.tagName === "DETAILS") parent.open = true;
+  invalid.focus();
+}
+function review() {
+  if (busy || loading || !loaded || pending) return;
+  syncLimit();
+  const result = validate();
+  if (!result.ok) { haptic.bad(); revealInvalid(invalidField()); return; }
+  reviewedBody = JSON.stringify(result.body);
+  renderReview();
+  showSection("review");
+  $("budget-review-title").focus();
+}
+function renderPeriod() {
+  $("budget-paid-period").textContent = spentPeriodStart ? sub("be.period", {from:spentPeriodStart,to:loadedAsOf}) : T("be.periodUnknown");
+}
+function renderReview() {
+  if (!reviewedBody) return;
+  const b=JSON.parse(reviewedBody), rows=[
+    [T("bf.monthly"), fmtMoney(Number(minorText(b.funding.monthly_minor, exponent())),b.currency)],
+    [T("be.permission"),fmtMoney(b.monthly_major,b.currency)],
+    [T("budget.payday"),sub("be.reviewPayday",{day:b.pay_day})],
+    [T("be.cash"),fmtMoney(b.opening_major,b.currency)],
+    [T("bf.spent"),fmtMoney(Number(minorText(b.funding.spent_minor,exponent())),b.currency)],
+    [T("budget.reserve"),fmtMoney(b.reserve_major,b.currency)],
+  ];
+  $("budget-review-values").replaceChildren(...rows.map(([label,value])=>{
+    const row=document.createElement("div"), term=document.createElement("dt"), detail=document.createElement("dd");
+    term.textContent=label; detail.textContent=value; detail.className="num"; row.append(term,detail); return row;
+  }));
+  $("budget-review-date").textContent=sub("be.reviewToday",{date:loadedAsOf});
+  $("budget-review-extras").textContent=sub("be.extraSummary",{events:b.funding.events.length,months:Object.keys(b.overrides).length});
+  $("budget-review-zero").hidden = b.funding.monthly_minor !== 0;
 }
 async function save(e) {
   e.preventDefault();
@@ -327,6 +446,7 @@ async function save(e) {
       }
       return;
     }
+    if (section !== "review" || reviewedBody !== JSON.stringify(result.body)) { review(); return; }
     const body = policyMode ? {
       currency: result.body.currency, expected_version: version, pay_day: result.body.pay_day,
       monthly_minor: result.body.funding.monthly_minor, events: result.body.funding.events,
@@ -361,6 +481,9 @@ register({
     const form = $("budget-form"); funding = createFunding(form, changed, exponent);
     // Keep the declaration model intact; group questions by the borrower’s timeline.
     $("budget-monthly-money").append($("funding-monthly-field"));
+    $("funding-monthly-field").append($("budget-currency"), $("b-note"));
+    $("h-funding-spent").setAttribute("data-i18n", "be.paidHint");
+    $("h-funding-spent").textContent = T("be.paidHint");
     $("budget-paid").append($("funding-spent-field"));
     form.querySelector('[role="tablist"]').setAttribute("aria-label", T("budget.editing"));
     for (const id of ["monthly", "payday", "opening", "reserve"]) $(id).setAttribute("aria-describedby", "e-" + id);
@@ -381,10 +504,29 @@ register({
       if ($("override-list").children.length >= 36) return;
       const row = overrideRow(); $("override-list").append(row); changed(); row.querySelector("input").focus();
     };
-    $("budget-next").onclick = () => { showSection("funding"); $("opening").focus(); };
+    $("budget-next").onclick = () => {
+      syncLimit(); validate();
+      const invalid = [...$("budget-panel-budget").querySelectorAll('[aria-invalid="true"]')][0];
+      if (invalid) { haptic.bad(); invalid.focus(); return; }
+      showSection("funding"); $("opening").focus();
+    };
+    $("budget-previous").onclick = () => showSection(section === "months" ? "funding" : "budget");
+    $("budget-extras").onclick = () => showSection("months");
+    $("budget-review").onclick = review;
+    $("budget-edit-answers").onclick = () => showSection("budget");
     $("budget-reload").onclick = () => load(true);
     $("budget-save-retry").onclick = save;
     form.addEventListener("submit", save);
   },
-  onShow(_el, params) { if (params?.section === "funding") showSection("funding"); return load(); },
+  onLanguage() {
+    if (!loaded) return;
+    renderPeriod();
+    renderReview();
+    // Validation updates generated hints without rebuilding fields or the reviewed request.
+    if (!pending && !busy) validate();
+  },
+  async onShow(_el, params) {
+    await load();
+    if (params?.section === "funding" && !pending && !busy) showSection("funding");
+  },
 });

@@ -2,24 +2,25 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 const clean=s=>s.replace(/^import .*;$/gm,'').replaceAll('export ','');
+const amountSource=clean((await readFile(new URL('./web/js/screens/budget-funding.js',import.meta.url),'utf8')).split('export const fundingHTML')[0]);
 const budgetSource=clean(await readFile(new URL('./web/js/screens/budget-edit.js',import.meta.url),'utf8'));
 const policySource=clean(await readFile(new URL('./web/js/screens/budget-policy.js',import.meta.url),'utf8'));
 const response=(status=200,body={})=>({status,ok:status>=200&&status<300,json:async()=>body});
 function harness(kind,policyMode=false){
  const fields=new Map(),calls=[];let screen,current=kind==='policy'?'budget-policy':'budget-edit',post=async()=>response(),get=null,key=0;
  function field(id){if(!fields.has(id)){let value='';const f={id,disabled:false,hidden:false,readOnly:false,dataset:{},style:{},children:[],textContent:'',
- get value(){return value;},set value(v){value=String(v);},setAttribute(){},focus(){},append(...items){this.children.push(...items);},replaceChildren(...items){this.children=items;},addEventListener(type,fn){this[type]=fn;},
- querySelector(q){return field(id+q);},querySelectorAll(q){return q==='[data-section]'?['budget','funding','months'].map(section=>{const b=field('tab-'+section);b.dataset.section=section;return b;}):[];}};fields.set(id,f);}return fields.get(id);}
+ get value(){return value;},set value(v){value=String(v);},attrs:{},setAttribute(k,v){this.attrs[k]=v;},getAttribute(k){return this.attrs[k];},focus(){this.focused=true;},closest(q){if(q==='[role="tabpanel"]')return field(['monthly','funding-monthly','payday'].includes(id)?'budget-panel-budget':'budget-panel-funding');return null;},append(...items){this.children.push(...items);},replaceChildren(...items){this.children=items;},addEventListener(type,fn){this[type]=fn;},
+ querySelector(q){return field(id+q);},querySelectorAll(q){if(q==='[aria-invalid="true"]')return [...fields.values()].filter(f=>f.attrs['aria-invalid']==='true'&&(id!=='budget-panel-budget'||['monthly','funding-monthly','payday'].includes(f.id)));return q==='[data-section]'?['budget','funding','months'].map(section=>{const b=field('tab-'+section);b.dataset.section=section;return b;}):[];}};fields.set(id,f);}return fields.get(id);}
  const fundingData={monthly_minor:300000,spent_minor:2000,cash_through:'2026-09-03',events:[{on:'2026-10-01',minor:1000,expected:false,routing:{hold_until:'2026-10-02'}}]};
  const budget={version:7,today:'2026-09-03',currency:'AMD',currency_exponent:2,monthly_major:3000,base_monthly_major:3000,pay_day:5,opening_major:500,reserve_major:20,overrides:{},funding:fundingData};
  const policy={version:7,today:'2026-09-03',currency:'AMD',currency_exponent:2,monthly_minor:300000,explicit_funding:true,policies:policyMode?[{version:7,effective_from:'2026-09-01',monthly_minor:300000,carry_rule:'carry_cash',released_payment_rule:'roll_all'}]:[]};
  const env={Map,Set,Date,Number,JSON,Error,Math,BigInt,crypto:{randomUUID:()=>`key-${++key}`},document:{getElementById:field,createElement:()=>field('created-'+fields.size)},
  register:s=>{screen=s;},currentScreen:()=>current,go:id=>{current=id;},addStrings(){},T:k=>k,sub:k=>k,fmtMoney:String,haptic:{bad(){},tap(){},ok(){}},toast(){},invalidate(){},budgetHelpHTML:"",fundingHTML:'',
  majorAmount:v=>Number(v),minorAmount:v=>Number(v)*100,minorText:(n,e)=>String(n/10**e),validMonth:v=>/^\d{4}-\d\d$/.test(v),validDate:v=>typeof v==='string'&&/^\d{4}-\d\d-\d\d$/.test(v),
- createFunding:()=>({load(){field('funding-mode').value='separate';},read:()=>({ok:true,value:fundingData})}),
+ createFunding:()=>({load(data){field('funding-mode').value='separate';field('funding-monthly').value=data ? String(data.monthly_minor/100) : '';field('funding-spent').value=data ? String(data.spent_minor/100) : '';},read:()=>{let ok=true;const value={...fundingData};for(const [id,k] of [['funding-monthly','monthly_minor'],['funding-spent','spent_minor']]){let error='';try{value[k]=env.minorAmount(field(id).value,2);}catch(e){ok=false;error=e.message;}field(id).setAttribute('aria-invalid',String(!!error));field('e-'+id).textContent=error;}return {ok,value};}}),
  api:async(path,init={})=>{calls.push({path,body:init.body});if(init.method==='POST')return post(path,init);if(get)return get(path);return response(200,path==='api/budget'?budget:path==='api/loans'?{loans:[]}:policy);}};
- vm.createContext(env);vm.runInContext(kind==='policy'?policySource:budgetSource,env);screen.onMount();
- return {field,calls,screen,env,budget,fundingData,policy,setPost:f=>post=f,setGet:f=>get=f,setCurrent:c=>current=c,getKey:()=>key,submit:()=>kind==='policy'?field('bp-form').onsubmit({preventDefault(){}}):field('budget-form').submit({preventDefault(){}}),retry:()=>field(kind==='policy'?'bp-retry':'budget-save-retry').onclick({preventDefault(){}}),reload:()=>field(kind==='policy'?'bp-reload':'budget-reload').onclick()};
+ vm.createContext(env);vm.runInContext(amountSource,env);vm.runInContext(kind==='policy'?policySource:budgetSource,env);screen.onMount();
+ return {field,calls,screen,env,budget,fundingData,policy,setPost:f=>post=f,setGet:f=>get=f,setCurrent:c=>current=c,getKey:()=>key,submit:()=>{if(kind==='policy')return field('bp-form').onsubmit({preventDefault(){}});field('budget-review').onclick();return field('budget-form').submit({preventDefault(){}});},retry:()=>field(kind==='policy'?'bp-retry':'budget-save-retry').onclick({preventDefault(){}}),reload:()=>field(kind==='policy'?'bp-reload':'budget-reload').onclick()};
 }
 for(const mode of ['configuration','funding','policy']){
  const isPolicy=mode==='policy',h=harness(isPolicy?'policy':'budget',mode==='funding'),prefix=isPolicy?'bp-':'budget-',screen=isPolicy?'budget-policy':'budget-edit';
@@ -67,10 +68,70 @@ await loading;
 assert.equal(parallel.field('budget-fields').disabled,false);
 parallel.field('budget-next').onclick();
 assert.equal(parallel.field('budget-panel-funding').hidden,false);
+assert.equal(parallel.field('budget-save').hidden,true,'must review before saving');
+parallel.field('budget-review').onclick();
 assert.equal(parallel.field('budget-save').hidden,false);
+assert.equal(parallel.field('budget-panel-review').hidden,false);
 console.log('Budget context starts in one request wave; fields unlock only after complete loading.');
 
 const changedContext=harness('budget');changedContext.policy.version++;
 await changedContext.screen.onShow();
 assert.equal(changedContext.field('budget-fields').disabled,true,'concurrent reads of different budget revisions must not enable saving');
 assert.equal(changedContext.field('budget-status').textContent,'be.load');
+
+// Beginner flow: no invented cash, explicit zero, one monthly amount and a real review gate.
+const fresh=harness('budget');
+Object.assign(fresh.budget,{monthly_major:null,base_monthly_major:null,pay_day:null,opening_major:null,reserve_major:null,funding:null,version:0});
+await fresh.screen.onShow();
+assert.equal(fresh.field('budget-same').checked,true);
+assert.equal(fresh.field('budget-limit-field').hidden,true);
+assert.equal(fresh.field('opening').value,'','new cash must be stated, not fabricated as zero');
+assert.equal(fresh.field('funding-spent').value,'','no payments must be stated explicitly');
+fresh.field('budget-next').onclick();
+assert.equal(fresh.field('budget-panel-budget').hidden,false,'blank monthly and payday cannot advance');
+fresh.field('funding-monthly').value='125,50';fresh.field('payday').value='31';
+fresh.field('budget-form').input();fresh.field('budget-next').onclick();
+assert.equal(fresh.field('budget-panel-funding').hidden,false);
+fresh.field('budget-review').onclick();
+assert.equal(fresh.calls.filter(c=>c.body).length,0,'blank today/paid cannot save');
+fresh.field('opening').value='0';fresh.field('funding-spent').value='0';fresh.field('budget-form').input();
+await fresh.field('budget-form').submit({preventDefault(){}});
+assert.equal(fresh.calls.filter(c=>c.body).length,0,'Enter first opens review, never silently saves');
+assert.equal(fresh.field('budget-panel-review').hidden,false);
+assert.equal(fresh.field('budget-review-values').children[0].children[1].textContent,'125.5');
+await fresh.field('budget-form').submit({preventDefault(){}});
+const freshBody=JSON.parse(fresh.calls.at(-1).body);
+assert.equal(freshBody.monthly_major,125.5);assert.equal(freshBody.funding.monthly_minor,12550);
+assert.equal(freshBody.opening_major,0);assert.equal(freshBody.funding.spent_minor,0);assert.equal(freshBody.pay_day,31);
+
+const different=harness('budget');different.budget.base_monthly_major=2500;different.budget.monthly_major=2500;
+await different.screen.onShow();
+assert.equal(different.field('budget-same').checked,false,'different saved monthly amounts remain different');
+assert.equal(different.field('budget-limit-field').hidden,false);
+await different.submit();const diffBody=JSON.parse(different.calls.at(-1).body);
+assert.equal(diffBody.monthly_major,2500);assert.equal(diffBody.funding.monthly_minor,300000);
+assert.deepEqual(diffBody.funding.events,different.fundingData.events,'advanced event routing survives ordinary edit');
+
+const zero=harness('budget');await zero.screen.onShow();zero.field('funding-monthly').value='0';zero.field('opening').value='0';zero.field('funding-spent').value='0';zero.field('budget-form').input();
+zero.field('budget-review').onclick();assert.equal(zero.field('budget-review-zero').hidden,false,'zero-income shortfall explained without invented money');
+await zero.field('budget-form').submit({preventDefault(){}});
+assert.equal(JSON.parse(zero.calls.at(-1).body).monthly_major,0);
+
+const staleReview=harness('budget');await staleReview.screen.onShow();staleReview.field('budget-review').onclick();
+staleReview.field('funding-monthly').value='5000';staleReview.field('budget-form').input();
+await staleReview.field('budget-form').submit({preventDefault(){}});
+assert.equal(staleReview.calls.filter(c=>c.body).length,0,'changed values require a new review');
+await staleReview.field('budget-form').submit({preventDefault(){}});
+assert.equal(JSON.parse(staleReview.calls.at(-1).body).monthly_major,5000);
+console.log('Guided setup verifies explicit cash/paid zero, exact decimal input, reviewed save, preserved different limits and zero income.');
+
+const localized=harness('budget');await localized.screen.onShow();localized.field('budget-review').onclick();
+const reviewedBefore=vm.runInContext('reviewedBody',localized.env),readsBefore=localized.calls.length;
+localized.env.T=key=>'translated:'+key;localized.env.sub=key=>'translated:'+key;
+localized.screen.onLanguage();
+assert.equal(localized.field('budget-review-values').children[0].children[0].textContent,'translated:bf.monthly');
+assert.equal(localized.field('budget-review-date').textContent,'translated:be.reviewToday');
+assert.equal(vm.runInContext('reviewedBody',localized.env),reviewedBefore,'language change cannot alter the reviewed request');
+assert.equal(localized.calls.length,readsBefore,'translation must not reload or overwrite draft');
+assert.equal(localized.field('budget-panel-review').hidden,false);
+console.log('Budget review translates in place without losing answers, review state or request identity');

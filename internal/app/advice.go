@@ -42,7 +42,7 @@ func (w *Worker) advise(ctx context.Context, userID string, chat int64, l i18n.L
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "payment.reconcile"), w.mainMenu(l))
 	}
 	if err != nil {
-		return err
+		return w.refuse(ctx, chat, l, err)
 	}
 	if len(positions) == 0 {
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "loans.none"), w.addMarkup(l))
@@ -146,7 +146,13 @@ func (w *Worker) explainPlan(ctx context.Context, userID string, chat int64, l i
 		return fmt.Errorf("listing loans: %w", err)
 	}
 	positions, _, required, cur, err := w.positions(ctx, loans)
-	if err != nil || len(positions) == 0 {
+	if errors.Is(err, ErrPaymentReconciliation) {
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "payment.reconcile"), w.mainMenu(l))
+	}
+	if err != nil {
+		return w.refuse(ctx, chat, l, err)
+	}
+	if len(positions) == 0 {
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "loans.none"), w.addMarkup(l))
 	}
 	budget, err := w.Budgets.Budget(ctx, userID)
@@ -241,7 +247,7 @@ func (w *Worker) refuse(ctx context.Context, chat int64, l i18n.Locale, err erro
 	case errors.As(err, &tr):
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "advice.refuse.too_many", tr.Max), w.mainMenu(l))
 	case errors.As(err, &mc):
-		return w.Send.SendMessage(ctx, chat, i18n.T(l, "advice.currency_mismatch", mc.Want, mc.Have), w.budgetMarkup(l))
+		return w.Send.SendMessage(ctx, chat, i18n.T(l, "advice.refuse.mixed_currency", mc.Want, mc.Have), w.mainMenu(l))
 	case errors.Is(err, plan.ErrHorizon):
 		return w.Send.SendMessage(ctx, chat, i18n.T(l, "advice.refuse.horizon"), w.mainMenu(l))
 	case errors.Is(err, plan.ErrInvariant):
@@ -560,8 +566,7 @@ func (w *Worker) positions(ctx context.Context, loans []UserLoan) ([]plan.Positi
 			started = true
 		}
 		if ln.Contract.Currency.Code != cur.Code {
-			w.Log.WarnContext(ctx, "skipping a loan in another currency", "currency", ln.Contract.Currency.Code)
-			continue
+			return nil, money.Amount{}, money.Amount{}, cur, &plan.MixedCurrencyError{Have: ln.Contract.Currency.Code, Want: cur.Code}
 		}
 		s, err := ln.Schedule()
 		if err != nil {

@@ -159,9 +159,10 @@ var catalogue = map[Locale]map[string]string{
 		"advice.compare_pick":  "Ընտրեք նպատակը՝ ամսվա քայլերը տեսնելու համար։",
 
 		// --- empty states: what is missing and where to fix it ---
-		"loans.none":               "Դեռ վարկ չկա։ Ավելացրեք առաջինը, և ես կասեմ՝ ինչ անել։",
-		"advice.set_budget":        "Բյուջե դեռ նշված չէ։ Նշեք՝ որքան կարող եք ամսական հատկացնել բոլոր վարկերին, և ես կկազմեմ պլանը։",
-		"advice.currency_mismatch": "Բյուջեն %s-ով է, իսկ վարկերը՝ %s-ով։ Նշեք բյուջեն վարկերի արժույթով։",
+		"loans.none":                   "Դեռ վարկ չկա։ Ավելացրեք առաջինը, և ես կասեմ՝ ինչ անել։",
+		"advice.set_budget":            "Բյուջե դեռ նշված չէ։ Նշեք՝ որքան կարող եք ամսական հատկացնել բոլոր վարկերին, և ես կկազմեմ պլանը։",
+		"advice.currency_mismatch":     "Բյուջեն %s-ով է, իսկ վարկերը՝ %s-ով։ Նշեք բյուջեն վարկերի արժույթով։",
+		"advice.refuse.mixed_currency": "Ձեր վարկերը և՛ %s-ով են, և՛ %s-ով։ Պլանավորիչը արժույթներ չի փոխարկում, ուստի չի կարող դրանց համար մեկ պլան կազմել։ Mini App-ում կառավարեք յուրաքանչյուր արժույթն առանձին։",
 		"budget.too_low": "Բյուջեն <code>%s</code> է, իսկ պարտադիր վճարումները՝ <code>%s</code>։ " +
 			"Պլան չեմ կարող առաջարկել՝ այն կհանգեցնի ժամկետանց պարտքի։ Մեծացրեք բյուջեն կամ ստուգեք վարկերը։",
 
@@ -373,9 +374,10 @@ var catalogue = map[Locale]map[string]string{
 		"advice.ties_intro":    "Why the options coincide",
 		"advice.compare_pick":  "Pick a goal to see this month’s steps.",
 
-		"loans.none":               "No loans yet. Add the first one and I will tell you what to do.",
-		"advice.set_budget":        "No budget yet. Tell me how much you can put towards all your loans each month and I will build the plan.",
-		"advice.currency_mismatch": "Your budget is in %s but your loans are in %s. Set the budget in the loans’ currency.",
+		"loans.none":                   "No loans yet. Add the first one and I will tell you what to do.",
+		"advice.set_budget":            "No budget yet. Tell me how much you can put towards all your loans each month and I will build the plan.",
+		"advice.currency_mismatch":     "Your budget is in %s but your loans are in %s. Set the budget in the loans’ currency.",
+		"advice.refuse.mixed_currency": "Your loans use both %s and %s. This planner does not convert currencies, so it cannot create one plan for them. Manage each currency separately in the Mini App.",
 		"budget.too_low": "Your budget is <code>%s</code> but the required instalments come to <code>%s</code>. " +
 			"I cannot propose a plan that puts you into arrears. Raise the budget or check the loans.",
 

@@ -68,6 +68,9 @@ func TestBudgetReadResponseAndQueryCounts(t *testing.T) {
 		change func(*app.Budget, map[string]any)
 	}{
 		{"policy growth and adjustment", func(*app.Budget, map[string]any) {}},
+		{"paused policy preserves approved limit", func(b *app.Budget, want map[string]any) {
+			b.Funding.PlanningStartMonth = "2026-02"
+		}},
 		{"legacy unfunded override", func(b *app.Budget, want map[string]any) {
 			b.Policies = nil
 			b.Funding = nil
@@ -129,6 +132,16 @@ func TestBudgetReadResponseAndQueryCounts(t *testing.T) {
 			budget := budgetReadFixture()
 			want := map[string]any{"today": "2026-01-01", "currency": "USD", "currency_exponent": 2, "monthly_major": 16, "base_monthly_major": 10, "pay_day": 1, "version": 7, "opening_major": 7, "opening_as_of": "2026-01-01", "reserve_major": 1, "funding": budget.Funding, "required_major": 3}
 			tc.change(&budget, want)
+			if budget.Funding != nil {
+				period := "2026-01-01"
+				if tc.name == "user cycle across calendar month" {
+					period = "2025-12-15"
+				}
+				want["spent_period_start"] = period
+				f := *want["funding"].(*app.BudgetFunding)
+				f.SpentPeriodStart = period
+				want["funding"] = &f
+			}
 			before, _ := json.Marshal(budget)
 			store := &countedBudgetReader{value: budget}
 			users := &countedBudgetUsers{}

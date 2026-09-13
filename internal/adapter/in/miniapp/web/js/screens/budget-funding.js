@@ -4,12 +4,12 @@ import { createCashRouting } from "./budget-cash-routing.js";
 
 addStrings({
   "bf.mode": "Վարկերի համար գումար", "bf.legacy": "Գումարը դեռ նշված չէ",
-  "bf.separate": "Առանձին նշել գումարը", "bf.monthly": "Վարկերի ամսական գումար",
+  "bf.separate": "Առանձին նշել գումարը", "bf.monthly": "Ամեն ամիս որքա՞ն կարող եք առանձնացնել վարկերի համար",
   "bf.spent": "Արդեն վճարված", "bf.events": "Լրացուցիչ գումար",
   "bf.date": "Մուտքի ամսաթիվ", "bf.amount": "Գումար", "bf.expected": "Սպասվող, դեռ չհաստատված",
   "bf.add": "Ավելացնել լրացուցիչ գումար", "bf.remove": "Հեռացնել գումարը",
   "bf.hint": "Նշեք՝ վարկերի համար ինչ գումար է հասանելի և երբ։ Բյուջեն սահմանում է՝ որքան ծախսել։",
-  "bf.monthlyHint": "Գումար, որն ամեն ամիս ունեք վարկերի վճարման համար։",
+  "bf.monthlyHint": "Ներառեք բոլոր վարկերի վճարումները։ Նշեք վարձից, սննդից և այլ առօրյա ծախսերից հետո մնացող գումարը, ոչ թե ամբողջ աշխատավարձը։",
   "bf.spentHint": "Ընթացիկ բյուջետային ժամանակահատվածում վարկերին արդեն վճարած գումարը։ Գումարի մուտքի օրը այն չի զրոյանում։",
   "bf.eventsHint": "Գումար՝ բացի սովորական ամսական մուտքից։ Սպասվող գումարը չի օգտագործվում, մինչև այն չհաստատեք։",
   "bf.money": "Նշեք ոչ բացասական գումար՝ արժույթի թույլատրած ճշտությամբ և անվտանգ սահմաններում։ Տասնորդական բաժանիչը կետ կամ ստորակետ է։",
@@ -17,12 +17,12 @@ addStrings({
   "bf.limit": "Կարելի է նշել առավելագույնը 36 մուտք։",
 }, {
   "bf.mode": "Money for loans", "bf.legacy": "Money not entered yet",
-  "bf.separate": "Enter money separately", "bf.monthly": "Money set aside each month",
+  "bf.separate": "Enter money separately", "bf.monthly": "How much can you set aside for loans each month?",
   "bf.spent": "Already paid", "bf.events": "Extra money",
   "bf.date": "Available on", "bf.amount": "Amount", "bf.expected": "Expected, not yet confirmed",
   "bf.add": "Add extra money", "bf.remove": "Remove extra money",
   "bf.hint": "Enter what money is available for loans and when. Your budget sets how much to spend.",
-  "bf.monthlyHint": "Money you regularly have for loan payments.",
+  "bf.monthlyHint": "Include all your loan payments. Use money left after rent, food and other living costs. This is not your full salary.",
   "bf.spentHint": "Loan payments already made in the current budget period. Payday does not reset this.",
   "bf.eventsHint": "Money in addition to your regular monthly amount. Expected money is excluded until confirmed.",
   "bf.money": "Enter a non-negative amount within safe limits and the currency’s precision. Use a dot or comma for decimals.",
@@ -81,10 +81,10 @@ export function createFunding(root, changed, exponent) {
   function row(event) {
     const el = document.createElement("div"); el.className = "card stack";
     const id = "funding-event-" + nextID++;
-    el.innerHTML = `<label for="${id}-date">${T("bf.date")}</label><input type="date" id="${id}-date" class="funding-date">
-      <label for="${id}-amount">${T("bf.amount")}</label><input id="${id}-amount" class="funding-amount" inputmode="decimal">
-      <label class="row" for="${id}-expected"><input type="checkbox" id="${id}-expected" class="funding-expected" style="width:24px;flex-shrink:0">${T("bf.expected")}</label>
-      <p class="error" id="${id}-error"></p><button type="button" class="alink quiet">${T("bf.remove")}</button>`;
+    el.innerHTML = `<label for="${id}-date" data-i18n="bf.date">${T("bf.date")}</label><input type="date" id="${id}-date" class="funding-date">
+      <label for="${id}-amount" data-i18n="bf.amount">${T("bf.amount")}</label><input id="${id}-amount" class="funding-amount" inputmode="decimal">
+      <label class="row" for="${id}-expected"><input type="checkbox" id="${id}-expected" class="funding-expected" style="width:24px;flex-shrink:0"><span data-i18n="bf.expected">${T("bf.expected")}</span></label>
+      <p class="error" id="${id}-error"></p><button type="button" class="alink quiet" data-i18n="bf.remove">${T("bf.remove")}</button>`;
     const date = el.querySelector(".funding-date"), amount = el.querySelector(".funding-amount");
     date.min = context.today;
     date.setAttribute("aria-describedby", id + "-error"); amount.setAttribute("aria-describedby", id + "-error");

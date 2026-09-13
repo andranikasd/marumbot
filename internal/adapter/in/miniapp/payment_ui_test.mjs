@@ -10,9 +10,9 @@ let screen,sequence=0,response,confirm=true;
 const calls=[],destinations=[];
 const env={BigInt,Number,Map,JSON,encodeURIComponent,Error,crypto:{randomUUID:()=>`key-${++sequence}`},
  document:{getElementById:field,querySelectorAll:()=>[...fields.values()]},
- register:s=>{screen=s;},go:id=>destinations.push(id),addStrings(){},T:s=>s,toast(){},invalidate(){},confirmDialog:async()=>confirm,
+ register:s=>{screen=s;},go:(id,params)=>destinations.push(params?{id,params}:id),addStrings(){},T:s=>s,toast(){},invalidate(){},confirmDialog:async()=>confirm,
  getJSON:async path=>({loan_id:path.split('/')[2],loan:'Synthetic',currency:'AMD',currency_exponent:2,version:0,today:'2026-09-03'}),
- api:(path,init)=>{calls.push({path,body:JSON.parse(init.body)});return response();}};
+ api:(path,init)=>{if(init.method!=='POST')return Promise.resolve({ok:true,json:()=>env.getJSON(path)});calls.push({path,body:JSON.parse(init.body)});return response();}};
 vm.runInNewContext(source,env);
 screen.onMount();
 const show=id=>screen.onShow(null,{id});
@@ -43,3 +43,21 @@ response=()=>Promise.resolve({ok:false,status:409,json:async()=>({error:'possibl
 await submit();assert.equal(field('pay-amount').disabled,false);assert.equal(field('pay-save').disabled,false);
 amount('11.00');response=ok;await submit();assert.equal(calls.at(-1).body.amount_minor,1100);
 console.log('Payment retries preserve source facts across navigation and uncertain responses');
+
+await show('posted');amount('12.00');field('pay-posting').value='posted';field('pay-value').value='2026-09-03';await submit();
+assert.equal(field('payment-form').hidden,true);assert.equal(field('pay-done').hidden,false);assert.equal(field('pay-check').hidden,false);
+field('pay-check').onclick();assert.equal(destinations.at(-1).id,'reconcile');assert.equal(destinations.at(-1).params.id,'posted');
+await show('pending');amount('12.00');await submit();assert.equal(field('pay-check').hidden,true);assert.equal(field('pay-done-message').textContent,'payment.done.pending');
+await show('dates');amount('12.00');field('pay-posting').value='posted';field('pay-value').value='';const before=calls.length;await submit();assert.equal(calls.length,before);assert.equal(field('pay-error').textContent,'payment.dateError');
+console.log('Saved payments give the correct next action and reject missing bank dates');
+
+// Language/settings and other-loan navigation preserve separate unsaved drafts.
+await show('draft-A');amount('19.25');field('pay-posting').value='posted';field('pay-value').value='2026-09-02';field('pay-allocation-wrap').open=true;
+await show('draft-B');amount('42.00');
+await show('draft-A');assert.equal(field('pay-amount').value,'19.25');assert.equal(field('pay-value').value,'2026-09-02');assert.equal(field('pay-allocation-wrap').open,true);
+await show('draft-B');assert.equal(field('pay-amount').value,'42.00');
+const fact={id:'correction-fact',amount_minor:800,transaction_date:'2026-09-01',value_date:'',kind:'payment_reported'};
+await screen.onShow(null,{id:'draft-A',fact});assert.equal(field('pay-amount').value,'8.00','new and correction drafts are separate');
+amount('9.00');await show('draft-B');await screen.onShow(null,{id:'draft-A',fact});assert.equal(field('pay-amount').value,'9.00');
+field('pay-reload').click();assert.equal(destinations.at(-1).params.fact.id,fact.id,'reload must retain correction identity');
+console.log('Payment drafts survive navigation per loan and correction; reload retains the corrected fact');
