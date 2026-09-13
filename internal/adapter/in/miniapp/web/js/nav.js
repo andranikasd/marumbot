@@ -19,6 +19,7 @@ let params = null;
 let renderedLanguage = lang;
 
 export function register({ id, icon, labelKey, titleKey, parent, html, onMount, onShow, onLanguage }) {
+  parent ||= ({home:"more",plan:"more",activity:"loans",budget:"more"})[id];
   screens.set(id, { id, icon, labelKey, titleKey, parent, html, onMount, onShow, onLanguage, htmlLanguage: lang, el: null });
 }
 
@@ -106,7 +107,7 @@ export function buildTabs() {
   bar.setAttribute("aria-label", T("nav.label"));
   bar.textContent = "";
   for (const s of screens.values()) {
-    if (s.parent) continue;
+    if (s.parent || !["simple-plan","loans","more"].includes(s.id)) continue;
     const b = document.createElement("button");
     b.type = "button";
     b.dataset.go = s.id;

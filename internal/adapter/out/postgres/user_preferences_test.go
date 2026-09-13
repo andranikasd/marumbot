@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -36,7 +37,7 @@ func TestUserPreferencesCASReplayAndSnoozeOwnership(t *testing.T) {
 		t.Fatal(saved, err)
 	}
 	retry, err := svc.Save(ctx, owner, command)
-	if err != nil || retry != saved {
+	if err != nil || !reflect.DeepEqual(retry, saved) {
 		t.Fatal("replay", retry, err)
 	}
 	changed := command

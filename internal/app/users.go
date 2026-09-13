@@ -31,15 +31,16 @@ type UserStore interface {
 
 // UpsertUser carries an already-encrypted identity.
 type UpsertUser struct {
-	UserTag    string
-	UserSealed []byte
-	ChatTag    string
-	ChatSealed []byte
-	KeyVersion int
-	NewID      string
-	Locale     string
-	Timezone   string
-	TrialEnds  time.Time
+	RemindersEnabled *bool
+	UserTag          string
+	UserSealed       []byte
+	ChatTag          string
+	ChatSealed       []byte
+	KeyVersion       int
+	NewID            string
+	Locale           string
+	Timezone         string
+	TrialEnds        time.Time
 }
 
 // TrialPeriod is how long a new account can use Marum before it needs an

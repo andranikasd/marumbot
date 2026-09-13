@@ -19,6 +19,15 @@ func (t *loanCommandTx) RecordPaidMonths(ctx context.Context, id, user string, s
 	if err != nil {
 		return paymentError(err)
 	}
+	if statement.AccruedInterestMinor != nil {
+		asof, parseErr := date.Parse(statement.AsOf)
+		if parseErr != nil {
+			return parseErr
+		}
+		if err = t.RecordLoanOpeningInterest(ctx, id, user, *statement.AccruedInterestMinor, asof); err != nil {
+			return err
+		}
+	}
 	_, err = t.tx.Exec(ctx, q("CancelRemindersBeforeNextDue"), id, nextDue)
 	return err
 }

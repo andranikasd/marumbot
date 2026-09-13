@@ -35,7 +35,7 @@ func preferenceError(err error) error {
 
 func scanPreferences(row pgx.Row) (app.UserPreferences, error) {
 	var p app.UserPreferences
-	err := row.Scan(&p.Timezone, &p.QuietEnabled, &p.QuietStart, &p.QuietEnd, &p.Version)
+	err := row.Scan(&p.Timezone, &p.QuietEnabled, &p.QuietStart, &p.QuietEnd, &p.Version, &p.RemindersEnabled, &p.ReminderLeadDays, &p.ReminderMinute)
 	return p, preferenceError(err)
 }
 
@@ -60,14 +60,22 @@ func (t *preferenceTx) SetPreferences(ctx context.Context, user string, p app.Us
 	if err != nil {
 		return p, err
 	}
-	out, err := scanPreferences(t.tx.QueryRow(ctx, q("UpdateUserPreferences"), user, p.Timezone, p.QuietEnabled, p.QuietStart, p.QuietEnd, p.Version))
+	out, err := scanPreferences(t.tx.QueryRow(ctx, q("UpdateUserPreferences"), user, p.Timezone, p.QuietEnabled, p.QuietStart, p.QuietEnd, p.Version, p.RemindersEnabled, p.ReminderLeadDays, p.ReminderMinute))
 	if errors.Is(err, app.ErrNotFound) {
 		return out, app.ErrConflict
 	}
 	if err != nil {
 		return out, err
 	}
-	if old.Timezone != p.Timezone {
+	if p.ReminderLeadDays != nil || p.ReminderMinute != nil {
+		if _, err = t.tx.Exec(ctx, q("ApplyUserNotificationRules"), user); err != nil {
+			return out, err
+		}
+		if _, err = t.tx.Exec(ctx, q("SetUserNotificationRules"), user); err != nil {
+			return out, err
+		}
+	}
+	if old.Timezone != p.Timezone || p.ReminderLeadDays != nil || p.ReminderMinute != nil {
 		_, err = t.tx.Exec(ctx, q("RetimeUserReminders"), user, p.Timezone)
 	}
 	return out, err

@@ -118,18 +118,20 @@ func (r LoanRequest) Validate(today date.Date) (app.LoanDraft, error) {
 // original principal are deliberately absent: the first cannot change
 // without re-denominating the ledger, the second is history.
 type LoanEditRequest struct {
-	SnapshotMinor    *int64      `json:"snapshot_minor"`
-	SnapshotAsOf     string      `json:"snapshot_as_of"`
-	Icon             *string     `json:"icon"`
-	OptionalExcluded *bool       `json:"optional_excluded"`
-	Name             string      `json:"name"`
-	Description      string      `json:"description"`
-	RatePercent      json.Number `json:"rate_percent"`
-	Method           string      `json:"method"`
-	PrepayEffect     string      `json:"prepay_effect"`
-	StartDate        string      `json:"start_date"`
-	MaturityDate     string      `json:"maturity_date"`
-	PaymentDay       int         `json:"payment_day"`
+	SnapshotAccruedInterest  *json.Number `json:"snapshot_accrued_interest_major"`
+	ProjectionTermsConfirmed *bool        `json:"projection_terms_confirmed"`
+	SnapshotMinor            *int64       `json:"snapshot_minor"`
+	SnapshotAsOf             string       `json:"snapshot_as_of"`
+	Icon                     *string      `json:"icon"`
+	OptionalExcluded         *bool        `json:"optional_excluded"`
+	Name                     string       `json:"name"`
+	Description              string       `json:"description"`
+	RatePercent              json.Number  `json:"rate_percent"`
+	Method                   string       `json:"method"`
+	PrepayEffect             string       `json:"prepay_effect"`
+	StartDate                string       `json:"start_date"`
+	MaturityDate             string       `json:"maturity_date"`
+	PaymentDay               int          `json:"payment_day"`
 	// BalanceMajor restates what is owed today; zero means unchanged.
 	BalanceMajor json.Number `json:"balance_major"`
 }
@@ -143,6 +145,9 @@ func (r LoanEditRequest) FullEdit() bool { return r.StartDate != "" }
 // already has. Same discipline as LoanRequest.Validate: the browser's checks
 // exist to be quick, these exist because the browser can be lied about.
 func (r LoanEditRequest) Validate(cur money.Currency) (app.LoanEdit, error) {
+	if r.RatePercent == "" && r.SnapshotMinor == nil {
+		return app.LoanEdit{}, fmt.Errorf("%w: rate is required", ErrInvalid)
+	}
 	if r.Icon != nil {
 		if _, err := app.LoanIcon(*r.Icon); err != nil {
 			return app.LoanEdit{}, fmt.Errorf("%w: icon", ErrInvalid)
@@ -189,8 +194,10 @@ func (r LoanEditRequest) Validate(cur money.Currency) (app.LoanEdit, error) {
 	}
 
 	e := app.LoanEdit{
-		Name:        name,
-		Description: trimTo(r.Description, 200), Icon: r.Icon, OptionalExcluded: r.OptionalExcluded,
+		ProjectionTermsConfirmed: r.ProjectionTermsConfirmed,
+		BalanceOnly:              r.RatePercent == "" && r.SnapshotMinor != nil,
+		Name:                     name,
+		Description:              trimTo(r.Description, 200), Icon: r.Icon, OptionalExcluded: r.OptionalExcluded,
 		NominalRate:  money.RateFromPercent(whole, micro),
 		Type:         typ,
 		StartDate:    start,
@@ -208,6 +215,16 @@ func (r LoanEditRequest) Validate(cur money.Currency) (app.LoanEdit, error) {
 		}
 		e.BalanceMinor = r.SnapshotMinor
 		e.BalanceAsOf = asOf
+	}
+	if r.SnapshotAccruedInterest != nil {
+		if e.BalanceMinor == nil {
+			return app.LoanEdit{}, fmt.Errorf("%w: accrued interest needs bank balance", ErrInvalid)
+		}
+		value, parseErr := budgetMinor(*r.SnapshotAccruedInterest, cur, true)
+		if parseErr != nil || (*e.BalanceMinor == 0 && value > 0) {
+			return app.LoanEdit{}, fmt.Errorf("%w: accrued interest", ErrInvalid)
+		}
+		e.BalanceInterestMinor = &value
 	}
 	if r.BalanceMajor != "" {
 		minor, err := budgetMinor(r.BalanceMajor, cur, true)

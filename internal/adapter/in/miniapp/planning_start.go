@@ -44,7 +44,7 @@ func (s *Server) SetPlanningStart() http.HandlerFunc {
 		case errors.As(err, &unsupported):
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: errorUnsupported, jsonReason: unsupported.Feature})
 		case errors.Is(err, app.ErrPaymentReconciliation):
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "payment_reconciliation_required"})
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: errorPaymentReconciliation})
 		case errors.Is(err, amortisation.ErrUnsolvable):
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "loan_schedule_invalid"})
 		case errors.Is(err, app.ErrFundingRequired):

@@ -128,8 +128,41 @@ func (s LoanCommands) Revise(ctx context.Context, user, id, key string, expected
 		if err != nil {
 			return LoanCommandReceipt{}, err
 		}
+		if edit.BalanceInterestMinor != nil && (edit.BalanceMinor == nil || *edit.BalanceInterestMinor < 0 || *edit.BalanceInterestMinor > 9007199254740991 || (*edit.BalanceMinor == 0 && *edit.BalanceInterestMinor > 0)) {
+			return LoanCommandReceipt{}, ErrPaymentInvalid
+		}
 		if err = tx.ApplyLoanRevision(ctx, id, user, revision); err != nil {
 			return LoanCommandReceipt{}, err
+		}
+		if edit.BalanceInterestMinor != nil {
+			recorder, ok := tx.(interface {
+				RecordLoanOpeningInterest(context.Context, string, string, int64, date.Date) error
+			})
+			if !ok {
+				return LoanCommandReceipt{}, ErrPaymentInvalid
+			}
+			asof := revision.BalanceAsOf
+			if asof.IsZero() {
+				asof = today
+			}
+			if err = recorder.RecordLoanOpeningInterest(ctx, id, user, *edit.BalanceInterestMinor, asof); err != nil {
+				return LoanCommandReceipt{}, err
+			}
+		}
+		if edit.ProjectionTermsConfirmed != nil && !edit.BalanceOnly {
+			recorder, ok := tx.(interface {
+				ConfirmLoanProjectionTerms(context.Context, string, string, int64, date.Date, bool) error
+			})
+			if !ok {
+				return LoanCommandReceipt{}, ErrPaymentInvalid
+			}
+			original := ln.OriginalPrincipal.Minor()
+			if original <= 0 {
+				original = ln.Balance.Minor()
+			}
+			if err = recorder.ConfirmLoanProjectionTerms(ctx, id, user, original, today, *edit.ProjectionTermsConfirmed); err != nil {
+				return LoanCommandReceipt{}, err
+			}
 		}
 		version, err := tx.Version(ctx, id, user)
 		return LoanCommandReceipt{ID: id, Version: version}, err

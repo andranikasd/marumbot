@@ -4,7 +4,7 @@ import vm from 'node:vm';
 const source=(await readFile(new URL('./web/js/screens/loans.js',import.meta.url),'utf8')).replace(/^import .*;$/gm,'');
 const fields=new Map(),reads=[];
 const field=id=>{if(!fields.has(id))fields.set(id,{hidden:true,children:[],textContent:'',style:{}});return fields.get(id);};
-const env={document:{getElementById:field},register(){},addStrings(){},T:x=>x,
+const env={document:{getElementById:field},register(screen){env.screen=screen;},addStrings(){},T:x=>x,
  getJSON:(path,callback)=>new Promise((resolve,reject)=>reads.push({resolve:body=>{callback(body);resolve(body);},reject}))};
 vm.createContext(env);vm.runInContext(source,env);
 let request=env.load();reads.shift().resolve({loans:[]});await request;
@@ -29,3 +29,10 @@ env.summarise([{...paid,next_due:'2026-08-15'}],'2026-09-20');assert.equal(field
 env.summarise([{...paid,needs_reconciliation:true}],'2026-09-20');assert.equal(field('m-required').textContent,'—');
 env.summarise([paid],'2026-10-01');assert.equal(field('m-required').textContent,'USD 100');
 console.log('Required this month excludes future confirmed payments and marks missing/overdue/reconciliation data unknown.');
+
+// The navigator passes the mounted element first and route parameters second.
+env.loanCard=()=>({});field('manage-list').append=()=>{};
+request=env.screen.onShow({}, {setup:true});reads.shift().resolve({loans:[paid],today:'2026-09-20'});await request;
+assert.equal(field('manage-continue').hidden,false,'saved wizard loans must offer Continue to monthly extra');
+request=env.screen.onShow({}, null);reads.shift().resolve({loans:[paid],today:'2026-09-20'});await request;
+assert.equal(field('manage-continue').hidden,true,'ordinary loan management must not force onboarding');

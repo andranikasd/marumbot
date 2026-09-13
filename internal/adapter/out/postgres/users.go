@@ -17,7 +17,7 @@ func (s *Store) UpsertByTelegram(ctx context.Context, in app.UpsertUser) (app.Ac
 	var a app.Account
 	err := s.pool.QueryRow(ctx, q("UpsertUserByTelegram"),
 		in.UserTag, in.NewID, in.Locale, in.Timezone, in.TrialEnds,
-		in.UserSealed, in.ChatTag, in.ChatSealed, in.KeyVersion,
+		in.UserSealed, in.ChatTag, in.ChatSealed, in.KeyVersion, in.RemindersEnabled,
 	).Scan(&a.ID, &a.Created)
 	var conflict *pgconn.PgError
 	if errors.As(err, &conflict) && conflict.Code == "23505" {

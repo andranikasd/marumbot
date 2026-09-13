@@ -12,17 +12,26 @@ import (
 
 var ErrInvalidPreferences = errors.New("invalid preferences")
 
-// UserPreferences describes delivery timing; required reminders cannot be disabled.
+// UserPreferences describes user-selected delivery and local timing.
 // Quiet boundaries are local minutes since midnight, inclusive start/exclusive end.
 type UserPreferences struct {
-	Timezone     string `json:"timezone"`
-	QuietEnabled bool   `json:"quiet_enabled"`
-	QuietStart   int    `json:"quiet_start"`
-	QuietEnd     int    `json:"quiet_end"`
-	Version      int64  `json:"version"`
+	RemindersEnabled *bool  `json:"reminders_enabled,omitempty"`
+	ReminderLeadDays *int   `json:"reminder_lead_days,omitempty"`
+	ReminderMinute   *int   `json:"reminder_minute,omitempty"`
+	Timezone         string `json:"timezone"`
+	QuietEnabled     bool   `json:"quiet_enabled"`
+	QuietStart       int    `json:"quiet_start"`
+	QuietEnd         int    `json:"quiet_end"`
+	Version          int64  `json:"version"`
 }
 
 func (p UserPreferences) Validate() error {
+	if (p.ReminderLeadDays == nil) != (p.ReminderMinute == nil) {
+		return ErrInvalidPreferences
+	}
+	if p.ReminderLeadDays != nil && (*p.ReminderLeadDays < 0 || *p.ReminderLeadDays > 7) || p.ReminderMinute != nil && (*p.ReminderMinute < 0 || *p.ReminderMinute > 1439) {
+		return ErrInvalidPreferences
+	}
 	if p.Timezone == "" || p.Timezone == "Local" || strings.TrimSpace(p.Timezone) != p.Timezone {
 		return ErrInvalidPreferences
 	}

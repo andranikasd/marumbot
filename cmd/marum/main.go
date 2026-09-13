@@ -204,7 +204,8 @@ func run(log *slog.Logger, verifyRestore bool) error { //nolint:gocyclo // wirin
 	// The Mini App is served from the public listener under /app, so it shares
 	// the Worker's hostname and needs no second custom domain or certificate.
 	mini := &miniapp.Server{
-		BotToken: cfg.BotToken, Loans: store, Users: store, Budgets: store,
+		DefaultTimezone: cfg.DefaultTimezone,
+		BotToken:        cfg.BotToken, Loans: store, Users: store, Budgets: store,
 		Editor: store, Reader: store, Required: worker, Filed: worker, Planner: worker,
 		Reviser: worker, BudgetConfig: app.BudgetCommands{Store: store, Clock: clock, Users: store},
 		Payments: &app.PaymentService{Store: store, Clock: clock, Users: store}, PaymentReader: store,

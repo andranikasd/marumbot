@@ -25,14 +25,21 @@ import (
 var assets embed.FS
 
 // Server serves the Mini App and the one endpoint it calls.
+const (
+	keyToday                   = "today"
+	errorInvalidAmount         = "invalid_amount"
+	errorPaymentReconciliation = "payment_reconciliation_required"
+)
+
 type Server struct {
-	Wake     func()
-	BotToken string
-	Loans    app.LoanWriter
-	Editor   app.LoanEditor
-	Reader   app.LoanReader
-	Budgets  app.BudgetStore
-	Required app.RequiredReader
+	DefaultTimezone string
+	Wake            func()
+	BotToken        string
+	Loans           app.LoanWriter
+	Editor          app.LoanEditor
+	Reader          app.LoanReader
+	Budgets         app.BudgetStore
+	Required        app.RequiredReader
 	// Filed is told when a loan is created, so reminders exist from the
 	// first day rather than from the next scheduler tick. Optional.
 	Filed app.LoanFiledHook
@@ -83,6 +90,12 @@ func (s *Server) Handler() http.Handler {
 	}
 	mux := http.NewServeMux()
 	s.RegisterScenarioRoutes(mux)
+	mux.Handle("POST /api/session", s.session())
+	mux.Handle("GET /api/projection", s.Projection())
+	mux.Handle("GET /api/projection/settings", s.ProjectionSettings())
+	mux.Handle("POST /api/projection/settings", s.ProjectionSettings())
+	mux.Handle("GET /api/setup/loans", s.SetupLoans())
+	mux.Handle("POST /api/setup/loans", s.SetupLoans())
 	mux.Handle("POST /api/loans", s.createLoan())
 	mux.Handle("POST /api/budget", s.setBudget())
 	mux.Handle("GET /api/plan", s.planSheet())
@@ -241,7 +254,7 @@ func (s *Server) getBudget() http.Handler {
 			http.Error(w, errorUnavailable, http.StatusServiceUnavailable)
 			return
 		}
-		out := map[string]any{"today": today.String()}
+		out := map[string]any{keyToday: today.String()}
 		if s.Budgets == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{jsonError: errorUnavailable})
 			return
@@ -548,9 +561,18 @@ func (s *Server) listLoans() http.Handler {
 			// schedule cannot be built; the card then shows a dash, not a zero.
 			row["needs_reconciliation"] = l.UnreconciledPayments
 			row["paid_through"] = paidThrough(l)
+			row["interest_unknown"] = l.InterestUnknown
+			row["projection_terms_confirmed"] = l.ProjectionTermsConfirmed
+			if l.InterestUnknown {
+				row["rate_percent"] = nil
+			}
 			if next, err := l.NextInstalment(); err == nil {
 				row["next_due"] = next.Due.String()
 				row["next_payment_major"] = major(next.Payment)
+			} else if !l.UnreconciledPayments && l.Balance.Sign() > 0 && l.Contract.HasScheduled && !l.Contract.NotBeforeDue.IsZero() && l.Contract.ScheduledPayment.Sign() > 0 {
+				row["next_due"] = l.Contract.NotBeforeDue.String()
+				row["next_payment_major"] = major(l.Contract.ScheduledPayment)
+				row["payment_source"] = "bank_statement"
 			}
 			out = append(out, row)
 		}
@@ -559,7 +581,7 @@ func (s *Server) listLoans() http.Handler {
 			paymentHTTPError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"loans": out, "today": today.String()})
+		writeJSON(w, http.StatusOK, map[string]any{"loans": out, keyToday: today.String()})
 	})
 }
 

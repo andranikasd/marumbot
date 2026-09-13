@@ -271,7 +271,7 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 				w.Log.DebugContext(ctx, "menu button not refreshed", "error", err)
 			}
 		}
-		return w.Send.SendMessage(ctx, chat, w.withTip(ctx, c.UserID, l, w.startText(l), stageNoLoans), w.mainMenu(l))
+		return w.Send.SendMessage(ctx, chat, w.startText(l), w.startMarkup(l))
 
 	case KindHelp:
 		return w.Send.SendMessage(ctx, chat, w.withTip(ctx, c.UserID, l, w.helpText(l)), w.mainMenu(l))
@@ -599,18 +599,9 @@ func (w *Worker) showWorking(ctx context.Context, userID string, chat int64, l i
 	return w.Send.SendMessage(ctx, chat, b.String(), w.mainMenu(l))
 }
 
-// startText is a titled card: what Marum is, the three steps, the one next
-// action, and a way to switch language. The language hint is written in the
-// other language on purpose: it is the one line a reader who landed in the
-// wrong locale needs to be able to read.
+// startText introduces the guided Mini App in one short message.
 func (w *Worker) startText(l i18n.Locale) string {
-	return "<b>" + i18n.T(l, "start.title") + "</b>\n" +
-		i18n.T(l, "start.greeting") + "\n\n" +
-		i18n.T(l, "start.steps") + "\n\n" +
-		i18n.T(l, "start.next") + "\n" +
-		i18n.T(l, "start.language") + "\n\n" +
-		"<i>" + i18n.T(l, "start.no_ai") + "</i>\n" +
-		"<i>" + i18n.T(l, "start.reminders") + "</i>"
+	return "<b>" + i18n.T(l, "start.title") + "</b>\n\n" + i18n.T(l, "start.simple")
 }
 
 // helpText explains the three goals in plain words before it lists commands:
@@ -636,42 +627,28 @@ func (w *Worker) helpText(l i18n.Locale) string {
 		"<i>" + i18n.T(l, "start.no_ai") + "</i>"
 }
 
-// mainMenu is the persistent keyboard under the message box.
-//
-// A reply keyboard rather than an inline one, because an inline keyboard lives
-// inside the message that carried it and scrolls out of reach; this stays put.
-// A borrower on a phone should never have to remember a command name to see
-// what they owe.
-//
-// Four buttons, two rows: open the app, ask what to do, see the loans, set
-// the budget. Language and help live in the "/" command menu Telegram
-// already shows; a keyboard that lists everything lists nothing.
-//
-// The first button requests an authenticated inline Mini App launch button.
-// Reply-keyboard web_app buttons do not carry the required initData.
-// Contextual Add loan buttons still
-// open the form directly; the persistent entry point must describe the
-// whole product rather than one workflow inside it.
+// mainMenu keeps one familiar entry point. Legacy commands remain supported.
+// The text button requests an authenticated inline Mini App launch; reply
+// keyboard web_app buttons do not provide the initData required by the server.
 func (w *Worker) mainMenu(l i18n.Locale) any {
-	rows := [][]map[string]any{}
-	if w.MiniApp != "" {
-		rows = append(rows, []map[string]any{
-			button(i18n.DashboardButton(l)),
-			button(i18n.Button(l, KindAdvice)),
-		})
-	} else {
-		rows = append(rows, []map[string]any{button(i18n.Button(l, KindAdvice))})
+	rows := [][]map[string]any{{button(i18n.DashboardButton(l))}}
+	if w.MiniApp == "" {
+		rows = [][]map[string]any{{button(i18n.Button(l, KindLoans)), button(i18n.Button(l, KindHelp))}}
 	}
-	rows = append(rows,
-		[]map[string]any{button(i18n.Button(l, KindLoans)), button(i18n.Button(l, KindBudget))},
-		[]map[string]any{button(i18n.Button(l, KindLanguage))},
-	)
+
 	return map[string]any{
 		"keyboard":                rows,
 		"resize_keyboard":         true,
 		"is_persistent":           true,
 		"input_field_placeholder": i18n.T(l, "kb.placeholder"),
 	}
+}
+
+func (w *Worker) startMarkup(l i18n.Locale) any {
+	if w.MiniApp == "" {
+		return w.mainMenu(l)
+	}
+	return map[string]any{"inline_keyboard": [][]map[string]any{{webAppButton(i18n.DashboardButton(l), w.miniURL(""))}}}
 }
 
 // addMarkup is the one-tap way out of "no loans": the form, if there is one,
@@ -681,7 +658,7 @@ func (w *Worker) addMarkup(l i18n.Locale) any {
 		return w.mainMenu(l)
 	}
 	return map[string]any{keyInline: [][]map[string]any{{
-		webAppButton(i18n.T(l, "add.button"), w.miniURL("add")),
+		webAppButton(i18n.T(l, "add.button"), w.miniURL("loan-setup")),
 	}}}
 }
 

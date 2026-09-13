@@ -6,7 +6,7 @@ import (
 )
 
 // RequiredSchemaVersion is the earliest schema this binary may serve.
-const RequiredSchemaVersion int64 = 26
+const RequiredSchemaVersion int64 = 29
 
 // OperationsStore is the non-personal read surface for public service probes.
 type OperationsStore interface {

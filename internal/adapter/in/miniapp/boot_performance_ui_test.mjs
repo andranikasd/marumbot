@@ -36,8 +36,8 @@ class Element {
   querySelector(selector){return this.querySelectorAll(selector)[0]??null;}
 }
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
-async function boot(search='?screen=payment&id=loan-7',initialLanguage='hy') {
-  const fields=new Map(),events=new Map(),settings=[];
+async function boot(search='?screen=payment&id=loan-7',initialLanguage='hy',deferSession=false) {
+  const fields=new Map(),events=new Map(),settings=[],sessions=[],paths=[];
   const field=id=>{if(!fields.has(id))fields.set(id,new Element());return fields.get(id);};
   const appbar=new Element();appbar.append(field('appbar-action'),field('appbar-title'));
   const document={documentElement:new Element(),body:new Element(),visibilityState:'visible',
@@ -48,7 +48,7 @@ async function boot(search='?screen=payment&id=loan-7',initialLanguage='hy') {
   const env={document,window:{scrollTo(){},addEventListener(){}},URL,URLSearchParams,Intl,Date,
     setTimeout,clearTimeout,localStorage:{getItem(){return null;}},sessionStorage:{getItem(){return null;}},
     location:{search,href:'https://example.test/app/'+search},fetch:async()=>({ok:false}),
-    api:()=>new Promise((resolve,reject)=>settings.push({resolve,reject})),
+    api:(path,options)=>{paths.push(path);if(path==='api/session')return deferSession?new Promise((resolve,reject)=>sessions.push({resolve,reject})):Promise.resolve({ok:true,json:async()=>({ready:true})});return new Promise((resolve,reject)=>settings.push({resolve,reject,path,options}));},
     prefetch(){},watchOffline(){},watchAuthentication(){},authenticationRequired(){return false;},refreshAuthentication(){},beginView(){viewChanges++;},
     read(){reads++;},makeElement:tag=>new Element(tag),field};
   vm.createContext(env);
@@ -58,7 +58,7 @@ async function boot(search='?screen=payment&id=loan-7',initialLanguage='hy') {
   vm.runInContext(`
     addStrings({'test.payment':'Վճարում','test.home':'Գլխավոր','test.more':'Ավելին','test.dynamic':'Հեռացնել'},
       {'test.payment':'Payment','test.home':'Home','test.more':'More','test.dynamic':'Remove'});
-    register({id:'home',labelKey:'test.home',html:'',onMount(root){
+    register({id:'simple-plan',labelKey:'test.home',html:'',onMount(root){
       const caption=field('home-caption');caption.tagName='span';root.append(caption);
       root.append(field('home-loan-name'));
     },onShow(){read();field('home-caption').textContent=T('test.dynamic');field('home-loan-name').textContent='Home';}});
@@ -73,7 +73,8 @@ async function boot(search='?screen=payment&id=loan-7',initialLanguage='hy') {
     register({id:'more',labelKey:'test.more',html:'',onMount(root){root.append(field('prefs'));},onShow(){read();field('prefs').value='saved';}});
   `,env);
   vm.runInContext(sources[3],env);
-  return {env,field,settings,events,get reads(){return reads;},get viewChanges(){return viewChanges;},run:code=>vm.runInContext(code,env)};
+  await flush();
+  return {env,field,settings,sessions,paths,events,get reads(){return reads;},get viewChanges(){return viewChanges;},run:code=>vm.runInContext(code,env)};
 }
 
 {
@@ -153,4 +154,33 @@ console.log('Deferred settings boot: immediate deep links, safe locale refresh, 
  assert.equal(app.run('currentScreen()'),'payment','failed module download preserves current form');
  assert.equal(app.field('view').hasAttribute('aria-busy'),false,'failed load clears busy indicator');
  assert.equal(app.field('appbar-action').hidden,false,'failed load offers a retry');
+}
+
+{
+ const app=await boot('?screen=payment&id=loan-7','hy',true);
+ assert.deepEqual(app.paths,['api/session'],'private data never loads before verified account bootstrap');
+ assert.equal(app.run('currentScreen()'),null);assert.equal(app.field('tabs').hidden,true);
+ app.sessions.shift().resolve({ok:false,status:503});await flush();
+ assert.equal(app.run('currentScreen()'),null);assert.equal(app.settings.length,0);
+ app.field('session-retry').onclick();app.sessions.shift().resolve({ok:true,json:async()=>({ready:true})});await flush();
+ assert.equal(app.run('currentScreen()'),'payment');assert.equal(app.field('tabs').hidden,false);
+ assert.equal(app.paths.filter(p=>p==='api/session').length,2,'explicit retry resumes bootstrap');
+ assert.deepEqual(app.field('tabs').childNodes.map(b=>b.dataset.go),['simple-plan','loans','more'],'only three everyday destinations');
+}
+
+{
+ const app=await boot('?screen=simple-plan','en',true);
+ app.sessions.shift().resolve({ok:false,status:403,json:async()=>({error:'account_unavailable'})});await flush();
+ assert.equal(app.run('sessionErrorKey'),'session.unavailable');assert.equal(app.settings.length,0);assert.equal(app.run('currentScreen()'),null);
+ assert.equal(app.field('tabs').hidden,true,'unavailable accounts never mount private screens');
+ app.field('appbar-language').onclick();assert.equal(app.field('session-error').textContent,'Այս հաշիվն անհասանելի է։ Դիմեք աջակցությանը։');
+}
+
+{
+ const app=await boot('?screen=simple-plan','en',true);
+ app.field('appbar-language').onclick();assert.equal(app.run('lang'),'hy');
+ app.sessions.shift().resolve({ok:true,json:async()=>({ready:true})});await flush();
+ const save=app.settings.shift();assert.equal(save.options.method,'POST');assert.equal(JSON.parse(save.options.body).locale,'hy','explicit preboot language choice is persisted instead of replaced by phone locale');
+ save.resolve({ok:true,json:async()=>({locale:'hy'})});await flush();
+ assert.equal(app.run('lang'),'hy');assert.equal(app.run('prebootLocaleChoice'),null);
 }

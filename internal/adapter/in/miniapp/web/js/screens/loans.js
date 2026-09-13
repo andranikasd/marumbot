@@ -13,6 +13,8 @@ addStrings({'balance.asof':'Մնացորդը՝ {d}','balance.undated':'Մնաց�
 
 const EYE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>';
 
+addStrings({'manage.continue':'Շարունակել'},{'manage.continue':'Continue'});
+let setup = false;
 const HTML = `
   <div class="hero" id="manage-summary" hidden>
     <div class="k"><span data-i18n="manage.owed">Ընդհանուր պարտք</span>
@@ -27,7 +29,8 @@ const HTML = `
   </div>
   <p class="sec" id="manage-sec" hidden data-i18n="manage.yours">Ձեր վարկերը</p>
   <div id="manage-list" style="display:grid;gap:10px"></div>
-  <button class="cta ghost" type="button" id="manage-add" data-go="add" data-i18n="manage.add" hidden>Ավելացնել վարկ</button>
+  <button class="cta ghost" type="button" id="manage-add" data-go="loan-setup" data-i18n="manage.add" hidden>Ավելացնել վարկ</button>
+  <button class="cta" type="button" id="manage-continue" data-go="extra" data-i18n="manage.continue" hidden></button>
   <div id="manage-loading" hidden><div class="skel hero-skel"></div><div class="skel" style="margin-top:12px"></div><div class="skel" style="margin-top:10px"></div></div>
   <div class="state" id="manage-error" hidden>
     <b data-i18n="err.load">Չհաջողվեց բեռնել։</b>
@@ -37,7 +40,7 @@ const HTML = `
     <div class="tile lg">M</div>
     <b data-i18n="manage.empty.title">Դեռ վարկ չկա</b>
     <span data-i18n="manage.empty">Ավելացրեք առաջինը, և պլանը կհայտնվի։</span>
-    <button class="cta" type="button" data-go="add" data-i18n="manage.add_first">Ավելացնել առաջինը</button>
+    <button class="cta" type="button" data-go="loan-setup" data-i18n="manage.add_first">Ավելացնել առաջինը</button>
   </div>
 `;
 
@@ -123,6 +126,7 @@ function renderList(loans, today) {
   mainCurrency = live.length > 0 ? live[0].currency : "";
   for (const l of loans) list.append(loanCard(l));
   summarise(loans, today);
+  $("manage-continue").hidden = !setup || loans.length === 0;
   $("manage-sec").hidden = loans.length === 0;
   $("manage-add").hidden = loans.length === 0;
   $("manage-empty").hidden = loans.length > 0;
@@ -161,5 +165,5 @@ register({
     eye.setAttribute("aria-pressed", String(mask.on()));
     eye.addEventListener("click", () => { haptic.tap(); eye.setAttribute("aria-pressed", String(mask.toggle())); });
   },
-  onShow() { load(); },
+  onShow(_root,params) { setup=!!params?.setup; return load(); },
 });

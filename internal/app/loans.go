@@ -51,7 +51,11 @@ type LoanWriter interface {
 // balance and a rate, which made every number the engine can produce
 // unreachable from the bot.
 type UserLoan struct {
-	MutationVersion int64
+	OpeningInterestKnown     bool
+	OpeningInterestMinor     int64
+	MutationVersion          int64
+	InterestUnknown          bool
+	ProjectionTermsConfirmed bool
 
 	UnreconciledPayments bool
 	Icon                 string
@@ -316,6 +320,12 @@ func LoanIcon(value string) (string, error) {
 
 // Schedule refuses projections that would ignore an unreconciled payment fact.
 func (l UserLoan) Schedule() (amortisation.Schedule, error) {
+	if l.Balance.Minor() > 0 && !l.Contract.NotBeforeDue.IsZero() && l.Contract.NotBeforeDue.Before(l.AsOf) {
+		return amortisation.Schedule{}, ErrLoanOverdueNeedsReview
+	}
+	if l.InterestUnknown && l.Balance.Minor() > 0 {
+		return amortisation.Schedule{}, ErrLoanInterestUnknown
+	}
 	if l.UnreconciledPayments {
 		return amortisation.Schedule{}, ErrPaymentReconciliation
 	}
@@ -329,6 +339,12 @@ func (l UserLoan) Schedule() (amortisation.Schedule, error) {
 // and a loan list projected every loan two or three times over to reach it.
 // The refusal is the same one Schedule makes, for the same reason.
 func (l UserLoan) NextInstalment() (amortisation.Obligation, error) {
+	if l.Balance.Minor() > 0 && !l.Contract.NotBeforeDue.IsZero() && l.Contract.NotBeforeDue.Before(l.AsOf) {
+		return amortisation.Obligation{}, ErrLoanOverdueNeedsReview
+	}
+	if l.InterestUnknown && l.Balance.Minor() > 0 {
+		return amortisation.Obligation{}, ErrLoanInterestUnknown
+	}
 	if l.UnreconciledPayments {
 		return amortisation.Obligation{}, ErrPaymentReconciliation
 	}

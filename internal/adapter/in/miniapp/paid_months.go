@@ -34,11 +34,12 @@ func (s *Server) PaidMonths() http.Handler {
 				return
 			}
 			var input struct {
-				Month     string      `json:"month"`
-				AsOf      string      `json:"as_of"`
-				Balance   json.Number `json:"balance_major"`
-				Payment   json.Number `json:"payment_major"`
-				Confirmed bool        `json:"confirmed"`
+				AccruedInterest *json.Number `json:"accrued_interest_major"`
+				Month           string       `json:"month"`
+				AsOf            string       `json:"as_of"`
+				Balance         json.Number  `json:"balance_major"`
+				Payment         json.Number  `json:"payment_major"`
+				Confirmed       bool         `json:"confirmed"`
 			}
 			decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2048))
 			decoder.DisallowUnknownFields()
@@ -47,22 +48,31 @@ func (s *Server) PaidMonths() http.Handler {
 				return
 			}
 			if input.Balance == "" || input.Payment == "" {
-				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "invalid_amount"})
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: errorInvalidAmount})
 				return
 			}
 			balance, err := budgetMinor(input.Balance, currency, true)
 			if err != nil {
-				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "invalid_amount"})
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: errorInvalidAmount})
 				return
 			}
 			payment, err := budgetMinor(input.Payment, currency, true)
 			if err != nil {
-				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: "invalid_amount"})
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: errorInvalidAmount})
 				return
 			}
-			receipt, err := commands.MarkMonthsPaid(ctx, user, id, key, version, app.PaidMonthStatement{Month: input.Month, AsOf: input.AsOf, PrincipalMinor: balance, NextPaymentMinor: payment, Confirmed: input.Confirmed})
+			var accrued *int64
+			if input.AccruedInterest != nil {
+				value, parseErr := budgetMinor(*input.AccruedInterest, currency, true)
+				if parseErr != nil || (balance == 0 && value > 0) {
+					writeJSON(w, http.StatusUnprocessableEntity, map[string]string{jsonError: errorInvalidAmount})
+					return
+				}
+				accrued = &value
+			}
+			receipt, err := commands.MarkMonthsPaid(ctx, user, id, key, version, app.PaidMonthStatement{AccruedInterestMinor: accrued, Month: input.Month, AsOf: input.AsOf, PrincipalMinor: balance, NextPaymentMinor: payment, Confirmed: input.Confirmed})
 			if errors.Is(err, app.ErrPaymentReconciliation) {
-				writeJSON(w, http.StatusConflict, map[string]string{jsonError: "payment_reconciliation_required"})
+				writeJSON(w, http.StatusConflict, map[string]string{jsonError: errorPaymentReconciliation})
 				return
 			}
 			if errors.Is(err, app.ErrPaymentInvalid) {
@@ -99,7 +109,7 @@ func (s *Server) PaidMonths() http.Handler {
 				nextDates[month] = next.String()
 			}
 		}
-		out := map[string]any{"id": id, "name": loan.Name, keyVersion: loan.MutationVersion, "today": today.String(), "currency": loan.Contract.Currency.Code, "currency_exponent": loan.Contract.Currency.Exponent, "balance_major": major(loan.Balance), "next_dates": nextDates, "needs_reconciliation": loan.UnreconciledPayments, "paid_through": paidThrough(loan)}
+		out := map[string]any{"id": id, "name": loan.Name, keyVersion: loan.MutationVersion, keyToday: today.String(), "currency": loan.Contract.Currency.Code, "currency_exponent": loan.Contract.Currency.Exponent, "balance_major": major(loan.Balance), "next_dates": nextDates, "needs_reconciliation": loan.UnreconciledPayments, "paid_through": paidThrough(loan)}
 		if loan.Contract.HasScheduled {
 			out["payment_major"] = major(loan.Contract.ScheduledPayment)
 		}

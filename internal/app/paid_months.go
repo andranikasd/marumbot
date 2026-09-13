@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/andranikasd/marumbot/pkg/core/amortisation"
@@ -12,11 +13,12 @@ import (
 // PaidMonthStatement is a borrower statement, not a synthetic money transfer.
 // Balance and next instalment come from the lender after the completed months.
 type PaidMonthStatement struct {
-	Month            string `json:"month"`
-	AsOf             string `json:"as_of"`
-	PrincipalMinor   int64  `json:"principal_minor"`
-	NextPaymentMinor int64  `json:"next_payment_minor"`
-	Confirmed        bool   `json:"confirmed"`
+	AccruedInterestMinor *int64 `json:"accrued_interest_minor,omitempty"`
+	Month                string `json:"month"`
+	AsOf                 string `json:"as_of"`
+	PrincipalMinor       int64  `json:"principal_minor"`
+	NextPaymentMinor     int64  `json:"next_payment_minor"`
+	Confirmed            bool   `json:"confirmed"`
 }
 
 type PaidMonthRecorder interface {
@@ -78,6 +80,9 @@ func (s LoanCommands) MarkMonthsPaid(ctx context.Context, user, id, key string, 
 		if !statement.Confirmed || statement.AsOf != today.String() || today.Before(loan.AsOf) || statement.PrincipalMinor < 0 || statement.PrincipalMinor > 9007199254740991 || statement.NextPaymentMinor < 0 || statement.NextPaymentMinor > 9007199254740991 {
 			return LoanCommandReceipt{}, ErrPaymentInvalid
 		}
+		if statement.AccruedInterestMinor != nil && (*statement.AccruedInterestMinor < 0 || *statement.AccruedInterestMinor > 9007199254740991 || (statement.PrincipalMinor == 0 && *statement.AccruedInterestMinor > 0)) {
+			return LoanCommandReceipt{}, ErrPaymentInvalid
+		}
 		var next date.Date
 		if statement.PrincipalMinor == 0 {
 			first, err := date.Parse(statement.Month + "-01")
@@ -98,7 +103,7 @@ func (s LoanCommands) MarkMonthsPaid(ctx context.Context, user, id, key string, 
 			projection.Contract.NotBeforeDue = next
 			projection.Contract.HasScheduled = true
 			projection.Contract.ScheduledPayment = money.FromMinor(statement.NextPaymentMinor, loan.Contract.Currency)
-			if _, err := projection.Schedule(); err != nil {
+			if _, err := projection.Schedule(); err != nil && !errors.Is(err, ErrLoanInterestUnknown) {
 				return LoanCommandReceipt{}, ErrPaymentInvalid
 			}
 		}

@@ -1,5 +1,5 @@
 -- name: GetUserPreferences
-SELECT timezone,quiet_enabled,quiet_start,quiet_end,settings_version
+SELECT timezone,quiet_enabled,quiet_start,quiet_end,settings_version,reminders_enabled,reminder_lead_days,reminder_minute
 FROM users WHERE id=$1 AND deleted_at IS NULL;
 
 -- name: LockPreferenceUser
@@ -12,9 +12,9 @@ SELECT payload,result FROM user_preference_receipts WHERE user_id=$1 AND command
 INSERT INTO user_preference_receipts(user_id,command_key,payload,result) VALUES($1,$2,$3,$4);
 
 -- name: UpdateUserPreferences
-UPDATE users SET timezone=$2,quiet_enabled=$3,quiet_start=$4,quiet_end=$5,settings_version=settings_version+1
+UPDATE users SET timezone=$2,quiet_enabled=$3,quiet_start=$4,quiet_end=$5,settings_version=settings_version+1,reminders_enabled=coalesce($7,reminders_enabled),reminder_lead_days=coalesce($8,reminder_lead_days),reminder_minute=coalesce($9,reminder_minute)
 WHERE id=$1 AND settings_version=$6 AND deleted_at IS NULL
-RETURNING timezone,quiet_enabled,quiet_start,quiet_end,settings_version;
+RETURNING timezone,quiet_enabled,quiet_start,quiet_end,settings_version,reminders_enabled,reminder_lead_days,reminder_minute;
 
 -- name: RetimeUserReminders
 -- Explicit snoozes are absolute instants. Only unsnoozed scheduled reminders
@@ -51,7 +51,8 @@ SELECT o.id,o.user_id,o.loan_id,o.due_date::text,o.offset_days,l.name,l.currency
 FROM reminder_occurrences o JOIN loans l ON l.id=o.loan_id JOIN users u ON u.id=o.user_id
 CROSS JOIN LATERAL (SELECT extract(hour FROM ($1::timestamptz AT TIME ZONE u.timezone))*60+
  extract(minute FROM ($1::timestamptz AT TIME ZONE u.timezone)) AS minute) local_time
-WHERE o.approved_plan_id IS NULL AND o.status='scheduled' AND o.target_send_at<=$1 AND o.retry_at<=$1 AND l.archived_at IS NULL AND u.deleted_at IS NULL AND u.access_state<>'paused'
+WHERE o.approved_plan_id IS NULL AND o.status='scheduled' AND o.target_send_at<=$1 AND o.retry_at<=$1 AND l.archived_at IS NULL AND u.deleted_at IS NULL AND u.access_state<>'paused' AND u.reminders_enabled
+AND EXISTS(SELECT 1 FROM reminder_rules r WHERE r.loan_id=o.loan_id AND r.offset_days=o.offset_days AND r.enabled)
 AND (NOT u.quiet_enabled OR NOT CASE WHEN u.quiet_start<u.quiet_end
  THEN local_time.minute>=u.quiet_start AND local_time.minute<u.quiet_end
  ELSE local_time.minute>=u.quiet_start OR local_time.minute<u.quiet_end END)
@@ -66,3 +67,14 @@ WHERE id=$1 AND status='scheduled' AND target_send_at<=$2;
 UPDATE reminder_occurrences SET delivery_attempts=least(delivery_attempts+1,20),
  retry_at=$2::timestamptz+make_interval(secs=>least(21600,60*(1<<least(delivery_attempts,9))))
 WHERE id=$1 AND status='scheduled' AND target_send_at<=$2;
+
+-- name: ApplyUserNotificationRules
+UPDATE reminder_rules r SET enabled=false
+FROM loans l WHERE r.loan_id=l.id AND l.user_id=$1;
+
+-- name: SetUserNotificationRules
+INSERT INTO reminder_rules(id,loan_id,offset_days,send_at_local,enabled)
+SELECT gen_random_uuid(),l.id,-u.reminder_lead_days, time '00:00'+u.reminder_minute*interval '1 minute',true
+FROM loans l JOIN users u ON u.id=l.user_id
+WHERE l.user_id=$1 AND l.archived_at IS NULL AND u.reminder_lead_days IS NOT NULL AND u.reminder_minute IS NOT NULL
+ON CONFLICT(loan_id,offset_days) DO UPDATE SET send_at_local=excluded.send_at_local,enabled=true;

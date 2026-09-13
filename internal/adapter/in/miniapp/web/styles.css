@@ -322,3 +322,10 @@ input[type="checkbox"]{width:22px;min-width:22px;max-width:22px;height:22px;min-
 /* Keep amount and currency together on narrow phones. */
 #budget-form .budget-amount-row{display:grid;grid-template-columns:minmax(0,1fr) 96px;gap:8px}
 #budget-form .budget-amount-row>*{width:100%;min-width:0}
+
+/* Monthly plans keep labels and amounts readable on narrow phones. */
+.spread{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.spread>*{min-width:0}
+.spread>span{flex:1 1 0}
+.spread strong,.spread b{flex:0 0 auto;max-width:65%;text-align:right;overflow-wrap:anywhere}
+.card>.v{font-size:clamp(24px,7vw,32px);line-height:1.2;overflow-wrap:anywhere}

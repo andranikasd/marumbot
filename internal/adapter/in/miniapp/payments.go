@@ -21,7 +21,7 @@ func paymentHTTPError(w http.ResponseWriter, err error) {
 	case errors.Is(err, app.ErrConflict):
 		code, message = http.StatusConflict, "version_conflict"
 	case errors.Is(err, app.ErrPaymentReconciliation):
-		code, message = http.StatusUnprocessableEntity, "payment_reconciliation_required"
+		code, message = http.StatusUnprocessableEntity, errorPaymentReconciliation
 	case errors.Is(err, app.ErrPaymentDuplicate):
 		code, message = http.StatusConflict, "possible_duplicate_payment"
 	}

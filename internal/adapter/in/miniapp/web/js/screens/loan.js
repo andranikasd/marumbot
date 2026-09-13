@@ -12,10 +12,13 @@ import {iconPicker} from "../icons.js";
 import { haptic, toast, fmtMoney, fmtFull, fmtMonth, moneyNum, num, confirmDialog, group } from "../core.js";
 import { T, sub, addStrings } from "../i18n.js";
 import { getJSON, invalidate } from "../api.js";
+import {extraMinor,extraText} from "./projection-format.js";
 import {loanMutation,loanWriteError,showLoanRetry} from "../loan-mutations.js";
 import { register, go, setAction, setTitle } from "../nav.js";
 
 addStrings({
+ "loan.accrued":"Կուտակված տոկոսը (ըստ ցանկության)","loan.accruedHint":"Բանկի առանձին նշած տոկոսը՝ այս մնացորդի ամսաթվով։ Դատարկը նշանակում է՝ չգիտեմ, 0-ը՝ տոկոս չկա։",
+ "loan.bankrules":"Բանկս հավելյալ վճարն ուղղում է մայր գումարին, չի փոխում ամսական վճարը և վաղաժամկետ վճարման վճար չի գանձում։",
   "loan.zero":"Զրոյական մնացորդ է գրանցված", "loan.snapshotdate":"Մնացորդի ամսաթիվը", "loan.balance": "Մնացորդ", "loan.stated": "ձեր թիվը, {d}", "loan.confirmed": "բանկի հաստատած, {d}",
   "loan.paid": "{p}% մարված", "loan.active": "ակտիվ",
   "loan.next": "Հաջորդ վճարումը", "loan.payment": "Վճարում", "loan.day": "Վճարման օրը",
@@ -27,6 +30,8 @@ addStrings({
   "loan.editing": "Խմբագրել պայմանները", "loan.save": "Պահպանել փոփոխությունները",
   "loan.missing": "Վարկը չի գտնվել։", "loan.day.unit": "ամսի օր",
 }, {
+  "loan.accrued":"Accrued interest (optional)","loan.accruedHint":"Interest shown separately by your bank on this balance date. Blank means unknown; 0 means none.",
+  "loan.bankrules":"My bank applies extra payments directly to principal, keeps the monthly payment unchanged, and charges no early-payment fee.",
   "loan.zero":"Zero balance reported", "loan.snapshotdate":"Balance as of", "loan.balance": "Balance", "loan.stated": "your figure, {d}", "loan.confirmed": "bank-confirmed, {d}",
   "loan.paid": "{p}% paid off", "loan.active": "active",
   "loan.next": "Next due", "loan.payment": "Payment", "loan.day": "Payment day",
@@ -42,15 +47,15 @@ addStrings({
 addStrings({"pm.title":"Վճարված ամիսներ"},{"pm.title":"Paid months"});
 addStrings({
  "loan.paymentHelp":"Մի վճարո՞ւմ եք կատարել։ Գրանցեք գումարն ու օրը։",
- "loan.monthHelp":"Այս ամսվա վճարումներն արդեն կատարե՞լ եք մինչև Marum-ից օգտվելը։ Պարտադիր չէ ամեն վճարումն առանձին գրանցել։",
- "loan.monthAction":"Այս ամսվա վճարումները կատարել եմ",
+ "loan.monthHelp":"Այս ամսվա վճարումներն ավարտե՞լ եք։ Թարմացրեք բանկի մնացորդն ու հաջորդ վճարման օրը։",
+ "loan.monthAction":"Նշել ամիսը վճարված",
  "loan.otherUpdates":"Այլ փոփոխություններ",
  "loan.balanceOnly":"Միայն բանկի մնացորդն ուղղելու համար։ Կատարված վճարումը նշելու համար օգտագործեք վերևի քայլերը։",
  "loan.checkHelp":"Նախ ստուգեք բանկի նոր մնացորդն ու ձեր մնացած գումարը, որպեսզի պլանը թարմացվի։"
 },{
  "loan.paymentHelp":"Made a payment? Record its amount and date.",
- "loan.monthHelp":"Already paid this month before using Marum? You do not need to enter each old payment.",
- "loan.monthAction":"I already paid this month",
+ "loan.monthHelp":"Finished this month’s payments? Update the bank balance and next due date.",
+ "loan.monthAction":"Mark month paid",
  "loan.otherUpdates":"Other changes",
  "loan.balanceOnly":"Use this only to correct a bank balance. To tell us about a payment, use the steps above.",
  "loan.checkHelp":"Check the bank’s new balance and your money left so the plan can update."
@@ -70,13 +75,13 @@ const HTML = `
       <p class="hint" data-i18n="loan.checkHelp"></p>
       <button class="cta" type="button" id="ln-check" data-i18n="payment.review"></button>
     </section>
+    <section id="ln-month-wrap" class="stack"><p class="hint" data-i18n="loan.monthHelp"></p>
+      <button class="cta" type="button" id="ln-paid-months" data-i18n="loan.monthAction"></button>
+    </section>
+    <details class="fold"><summary data-i18n="loan.otherUpdates"></summary><div class="fold-body stack">
     <section class="stack"><p class="hint" data-i18n="loan.paymentHelp"></p>
       <button class="cta" type="button" id="ln-record" data-i18n="payment.record"></button>
     </section>
-    <section id="ln-month-wrap" class="stack"><p class="hint" data-i18n="loan.monthHelp"></p>
-      <button class="cta ghost" type="button" id="ln-paid-months" data-i18n="loan.monthAction"></button>
-    </section>
-    <details class="fold"><summary data-i18n="loan.otherUpdates"></summary><div class="fold-body stack">
       <p class="hint" data-i18n="loan.balanceOnly"></p>
       <button class="alink" type="button" id="ln-update" data-i18n="loan.update"></button>
     </div></details>
@@ -89,13 +94,14 @@ const HTML = `
       <label for="ln-newbal" data-i18n="loan.newbalance">Նոր մնացորդ</label>
       <div class="in unit-w"><input id="ln-newbal" inputmode="decimal" placeholder="0"><span class="unit" id="ln-newbal-unit"></span></div>
       <p class="hint" data-i18n="loan.newbalance.hint"></p>
-      <p class="error" id="e-newbal"></p>
+      <label for="ln-accrued" data-i18n="loan.accrued"></label><input id="ln-accrued" inputmode="decimal"><p class="hint" data-i18n="loan.accruedHint"></p><p class="error" id="e-newbal"></p>
     </div>
     <button class="cta" type="submit" data-i18n="save">Պահպանել</button>
     <button class="alink quiet" type="button" id="ln-bal-cancel" data-i18n="manage.cancel">Չեղարկել</button>
   </form>
 
   <form id="loan-edit" class="stack" hidden novalidate>
+ <details class="fold"><summary data-i18n="loan.contract"></summary><div class="fold-body"><label><input id="le-bankrules" type="checkbox"> <span data-i18n="loan.bankrules"></span></label></div></details>
     ${iconPicker("le-icon")}
     <label class="card"><input id="le-excluded" type="checkbox"><span data-i18n="loan.noextra">Required payments only</span></label>
     <div class="card stack">
@@ -192,12 +198,14 @@ function render() {
     : loan.prepay_effect === "reduce_instalment" ? "prepay.reduce" : "prepay.unsure")));
   if (loan.description) c.append(row(T("loan.note"), loan.description));
   $("ln-newbal-unit").textContent = cur;
+ $("ln-accrued").value="";
 }
 
 function fill() {
   $("le-name").value = loan.name;
   $("le-icon").value = loan.icon || "bank";
   $("le-excluded").checked = !!loan.optional_excluded;
+ $("le-bankrules").checked=!!loan.projection_terms_confirmed;
   $("le-desc").value = loan.description || "";
   $("le-rate").value = loan.rate_percent != null ? String(loan.rate_percent) : "";
   $("le-day").value = loan.payment_day != null ? String(loan.payment_day) : "";
@@ -245,7 +253,10 @@ async function saveBalance(e) {
   if (err) { haptic.bad(); return; }
   const minor=Math.round(v*10**(loan.currency_exponent??2));
   if (!Number.isSafeInteger(minor) || !$("ln-asof").value) {$("e-newbal").textContent=T("err.number");return;}
-  if (await patch({ ...terms(), snapshot_minor:minor, snapshot_as_of:$("ln-asof").value }, "saved")) { await load(loan.id); mode("view"); }
+  const accruedText=$("ln-accrued").value.trim();
+  const accrued=accruedText?extraMinor(accruedText,loan.currency_exponent??2):null;
+  if(accruedText&&(accrued===null||(minor===0&&accrued>0))){$("e-newbal").textContent=T("err.number");return;}
+  if (await patch({ ...terms(), snapshot_minor:minor, snapshot_as_of:$("ln-asof").value, snapshot_accrued_interest_major:accrued===null?null:extraText(accrued,loan.currency_exponent??2) }, "saved")) { await load(loan.id); mode("view"); }
 }
 
 async function saveEdit(e) {
@@ -268,7 +279,7 @@ async function saveEdit(e) {
     name, icon:$("le-icon").value, optional_excluded:$("le-excluded").checked, description: $("le-desc").value.trim(), rate_percent: rate, payment_day: day,
     start_date: start, maturity_date: maturity,
     method: document.querySelector('input[name="le-method"]:checked')?.value || "annuity",
-    prepay_effect: $("le-prepay").value, balance_major: 0,
+    prepay_effect: $("le-prepay").value, balance_major: 0, projection_terms_confirmed:$("le-bankrules").checked,
   };
   if (await patch(body, "saved")) { await load(loan.id); mode("view"); }
 }

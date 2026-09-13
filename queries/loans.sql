@@ -64,15 +64,16 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        s.principal_minor, s.as_of::text, s.trust,
        coalesce(p.excess_rule, 'unknown'),
        c.prepayment_policy::text,
-       f.principal_minor AS first_principal_minor, l.icon, l.optional_excluded, c.version, c.effective_from::text,
+       coalesce(setup.original_principal_minor,f.principal_minor) AS first_principal_minor, l.icon, l.optional_excluded, c.version, c.effective_from::text,
  EXISTS (SELECT 1 FROM loan_events e WHERE e.loan_id = l.id
  AND e.kind IN ('payment_reported','prepayment_reported')
  AND NOT EXISTS (SELECT 1 FROM loan_events v WHERE v.voids_event_id = e.id)
  AND NOT EXISTS (SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id = e.id))
  OR EXISTS (SELECT 1 FROM loan_events v WHERE v.loan_id=l.id AND v.kind='entry_voided'
  AND EXISTS(SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id=v.voids_event_id)
- AND v.recorded_seq>coalesce(s.observed_event_seq,0)), CASE WHEN s.contract_version_id=c.id THEN s.next_due_date::text END, CASE WHEN s.contract_version_id=c.id THEN s.next_installment_minor END, coalesce(p.policy_key,'unknown'),coalesce(p.version,0), l.mutation_version
+ AND v.recorded_seq>coalesce(s.observed_event_seq,0)), CASE WHEN s.contract_version_id=c.id THEN s.next_due_date::text END, CASE WHEN s.contract_version_id=c.id THEN s.next_installment_minor END, coalesce(p.policy_key,'unknown'),coalesce(p.version,0), l.mutation_version, coalesce(NOT setup.interest_known,false),coalesce(setup.projection_terms_confirmed,false),coalesce(setup.snapshot_id=s.id AND setup.accrued_interest_minor IS NOT NULL,false),CASE WHEN setup.snapshot_id=s.id THEN coalesce(setup.accrued_interest_minor,0) ELSE 0 END
   FROM loans l
+  LEFT JOIN loan_setup_sources setup ON setup.loan_id=l.id
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
          WHERE v.loan_id = l.id ORDER BY v.version DESC LIMIT 1
@@ -200,15 +201,16 @@ SELECT l.id, l.name, coalesce(l.description, ''), l.currency,
        s.principal_minor, s.as_of::text, s.trust,
        coalesce(p.excess_rule, 'unknown'),
        c.prepayment_policy::text,
-       f.principal_minor AS first_principal_minor, l.icon, l.optional_excluded, c.version, c.effective_from::text,
+       coalesce(setup.original_principal_minor,f.principal_minor) AS first_principal_minor, l.icon, l.optional_excluded, c.version, c.effective_from::text,
  EXISTS (SELECT 1 FROM loan_events e WHERE e.loan_id = l.id
  AND e.kind IN ('payment_reported','prepayment_reported')
  AND NOT EXISTS (SELECT 1 FROM loan_events v WHERE v.voids_event_id = e.id)
  AND NOT EXISTS (SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id = e.id))
  OR EXISTS (SELECT 1 FROM loan_events v WHERE v.loan_id=l.id AND v.kind='entry_voided'
  AND EXISTS(SELECT 1 FROM snapshot_event_coverage cov WHERE cov.event_id=v.voids_event_id)
- AND v.recorded_seq>coalesce(s.observed_event_seq,0)), CASE WHEN s.contract_version_id=c.id THEN s.next_due_date::text END, CASE WHEN s.contract_version_id=c.id THEN s.next_installment_minor END, coalesce(p.policy_key,'unknown'),coalesce(p.version,0), l.mutation_version
+ AND v.recorded_seq>coalesce(s.observed_event_seq,0)), CASE WHEN s.contract_version_id=c.id THEN s.next_due_date::text END, CASE WHEN s.contract_version_id=c.id THEN s.next_installment_minor END, coalesce(p.policy_key,'unknown'),coalesce(p.version,0), l.mutation_version, coalesce(NOT setup.interest_known,false),coalesce(setup.projection_terms_confirmed,false),coalesce(setup.snapshot_id=s.id AND setup.accrued_interest_minor IS NOT NULL,false),CASE WHEN setup.snapshot_id=s.id THEN coalesce(setup.accrued_interest_minor,0) ELSE 0 END
   FROM loans l
+  LEFT JOIN loan_setup_sources setup ON setup.loan_id=l.id
   JOIN LATERAL (
         SELECT * FROM loan_contract_versions v
          WHERE v.loan_id = l.id ORDER BY v.version DESC LIMIT 1
@@ -335,6 +337,10 @@ WITH owned AS (
            $15, $16, p.allocation_policy_version_id, $17::jsonb, 1
       FROM owned o, prev p, closed WHERE $6::boolean
     RETURNING id, loan_id
+), setup_terms AS (
+    UPDATE loan_setup_sources SET interest_known=true, projection_terms_confirmed=false
+    WHERE loan_id IN (SELECT loan_id FROM inserted_contract)
+    RETURNING loan_id
 ), current_contract AS (
     SELECT id, loan_id FROM inserted_contract
     UNION ALL
@@ -363,14 +369,19 @@ WITH owned AS (
 SELECT id FROM owned;
 
 -- name: EnsureDefaultReminders
--- Every loan gets reminders when it is filed. Three days before, and on the
--- day: enough warning to move money, and a nudge when it is actually due.
+-- New loans inherit the selected reminder timing. Legacy accounts retain
+-- their three-days-before and due-day rules until they choose a new timing.
 --
 -- The unique key on (loan_id, offset_days) makes this idempotent, so running it
 -- again for a loan that already has rules changes nothing.
 INSERT INTO reminder_rules (id, loan_id, offset_days, send_at_local)
-VALUES (gen_random_uuid(), $1, -3, '10:00'),
-       (gen_random_uuid(), $1,  0, '10:00')
+SELECT gen_random_uuid(), l.id, defaults.offset_days, defaults.send_at_local
+FROM loans l JOIN users u ON u.id=l.user_id
+CROSS JOIN LATERAL (
+ SELECT -3 AS offset_days,time '10:00' AS send_at_local WHERE u.reminder_lead_days IS NULL
+ UNION ALL SELECT 0,time '10:00' WHERE u.reminder_lead_days IS NULL
+ UNION ALL SELECT -u.reminder_lead_days,time '00:00'+coalesce(u.reminder_minute,540)*interval '1 minute' WHERE u.reminder_lead_days IS NOT NULL
+) defaults WHERE l.id=$1
 ON CONFLICT (loan_id, offset_days) DO NOTHING;
 
 -- name: ScheduleReminders
@@ -415,8 +426,10 @@ SELECT o.id, o.user_id, o.loan_id, o.due_date::text, o.offset_days,
        l.name, l.currency
   FROM reminder_occurrences o
   JOIN loans l ON l.id = o.loan_id
+ JOIN users u ON u.id=l.user_id AND u.reminders_enabled
  WHERE o.approved_plan_id IS NULL AND o.status = 'scheduled' AND o.target_send_at <= now()
    AND l.archived_at IS NULL
+   AND EXISTS(SELECT 1 FROM reminder_rules r WHERE r.loan_id=o.loan_id AND r.offset_days=o.offset_days AND r.enabled)
  ORDER BY o.target_send_at
  LIMIT $1;
 

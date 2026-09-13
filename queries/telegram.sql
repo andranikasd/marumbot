@@ -83,8 +83,8 @@ DELETE FROM telegram_commands
 WITH found AS (
     SELECT user_id FROM identities WHERE telegram_user_hmac = $1
 ), created AS (
-    INSERT INTO users (id, locale, timezone, trial_ends_at)
-    SELECT $2, $3, $4, $5
+    INSERT INTO users (id, locale, timezone, trial_ends_at, reminders_enabled)
+    SELECT $2, $3, $4, $5, coalesce($10::boolean,true)
      WHERE NOT EXISTS (SELECT 1 FROM found)
     RETURNING id
 ), linked AS (
@@ -110,9 +110,8 @@ UPDATE users SET locale = $2 WHERE id = $1 AND deleted_at IS NULL RETURNING id;
 SELECT telegram_chat_enc, key_version FROM identities WHERE user_id = $1;
 
 -- name: GetUserByTelegramTag
--- Finds an existing account only. The Mini App is reachable only from a bot
--- message, so an account that does not exist means something is wrong rather
--- than something new.
+-- Finds an eligible existing account. Direct Mini App entry uses the verified
+-- session endpoint to provision first contact before private reads.
 SELECT i.user_id FROM identities i JOIN users u ON u.id=i.user_id
 WHERE i.telegram_user_hmac=$1 AND u.deleted_at IS NULL AND u.access_state<>'paused';
 

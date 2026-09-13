@@ -98,16 +98,16 @@ func (w *Worker) tip(ctx context.Context, userID string, l i18n.Locale) (string,
 	}
 }
 
-// withTip appends the journey tip to a message, unless the stage's own
-// surface is the message being sent — a "set your budget" reply must not end
-// with a tip to set the budget.
-func (w *Worker) withTip(ctx context.Context, userID string, l i18n.Locale, text string, skip ...journeyStage) string {
-	t, s := w.tip(ctx, userID, l)
-	for _, sk := range skip {
-		if s == sk {
+// withTip decorates legacy cash-tool replies. Monthly-plan users do not
+// receive prompts for a payday or cash declaration they do not need.
+func (w *Worker) withTip(ctx context.Context, userID string, l i18n.Locale, text string) string {
+	if reader, ok := w.Budgets.(ProjectionReader); ok {
+		settings, err := reader.ProjectionSettings(ctx, userID)
+		if err != nil || settings.Enabled {
 			return text
 		}
 	}
+	t, _ := w.tip(ctx, userID, l)
 	return text + "\n\n<i>" + t + "</i>"
 }
 
@@ -116,6 +116,18 @@ func (w *Worker) withTip(ctx context.Context, userID string, l i18n.Locale, text
 // moment the user has done something — so the bot confirms it, names the
 // loan, and points at the next step.
 func (w *Worker) OnLoanFiledMessage(ctx context.Context, userID string) error {
+	// A direct Mini App launch need not grant the bot permission to send chat
+	// messages. The Mini App already confirms the save in its own UI.
+	if reader, ok := w.Reminders.(UserPreferenceReader); ok {
+		prefs, err := reader.UserPreferences(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if prefs.RemindersEnabled != nil && !*prefs.RemindersEnabled {
+			return nil
+		}
+	}
+
 	locale, _, err := w.Users.Locale(ctx, userID)
 	if err != nil {
 		w.Log.WarnContext(ctx, "filed message: locale", "error", err)

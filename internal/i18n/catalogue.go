@@ -221,6 +221,7 @@ var catalogue = map[Locale]map[string]string{
 
 		// --- v1.1: titled messages and aligned figure blocks ---
 		"start.title":             "Բարի գալուստ Մարում",
+		"start.simple":            "Ավելացրեք վարկերը, ընտրեք ամսական հավելյալ գումարը և տեսեք ձեր պլանը։",
 		"start.steps":             "1 · Ավելացնում եք վարկերը\n2 · Նշում եք ամսական բյուջեն\n3 · Հաստատում եք պլանը",
 		"fig.owed":                "Ընդհանուր պարտք",
 		"fig.required":            "Պարտադիր այս ամիս",
@@ -429,6 +430,7 @@ var catalogue = map[Locale]map[string]string{
 
 		// --- v1.1: titled messages and aligned figure blocks ---
 		"start.title":             "Welcome to Marum",
+		"start.simple":            "Add your loans, choose a monthly extra amount, and see your plan.",
 		"start.steps":             "1 · Add your loans\n2 · Set a monthly budget\n3 · Approve the plan",
 		"fig.owed":                "Total owed",
 		"fig.required":            "Due this month",

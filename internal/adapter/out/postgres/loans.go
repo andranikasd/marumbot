@@ -134,7 +134,7 @@ func loansForUser(ctx context.Context, db budgetQuerier, userID string, limit in
 		)
 		if err := rows.Scan(&l.ID, &l.Name, &l.Description, &code,
 			&rate, &repayment, &dayCount, &start, &maturity, &day,
-			&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom, &l.UnreconciledPayments, &nextDue, &nextPayment, &policyKey, &policyVersion, &l.MutationVersion); err != nil {
+			&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom, &l.UnreconciledPayments, &nextDue, &nextPayment, &policyKey, &policyVersion, &l.MutationVersion, &l.InterestUnknown, &l.ProjectionTermsConfirmed, &l.OpeningInterestKnown, &l.OpeningInterestMinor); err != nil {
 			return nil, err
 		}
 		if l.Excess, err = allocation.ParseExcessRule(excess); err != nil {
@@ -519,7 +519,7 @@ func loanForUser(ctx context.Context, db loanQuery, loanID, userID string) (app.
 	err := db.QueryRow(ctx, q("GetLoanForUser"), loanID, userID).Scan(
 		&l.ID, &l.Name, &l.Description, &code,
 		&rate, &repayment, &dayCount, &start, &maturity, &day,
-		&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom, &l.UnreconciledPayments, &nextDue, &nextPayment, &policyKey, &policyVersion, &l.MutationVersion)
+		&mode, &unit, &principal, &asOf, &trust, &excess, &prepay, &first, &l.Icon, &l.OptionalExcluded, &contractVersion, &effectiveFrom, &l.UnreconciledPayments, &nextDue, &nextPayment, &policyKey, &policyVersion, &l.MutationVersion, &l.InterestUnknown, &l.ProjectionTermsConfirmed, &l.OpeningInterestKnown, &l.OpeningInterestMinor)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return app.UserLoan{}, app.ErrNotFound
 	}

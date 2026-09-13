@@ -25,6 +25,10 @@ var ErrSnapshotContractDate = errors.New("balance date precedes the current cont
 // is deliberately absent: the ledger behind a loan is in one currency, and
 // "changing" it would re-denominate history. That loan is archive-and-refile.
 type LoanEdit struct {
+	BalanceInterestMinor     *int64 `json:",omitempty"`
+	ProjectionTermsConfirmed *bool  `json:",omitempty"`
+	// BalanceOnly preserves unknown contract facts during a bank balance update.
+	BalanceOnly      bool `json:",omitempty"`
 	Key              string
 	ExpectedVersion  int64
 	BalanceAsOf      date.Date
@@ -123,7 +127,16 @@ func prepareLoanRevision(ln UserLoan, e LoanEdit, today date.Date) (LoanRevision
 		}
 		balanceAsOf = e.BalanceAsOf
 	}
-	termsChanged := next.NominalRate != ln.Contract.NominalRate ||
+	if e.BalanceOnly {
+		if e.BalanceMinor == nil || *e.BalanceMinor < 0 {
+			return LoanRevision{}, ErrPaymentInvalid
+		}
+		if balanceAsOf.Before(ln.Contract.EffectiveFrom) {
+			return LoanRevision{}, ErrSnapshotContractDate
+		}
+		return LoanRevision{BalanceMinor: e.BalanceMinor, BalanceAsOf: balanceAsOf, EffectiveFrom: today}, nil
+	}
+	termsChanged := ln.InterestUnknown || next.NominalRate != ln.Contract.NominalRate ||
 		next.Type != ln.Contract.Type ||
 		next.StartDate != ln.Contract.StartDate ||
 		next.MaturityDate != ln.Contract.MaturityDate ||

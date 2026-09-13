@@ -1,5 +1,14 @@
 # Current state
 
+## Approved onboarding implementation — 2026-09-14
+
+The repository now implements the [guided monthly-plan flow](design/simplified-onboarding.md):
+three primary tabs, guided loan setup, monthly extra choices and replacements,
+paid-month bank statements, and optional reminders. Readiness requires schema 29.
+Existing cash tools and plan manifests are preserved. This implementation has not
+yet been verified on the production Telegram origin. The release snapshot below
+is historical and does not describe the new navigation.
+
 Verified on **2026-09-03**, against application release **v2.0.4**. This is a
 release snapshot; future changes must update it alongside the affected guides.
 

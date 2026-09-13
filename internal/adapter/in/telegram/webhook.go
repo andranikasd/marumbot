@@ -205,16 +205,18 @@ func (h *Webhook) resolve(ctx context.Context, n Normalised) (app.Account, error
 	if tz == "" {
 		tz = "Asia/Yerevan"
 	}
+	reminders := false
 	return h.Users.UpsertByTelegram(ctx, app.UpsertUser{
-		UserTag:    h.Cipher.Tag(n.UserID),
-		UserSealed: userSealed,
-		ChatTag:    h.Cipher.Tag(n.ChatID),
-		ChatSealed: chatSealed,
-		KeyVersion: identity.KeyVersion,
-		NewID:      uuid.NewString(),
-		Locale:     string(i18n.Parse(n.Language)),
-		Timezone:   tz,
-		TrialEnds:  h.Clock.Now().Add(app.TrialPeriod),
+		RemindersEnabled: &reminders,
+		UserTag:          h.Cipher.Tag(n.UserID),
+		UserSealed:       userSealed,
+		ChatTag:          h.Cipher.Tag(n.ChatID),
+		ChatSealed:       chatSealed,
+		KeyVersion:       identity.KeyVersion,
+		NewID:            uuid.NewString(),
+		Locale:           string(i18n.Parse(n.Language)),
+		Timezone:         tz,
+		TrialEnds:        h.Clock.Now().Add(app.TrialPeriod),
 	})
 }
 

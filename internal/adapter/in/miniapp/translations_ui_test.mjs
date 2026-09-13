@@ -17,3 +17,8 @@ for(const file of all){const source=await readFile(new URL('screens/'+file,base)
 assert.deepEqual(Object.keys(STRINGS.hy).sort(),Object.keys(STRINGS.en).sort(),'catalog keys match in Armenian and English');
 for(const key of Object.keys(STRINGS.hy))assert.deepEqual([...STRINGS.hy[key].matchAll(/\{(\w+)\}/g)].map(m=>m[1]).sort(),[...STRINGS.en[key].matchAll(/\{(\w+)\}/g)].map(m=>m[1]).sort(),`${key}: translated substitutions match`);
 console.log('Cold-boot links, all literal screen keys, both-language catalog parity and interpolation fields are covered.');
+// Reason keys are selected dynamically from API values, so literal-key scans
+// alone cannot detect a missing translation here.
+for(const reason of ['bank_payment_mismatch','non_amortizing_payment','payment_reconciliation_required','unknown_terms','overdue','accrued_interest_needed','interest_needed','bank_payment_needed','early_payment_rules_needed']){
+ for(const language of ['hy','en'])assert.ok(STRINGS[language]['sp.reason.'+reason],`${language} projection reason ${reason}`);
+}

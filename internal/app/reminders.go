@@ -172,7 +172,7 @@ func (w *Worker) ScheduleForUser(ctx context.Context, userID string) error {
 		if l.Balance.Sign() <= 0 {
 			continue
 		}
-		s, err := l.Schedule()
+		s, err := requiredReminderSchedule(l)
 		if err != nil || len(s.Rows) == 0 {
 			w.Log.WarnContext(ctx, "cannot project a loan for reminders", "error", err)
 			continue
@@ -401,7 +401,7 @@ func (w *Worker) reminderBook(ctx context.Context, userID string) *reminderBook 
 		if ln.Balance.Sign() <= 0 {
 			continue
 		}
-		s, err := ln.Schedule()
+		s, err := requiredReminderSchedule(ln)
 		if err != nil || len(s.Rows) == 0 {
 			continue
 		}

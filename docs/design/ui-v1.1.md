@@ -1,4 +1,8 @@
-# Interface: current v2.0.4 conventions
+# Interface conventions
+
+The approved September 2026 [guided onboarding design](simplified-onboarding.md)
+supersedes the navigation and standard setup below. The following v2.0.4 material
+remains historical context for the retained legacy tools.
 
 This file retains its original name for existing links. It describes the current
 Mini App, bot and admin, replacing the earlier v1.1 brass/green proposal.
