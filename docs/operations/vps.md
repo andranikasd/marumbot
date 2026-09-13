@@ -4,7 +4,8 @@ For the first manual production launch, follow the step-by-step
 [manual setup guide](manual-production-setup.md). It keeps secrets in
 `/etc/marum/compose.env`, outside the Docker build context, and explicitly sets
 `MARUM_COMPOSE_ENV` for backups. Prefer that location to the in-checkout `.env`
-examples below: current Docker ignore rules do not exclude nested `.env` files.
+examples below even though Docker now excludes nested environment files.
+For subsequent releases, use the [latest-HEAD deployment script](deploy-latest.md).
 
 This is a single-instance Docker Compose deployment. It serves embedded Mini App
 assets through Caddy HTTPS and uses Telegram long polling plus the application's

@@ -6,6 +6,11 @@
 .env
 .env.*
 !.env.example
+**/.env
+**/.env.*
+!**/.env.example
+**/compose.env
+**/*.dump
 deploy/cloudflare/node_modules
 deploy/cloudflare/dist
 deploy/observability

@@ -3,6 +3,7 @@
 Prepared 2026-09-13 against `3d47ff8`. This is an operator procedure, not evidence
 that a production deployment has happened. Use this guide for the manual VM
 deployment; the GitHub **CD · prod** workflow still targets Cloudflare.
+After initial setup, use [Deploy latest HEAD](deploy-latest.md) for repeat releases.
 
 For the requested **Nginx + Cloudflare + HTTPS admin hostname** variant, use the
 [bootstrap script and Nginx guide](nginx-cloudflare-setup.md). It replaces the

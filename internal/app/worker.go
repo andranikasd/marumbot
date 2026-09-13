@@ -315,6 +315,18 @@ func (w *Worker) apply(ctx context.Context, c InboundCommand) error {
 		return w.callback(ctx, c.UserID, chat, p.Data)
 
 	case KindText:
+		// Reply-keyboard Mini Apps receive no initData. Send an inline launch
+		// button instead, which supplies the signed identity our API requires.
+		if w.MiniApp != "" {
+			for _, labelLocale := range i18n.Supported() {
+				if strings.TrimSpace(p.Text) == i18n.DashboardButton(labelLocale) {
+					markup := map[string]any{keyInline: [][]map[string]any{{
+						webAppButton(i18n.DashboardButton(l), w.miniURL("")),
+					}}}
+					return w.Send.SendMessage(ctx, chat, i18n.DashboardButton(l), markup)
+				}
+			}
+		}
 		// A reply-keyboard button sends its own label as a message, so this is
 		// where a tap arrives. Matching runs across every locale, not just the
 		// current one: a user who switches language still has the old keyboard
@@ -635,14 +647,16 @@ func (w *Worker) helpText(l i18n.Locale) string {
 // the budget. Language and help live in the "/" command menu Telegram
 // already shows; a keyboard that lists everything lists nothing.
 //
-// The first button opens the Mini App. Contextual Add loan buttons still
+// The first button requests an authenticated inline Mini App launch button.
+// Reply-keyboard web_app buttons do not carry the required initData.
+// Contextual Add loan buttons still
 // open the form directly; the persistent entry point must describe the
 // whole product rather than one workflow inside it.
 func (w *Worker) mainMenu(l i18n.Locale) any {
 	rows := [][]map[string]any{}
 	if w.MiniApp != "" {
 		rows = append(rows, []map[string]any{
-			webAppButton(i18n.DashboardButton(l), w.miniURL("")),
+			button(i18n.DashboardButton(l)),
 			button(i18n.Button(l, KindAdvice)),
 		})
 	} else {

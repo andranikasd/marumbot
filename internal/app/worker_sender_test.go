@@ -31,6 +31,7 @@ func (f *workerLocaleFake) SetLocale(_ context.Context, _, locale string) error 
 type workerSenderFake struct {
 	menus     []string
 	messages  int
+	markup    any
 	typing    int
 	typingErr error
 	menuErr   error
@@ -53,12 +54,42 @@ func (f *workerSenderFake) SetChatMenuButtonFor(_ context.Context, _ int64, labe
 	return f.menuErr
 }
 
-func (f *workerSenderFake) SendMessage(ctx context.Context, _ int64, _ string, _ any) error {
+func (f *workerSenderFake) SendMessage(ctx context.Context, _ int64, _ string, markup any) error {
 	f.messages++
+	f.markup = markup
 	if f.send != nil {
 		return f.send(ctx)
 	}
 	return nil
+}
+
+func TestDashboardKeyboardRequestsAuthenticatedInlineLaunch(t *testing.T) {
+	for _, locale := range i18n.Supported() {
+		t.Run(string(locale), func(t *testing.T) {
+			sender := &workerSenderFake{}
+			w := senderWorker(sender)
+			keyboard := w.mainMenu(locale).(map[string]any)["keyboard"].([][]map[string]any)
+			for _, row := range keyboard {
+				for _, item := range row {
+					if _, exists := item["web_app"]; exists {
+						t.Fatal("reply-keyboard launch cannot authenticate the Mini App")
+					}
+				}
+			}
+			payload, err := json.Marshal(textPayload{Text: i18n.DashboardButton(locale)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := w.apply(t.Context(), InboundCommand{UserID: "user", Kind: KindText, Payload: payload}); err != nil {
+				t.Fatal(err)
+			}
+			rows := sender.markup.(map[string]any)[keyInline].([][]map[string]any)
+			url := rows[0][0]["web_app"].(map[string]any)["url"]
+			if sender.messages != 1 || url != w.miniURL("") {
+				t.Fatal("dashboard tap must send one inline button opening the dashboard")
+			}
+		})
+	}
 }
 
 func senderWorker(send *workerSenderFake) *Worker {

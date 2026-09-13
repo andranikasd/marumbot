@@ -1,6 +1,12 @@
--- Fresh VPS database only; executed by the owner, never by the application.
+-- VPS provisioning/repair; executed by the owner, never by the application.
 \getenv app_password MARUM_DB_PASSWORD
-CREATE ROLE marum_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'marum_app') THEN
+    CREATE ROLE marum_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
+  END IF;
+END
+$$;
 SELECT format('ALTER ROLE marum_app PASSWORD %L', :'app_password') \gexec
 GRANT CONNECT ON DATABASE marum TO marum_app;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;

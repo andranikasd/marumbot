@@ -34,6 +34,7 @@ explain why the code is shaped the way it is.
 | [Deployment](operations/deployment.md) | Cloudflare setup, secrets, the deploy order |
 | [Cloudflare alternative](operations/cloudflare-target.md) | Deferred Workers/D1/R2 assessment and migration gates |
 | [VPS deployment](operations/vps.md) | Single-server Compose, private database/admin, backups and rollback |
+| [Deploy latest HEAD](operations/deploy-latest.md) | Repeat Ubuntu deployments, preserved secrets, migration backups and admin login diagnosis |
 | [Manual first production setup](operations/manual-production-setup.md) | Ubuntu/Docker installation, external secrets, manual cutover, offsite restore drill and launch checks |
 | [Nginx + Cloudflare setup](operations/nginx-cloudflare-setup.md) | Bootstrap script, proxied Mini App/admin hostnames and server-side Certbot certificates |
 | [VPS readiness evidence](operations/vps-readiness.md) | Verified fixes, local checks and remaining launch requirements |
